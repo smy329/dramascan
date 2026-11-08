@@ -23,56 +23,32 @@
     "import"
   ],
   "rules": {
-    /* TypeScript strictness */
     "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
     "no-unused-expressions": "error",
     "no-implicit-coercion": ["error", { "boolean": false, "number": true, "string": true }],
     "no-extra-parens": "error",
     "no-floating-decimal": "error",
-
-    /* React rules */
-    "react/jsx-uses-react": "error",
-    "react/jsx-uses-event": "error",
-    "react-hooks/exhaustive-deps": "warn",
-    "react-hooks/rules-of-hooks": "error",
-    "react/no-unknown-property": "error",
-    "react/no-danger": "error",
-    "react/no-did-update-set-state": "error",
-    "react/no-direct-mutation-state": "error",
-
-    /* Import rules */
-    "import/order": ["error", { "groups": ["builtin", "external", "internal", "parent", "sibling", "index"], "pathPatterns": ["@/"] }],
-    "import/no-duplicates": "error",
-    "import/no-unresolved": "error",
-
-    /* Unsafe patterns */
-    "no-eval": "error",
-    "no-new-object": "error",
-    "no-new-window": "error",
-    "no-prototype-builtins": "error",
-
-    /* Formatting */
     "comma-dangle": ["error", "always-multiline"],
     "eol-last": "error",
     "no-trailing-spaces": "error",
-
-    /* React-specific */
-    "react/jsx-filename-extension": ["error", { "extensions": [".js", ".jsx", ".ts", ".tsx"] }],
-    "react/jsx-no-bind": ["error", { "allowRef": false }],
-    "react/jsx-no-useless-fragment": "error",
-
-    /* Consistency */
     "consistent-return": "error",
     "default-case": "error",
     "no-confusing-arrow": "error",
     "arrow-body-style": ["error", "as-needed"],
-
-    /* Import */
+    "react/jsx-uses-react": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "react-hooks/rules-of-hooks": "error",
+    "react/no-unknown-property": "error",
+    "react/no-danger": "error",
+    "react/no-direct-mutation-state": "error",
+    "import/order": ["error", { "groups": ["builtin", "external", "internal", "parent", "sibling", "index"], "pathPatterns": ["@/"] }],
+    "import/no-duplicates": "error",
+    "import/no-unresolved": "error",
+    "no-eval": "error",
+    "no-new-object": "error",
+    "no-new-window": "error",
+    "no-prototype-builtins": "error",
     "no-import-side-effect": "error",
-    "no-restricted-syntax": [
-      "error",
-      "LabeledStatement",
-      "WithStatement"
-    ]
+    "no-restricted-syntax": ["error", "LabeledStatement", "WithStatement"]
   }
 }

@@ -8,19 +8,5 @@
   "bracketSpacing": true,
   "jsxBracketSameLine": false,
   "arrowParens": "avoid",
-  "endOfLine": "auto",
-  "overrides": [
-    {
-      "files": "*.ts",
-      "options": {
-        "parser": "@typescript-eslint/parser"
-      }
-    },
-    {
-      "files": "*.tsx",
-      "options": {
-        "parser": "@typescript-eslint/parser"
-      }
-    }
-  ]
+  "endOfLine": "auto"
 }
