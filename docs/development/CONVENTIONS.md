@@ -58,7 +58,7 @@ The full tree and layer rules are in `ARCHITECTURE.md` §4. Summary:
 | `drizzle/` | Generated and reviewed SQL migrations plus Drizzle metadata. |
 | `public/` | Static, committed assets only. Not user uploads. |
 | `tests/` | `unit/`, `integration/`, `e2e/`, `fixtures/`. |
-| `docs/` | Not used initially; project documentation lives at the repository root. |
+| `docs/` | Canonical project documentation, indexed by `docs/README.md`. |
 
 ### 2.1 Route conventions
 

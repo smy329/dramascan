@@ -3,8 +3,8 @@
 **Project:** DramaScan — International Drama & Movie Streaming Platform
 **Baseline date:** 2026-11-07
 **Last updated:** 2026-11-08
-**Current prompt:** 008 — Establish the Application Directory Structure
-**Status:** Prompt 007 completed; Prompt 008 not started
+**Current prompt:** 009 — Configure Environment Variables
+**Status:** Prompt 008 completed; Prompt 009 not started
 
 ---
 
@@ -18,11 +18,11 @@
 | Application framework | **Next.js 16.4.5** (App Router), React 19.3.1, TypeScript 5.9.3 |
 | Package manager | **npm 11.12.1**; `package-lock.json` committed in the baseline |
 | Scripts | `dev`, `build`, `start`, `typecheck` |
-| Application source | `src/app/layout.tsx`, `src/app/page.tsx`, `src/app/globals.css`, `src/lib/contracts/common.ts` |
+| Application source | `src/app/(public)/page.tsx`, `src/app/layout.tsx`, `src/app/globals.css`, `src/components/public/SiteIntro.tsx`, `src/lib/contracts/common.ts`, `src/modules/README.md`; layer placeholders under `src/` and `tests/` |
 | Configuration | `package.json`, `tsconfig.json` (strict flags), `next.config.ts`, `.nvmrc`, `.gitignore` |
 | Environment configuration | None yet (Prompt 009) |
 | Database schema | None; no ORM, migrations, or seed data yet |
-| Existing UI | Minimal branded root route; no product UI yet |
+| Existing UI | Minimal branded home route rendered by the `SiteIntro` presentational component; no product UI yet |
 | Partially implemented features | None |
 | Existing user data | None |
 
@@ -33,12 +33,12 @@ reference material, not part of the application.
 
 Current repository documents and application files: `AGENTS.md`, `README.md`,
 `package.json`, `package-lock.json`, `tsconfig.json`, `next.config.ts`, `.nvmrc`,
-`.gitignore`, `src/app/`, `src/lib/contracts/`, and the consolidated documentation under
-`docs/`.
+`.gitignore`, `src/app/`, `src/components/`, `src/lib/contracts/`, `src/modules/`,
+`tests/`, and the consolidated documentation under `docs/`.
 
 **Conclusion:** This remains a new project with no user data to preserve. The
-application scaffold is in place and the next foundation prompts add strict TypeScript,
-the directory structure, environment validation, and styling.
+application scaffold, strict TypeScript, and directory layering are in place; the next
+foundation prompts add validated environment configuration and styling.
 
 ---
 
@@ -71,9 +71,14 @@ cannot be performed until development credentials are provided.
 
 ## 3. Architectural Conflicts
 
-**None.** The initialized application follows the approved modular monolith architecture.
-`src/app/` currently contains only the root layout and route; module, workflow, platform,
-database, and component directories are introduced by their assigned prompts.
+**None.** The initialized application follows the approved modular monolith layering.
+`src/app/` now holds route groups only (`(public)` home route); presentation lives in
+`src/components/public/`; cross-cutting contracts live in `src/lib/contracts/`. The
+remaining layer directories (`app/(auth)`, `app/admin`, `app/api`, `app/actions`,
+`components/ui`, `components/admin`, `components/player`, `db`, `platform`, `workflows`,
+`lib/utils`, `lib/validation`, `scripts/maintenance`, and `tests/*`) exist as documented
+placeholders until their assigned prompts fill them. Domain module directories are
+intentionally absent until each module is implemented.
 
 ---
 
@@ -169,18 +174,24 @@ area document before changing code.
 | 005 | Define the initial scope and future upgrade backlog | ✅ Completed | `INITIAL_SCOPE_AND_FUTURE_BACKLOG.md` (new), `REQUIREMENTS.md` §16 updated, `PROJECT_STATUS.md` (updated) | N/A (documentation only); consistency checked against `REQUIREMENTS.md` and active decisions | Two clearly separated lists (initial scope / future upgrade backlog); scope enforcement rules |
 | 006 | Initialize the Next.js application | ✅ Completed | `package.json` (new), `package-lock.json` (new), `tsconfig.json` (new), `next.config.ts` (new), `.nvmrc` (new), `.gitignore` (new), `src/app/layout.tsx` (new), `src/app/page.tsx` (new), `src/app/globals.css` (new), `README.md`, `CONVENTIONS.md`, `coding-conventions.md`, `DECISIONS.md`, `CHANGELOG.md`, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md` | `npm install` (29 packages, 0 vulnerabilities); `npx tsc --noEmit` (passed); `npm run build` (passed, Next 16.4.5/Turbopack); `npm run start` on port 3100 → HTTP 200 with expected content; `npm run dev` on port 3101 → HTTP 200; `agentRules: false` verified to keep `AGENTS.md` unchanged | Next 16 requires `jsx: "react-jsx"`; `next-env.d.ts` is generated and ignored; scaffold contains no Tailwind, ESLint boilerplate, shadcn/ui, demo assets, or product dependencies; strict TypeScript flags remain for Prompt 007 |
 | 007 | Configure Strict TypeScript | ✅ Completed | `tsconfig.json`, `package.json` (`typecheck` script), `src/lib/contracts/common.ts` (new), `CONVENTIONS.md`, `coding-conventions.md`, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md`, `CHANGELOG.md` | `npm run typecheck` (exit 0; `next typegen` + `tsc --noEmit`); `npm run build` (exit 0); source scan found no `any`, `@ts-ignore`, `@ts-expect-error`, or unsafe assertions | Strict flags enabled; shared cross-cutting contracts only; no speculative types or empty module directories; database credentials remain an environment prerequisite, not a code decision; typecheck runs `next typegen` for clean checkouts |
-| 008 | Establish the Application Directory Structure | ⏸ Not started | — | — | — |
+| 008 | Establish the Application Directory Structure | ✅ Completed | `src/app/(public)/page.tsx` (moved from `src/app/page.tsx`), `src/components/public/SiteIntro.tsx` (new), `src/modules/README.md` (new), 17 layer/test `.gitkeep` placeholders, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md`, `CHANGELOG.md` | `npm run typecheck` (exit 0 after clearing stale `.next` route types); `npm run build` (exit 0; `/` static); no business logic or data fetching in components | Route group plus component extraction demonstrates the app/component boundary; server-only and browser-safe areas documented; no domain modules or speculative types created |
 
 ---
 
 ## 6. Next Task
 
-**Prompt 008 — Establish the Application Directory Structure.**
+**Prompt 009 — Configure Environment Variables.**
 
-Create a modular directory structure separating App Router routes, public pages, admin pages, UI components, domain modules, database access, shared utilities, validation, API handlers, and tests.
+Create a typed and validated environment configuration using Zod. Separate required
+production secrets from optional development settings.
 
-Avoid placing all business logic inside route components or Server Actions. Keep server-only code clearly separated from browser-accessible code.
+Include database connection details, Google OAuth credentials, authentication secrets,
+application URL, trusted origins, and other necessary configuration. Never expose
+server-only secrets through public environment variables.
 
-**Completion:** The directory structure supports independent development of the major platform modules.
+**Completion:** Missing or invalid required configuration produces a clear startup or
+validation error instead of unpredictable runtime failures.
 
-**Constraint:** Create only directories with a current purpose. Do not pre-create empty module directories or speculative domain types; each module's structure is added when its implementation begins.
+**Environment constraint:** PostgreSQL development credentials remain an operator-supplied
+prerequisite. `.env.example` will contain safe placeholders and explanatory comments only;
+never commit real credentials.

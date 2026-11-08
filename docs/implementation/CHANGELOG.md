@@ -48,6 +48,12 @@ this file records notable outcomes, not every edit.
   `noUnusedParameters`, `forceConsistentCasingInFileNames`), a `typecheck` script backed
   by `next typegen`, and shared cross-cutting `ActionResult`/pagination contracts in
   `src/lib/contracts/common.ts`.
+- **Prompt 008:** Modular directory structure separating App Router route groups
+  (`(public)`, `(auth)`, `admin`, `api`, `actions`), presentational components
+  (`public`, `ui`, `admin`, `player`), a domain-module area (`src/modules/README.md`
+  boundary note only, no modules yet), database composition root, server platform,
+  workflows, shared utilities/validation, maintenance scripts, and tests. Empty layer
+  directories use `.gitkeep` placeholders only.
 
 ### Changed
 
@@ -66,6 +72,9 @@ this file records notable outcomes, not every edit.
   uncommitted environment prerequisite (real values only in ignored `.env.local`, with
   `.env.example` placeholders deferred to Prompt 009) and that domain-specific types
   belong in their owning modules, with no speculative types or empty module directories.
+- **Prompt 008:** The home route moved to `src/app/(public)/page.tsx`; its markup moved
+  into the server-compatible presentational `src/components/public/SiteIntro.tsx`, so the
+  route only composes components.
 
 ### Fixed
 

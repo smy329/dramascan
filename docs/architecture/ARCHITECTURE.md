@@ -252,10 +252,16 @@ src/
       aggregate-daily.ts
       health-report.ts
       index.ts                    # command dispatcher
-  tests/
-    unit/
-    integration/
-    e2e/
+```
+
+Repository-root tests hold the test suites:
+
+```
+tests/
+  unit/
+  integration/
+  e2e/
+  fixtures/
 ```
 
 Rules for the tree:

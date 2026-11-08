@@ -19,7 +19,7 @@ This document defines the implementation plan structure, as required by `CONVENT
 | 005 | Define the initial scope and future upgrade backlog | ✅ Completed | `INITIAL_SCOPE_AND_FUTURE_BACKLOG.md` (new), `REQUIREMENTS.md` §16 updated, `PROJECT_STATUS.md` (updated) | N/A (documentation only); consistency checked against `REQUIREMENTS.md` and active decisions | Two clearly separated lists (initial scope / future upgrade backlog); scope enforcement rules | 2026-11-08 |
 | 006 | Initialize the Next.js application | ✅ Completed | `package.json` (new), `package-lock.json` (new), `tsconfig.json` (new), `next.config.ts` (new), `.nvmrc` (new), `.gitignore` (new), `src/app/layout.tsx` (new), `src/app/page.tsx` (new), `src/app/globals.css` (new), docs updates | `npm install`; `npx tsc --noEmit`; `npm run build`; `npm run start` (HTTP 200); `npm run dev` (HTTP 200) | Next.js 16.4.5, React 19.3.1, TypeScript 5.9.3, npm, Node 24 LTS; no Tailwind/ESLint/shadcn yet | 2026-11-08 |
 | 007 | Configure Strict TypeScript | ✅ Completed | `tsconfig.json`, `package.json`, `src/lib/contracts/common.ts` (new), docs updates | `npm run typecheck` (exit 0); `npm run build` (exit 0) | Strict compiler flags; shared cross-cutting contracts; domain types deferred to owning modules; no `any`/ignored errors/unsafe assertions | 2026-11-08 |
-| 008 | Establish the Application Directory Structure | ⏸ Not started | — | — | — | — |
+| 008 | Establish the Application Directory Structure | ✅ Completed | `src/app/(public)/page.tsx` (moved), `src/components/public/SiteIntro.tsx` (new), `src/modules/README.md` (new), 17 layer/test `.gitkeep` placeholders, docs updates | `npm run typecheck` (exit 0); `npm run build` (exit 0) | Route/component boundary established; server-only vs browser-safe split documented; no domain modules or speculative types | 2026-11-08 |
 
 ---
 
@@ -52,21 +52,27 @@ Prompts are dependency-ordered but independently executable. Later prompts may d
 | 005 | Define the initial scope and future upgrade backlog | ✅ Completed |
 | 006 | Initialize the Next.js application | ✅ Completed |
 | 007 | Configure Strict TypeScript | ✅ Completed |
-| 008 | Establish the Application Directory Structure | ⏸ Not started |
+| 008 | Establish the Application Directory Structure | ✅ Completed |
 
 ---
 
 ## 4. Next Task
 
-**Prompt 008 — Establish the Application Directory Structure.**
+**Prompt 009 — Configure Environment Variables.**
 
-Create a modular directory structure separating App Router routes, public pages, admin pages, UI components, domain modules, database access, shared utilities, validation, API handlers, and tests.
+Create a typed and validated environment configuration using Zod. Separate required
+production secrets from optional development settings.
 
-Avoid placing all business logic inside route components or Server Actions. Keep server-only code clearly separated from browser-accessible code.
+Include database connection details, Google OAuth credentials, authentication secrets,
+application URL, trusted origins, and other necessary configuration. Never expose
+server-only secrets through public environment variables.
 
-**Completion:** The directory structure supports independent development of the major platform modules.
+**Completion:** Missing or invalid required configuration produces a clear startup or
+validation error instead of unpredictable runtime failures.
 
-**Constraint:** Create only directories with a current purpose. Do not pre-create empty module directories or speculative domain types; each module's structure is added when its implementation begins.
+**Environment constraint:** PostgreSQL development credentials remain an operator-supplied
+prerequisite. `.env.example` will contain safe placeholders and explanatory comments only;
+never commit real credentials.
 
 ---
 
