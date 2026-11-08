@@ -13,6 +13,7 @@ export type ServerConfig = Readonly<{
   googleClientId: string | null;
   googleClientSecret: string | null;
   superAdminEmail: string | null;
+  logLevel?: string | null;
 }>;
 
 export class ConfigurationError extends Error {
@@ -43,6 +44,7 @@ const rawServerConfigSchema = z
     GOOGLE_CLIENT_ID: z.string().min(10, 'GOOGLE_CLIENT_ID is too short.').optional(),
     GOOGLE_CLIENT_SECRET: z.string().min(10, 'GOOGLE_CLIENT_SECRET is too short.').optional(),
     SUPER_ADMIN_EMAIL: emailSchema.optional(),
+    LOG_LEVEL: z.string().optional(),
   })
   .superRefine((value, ctx) => {
     const isProduction = value.NODE_ENV === 'production';
