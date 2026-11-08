@@ -2,7 +2,7 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform  
 **Version:** 1.0  
-**Date:** 2026-11-08  
+**Date:** 2026-11-08
 
 This document records architecture decisions approved by the user or established by the specification. These decisions define the internal shape of the single Next.js deployable and must not be silently contradicted.
 
@@ -12,7 +12,7 @@ This document records architecture decisions approved by the user or established
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** Prompt 003  
+**Resolves:** Prompt 003
 
 **Decision:** The application is a single-deployable Next.js modular monolith with feature modules over a shared platform layer, plus an explicit application-level workflow layer.
 
@@ -37,7 +37,7 @@ This document records architecture decisions approved by the user or established
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** Prompt 003  
+**Resolves:** Prompt 003
 
 **Decision:** Modules never import another module to trigger a side effect. Cross-module operations are coordinated by a thin workflow in `src/workflows/` that calls each participating module's public API independently with explicit, validated payloads and a trusted actor context. Workflows own sequencing and transaction boundaries, not domain rules. Single-module operations remain in that module's service; no workflow is created for them.
 
@@ -54,7 +54,7 @@ This document records architecture decisions approved by the user or established
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** Prompt 003  
+**Resolves:** Prompt 003
 
 **Decision:** Server Components perform all public and admin page reads through module query services. Server Actions perform form submissions and mutations through the relevant service or workflow. REST route handlers exist only for client-driven reads/polling, analytics beacons, exports/downloads, Better Auth, health checks, OpenAPI, and explicitly approved external integrations. Server Actions and REST call the same services and guards; no parallel business logic is permitted.
 
@@ -71,7 +71,7 @@ This document records architecture decisions approved by the user or established
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** Prompt 003  
+**Resolves:** Prompt 003
 
 **Decision:** Each module exclusively owns and writes its tables. Cross-module reads normally use the owner's public query API. Cross-module JOINs are permitted only in explicitly documented read-only locations: `analytics/read-models/` (reporting), `administration/read-models/` (operational summaries), `users/read-models/` (admin user listing over `auth` identity), and the moderation queue query. `analytics` is the reporting module but is not a mandatory intermediary for watch-page or admin operational reads.
 
@@ -88,7 +88,7 @@ This document records architecture decisions approved by the user or established
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** Prompt 003  
+**Resolves:** Prompt 003
 
 **Decision:** A workflow that requires atomicity opens one PostgreSQL transaction through `platform/db/transaction.ts` and passes the same `DbExecutor` explicitly to every participating module operation. Repositories and services accept the executor and never open or commit a competing transaction. Any thrown error rolls back; partial writes are not allowed for all-or-nothing operations.
 
@@ -104,15 +104,15 @@ This document records architecture decisions approved by the user or established
 
 These are fixed by the specification and are not open for reinterpretation:
 
-| Driver | Consequence |
-|---|---|
-| Single Next.js App Router deployment, low-RAM production server | One process, one PostgreSQL database, no service split |
-| PostgreSQL + Drizzle ORM | One connection pool; transactions are local and cheap |
-| Better Auth, Google OAuth only | Authentication is a bounded integration, not a general identity platform |
-| Server-side authorization is the security authority | Guards at every entrypoint and re-checks inside services |
-| Direct external HTTPS MP4 playback | No media pipeline, no storage service, no proxy module |
-| No Docker, Redis, queues, workers, SSE, WebSockets | No event bus, no asynchronous cross-module consistency |
-| Short-lived systemd maintenance commands | Maintenance is a CLI entrypoint, not a runtime service |
-| Preserve data across edits, moves, conversions, source replacement | Transactions and explicit ownership; no cross-module table writes |
-| Future extraction must remain possible | Modules own their tables and expose narrow public APIs |
-| Single deployable, shared PostgreSQL, no excluded infrastructure | One runtime datastore; no cache server, broker, or secondary store |
+| Driver                                                             | Consequence                                                              |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Single Next.js App Router deployment, low-RAM production server    | One process, one PostgreSQL database, no service split                   |
+| PostgreSQL + Drizzle ORM                                           | One connection pool; transactions are local and cheap                    |
+| Better Auth, Google OAuth only                                     | Authentication is a bounded integration, not a general identity platform |
+| Server-side authorization is the security authority                | Guards at every entrypoint and re-checks inside services                 |
+| Direct external HTTPS MP4 playback                                 | No media pipeline, no storage service, no proxy module                   |
+| No Docker, Redis, queues, workers, SSE, WebSockets                 | No event bus, no asynchronous cross-module consistency                   |
+| Short-lived systemd maintenance commands                           | Maintenance is a CLI entrypoint, not a runtime service                   |
+| Preserve data across edits, moves, conversions, source replacement | Transactions and explicit ownership; no cross-module table writes        |
+| Future extraction must remain possible                             | Modules own their tables and expose narrow public APIs                   |
+| Single deployable, shared PostgreSQL, no excluded infrastructure   | One runtime datastore; no cache server, broker, or secondary store       |

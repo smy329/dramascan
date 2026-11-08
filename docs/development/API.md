@@ -14,13 +14,13 @@
 
 ## 1. Status
 
-| Item | Status |
-|---|---|
-| REST endpoints | None implemented |
-| Server Actions | None implemented |
-| OpenAPI document | Not generated |
-| Swagger UI | Not configured |
-| Authentication | Not integrated (Prompt 030+) |
+| Item             | Status                       |
+| ---------------- | ---------------------------- |
+| REST endpoints   | None implemented             |
+| Server Actions   | None implemented             |
+| OpenAPI document | Not generated                |
+| Swagger UI       | Not configured               |
+| Authentication   | Not integrated (Prompt 030+) |
 
 Do not describe planned endpoints as available.
 
@@ -139,60 +139,60 @@ Status values: **Planned**, **Implemented**, **Deprecated**.
 
 ### 3.1 Authentication
 
-| Method | Path | Auth | Permission | Purpose | Status |
-|---|---|---|---|---|---|
-| `GET/POST` | `/api/auth/[...all]` | Public | — | Better Auth handler: sign-in, callback, session, sign-out | Planned |
+| Method     | Path                 | Auth   | Permission | Purpose                                                   | Status  |
+| ---------- | -------------------- | ------ | ---------- | --------------------------------------------------------- | ------- |
+| `GET/POST` | `/api/auth/[...all]` | Public | —          | Better Auth handler: sign-in, callback, session, sign-out | Planned |
 
 ### 3.2 Public reads
 
-| Method | Path | Auth | Permission | Purpose | Status |
-|---|---|---|---|---|---|
-| `GET` | `/api/search/suggestions` | Public | — | Live autocomplete with poster thumbnails, recent/popular suggestions | Planned |
+| Method | Path                      | Auth   | Permission | Purpose                                                              | Status  |
+| ------ | ------------------------- | ------ | ---------- | -------------------------------------------------------------------- | ------- |
+| `GET`  | `/api/search/suggestions` | Public | —          | Live autocomplete with poster thumbnails, recent/popular suggestions | Planned |
 
 Public page data is rendered by Server Components through module query services, not REST. Do not add REST endpoints for ordinary page reads.
 
 ### 3.3 Analytics beacons
 
-| Method | Path | Auth | Permission | Purpose | Status |
-|---|---|---|---|---|---|
-| `POST` | `/api/analytics/view` | Public (guest session or user) | — | Record a deduplicated content view for a drama or movie | Planned |
-| `POST` | `/api/analytics/playback` | Public (guest session or user) | — | Record bounded playback events (start, progress milestone, completion) | Planned |
+| Method | Path                      | Auth                           | Permission | Purpose                                                                | Status  |
+| ------ | ------------------------- | ------------------------------ | ---------- | ---------------------------------------------------------------------- | ------- |
+| `POST` | `/api/analytics/view`     | Public (guest session or user) | —          | Record a deduplicated content view for a drama or movie                | Planned |
+| `POST` | `/api/analytics/playback` | Public (guest session or user) | —          | Record bounded playback events (start, progress milestone, completion) | Planned |
 
 Beacons are small, idempotent/deduplicated, and bounded. They never write on every playback second. The final split between progress persistence and analytics events is settled in the playback prompt.
 
 ### 3.4 Playback
 
-| Method | Path | Auth | Permission | Purpose | Status |
-|---|---|---|---|---|---|
+| Method | Path                     | Auth          | Permission                              | Purpose                                               | Status  |
+| ------ | ------------------------ | ------------- | --------------------------------------- | ----------------------------------------------------- | ------- |
 | `POST` | `/api/playback/progress` | Authenticated | `playback.progress.write` (own records) | Persist debounced playback progress and watched state | Planned |
 
 Progress updates carry a client timestamp; the server rejects older updates that would overwrite newer progress.
 
 ### 3.5 Notifications
 
-| Method | Path | Auth | Permission | Purpose | Status |
-|---|---|---|---|---|---|
-| `GET` | `/api/notifications/unread-count` | Authenticated | Own notifications | Poll the unread count for the notification bell | Planned |
+| Method | Path                              | Auth          | Permission        | Purpose                                         | Status  |
+| ------ | --------------------------------- | ------------- | ----------------- | ----------------------------------------------- | ------- |
+| `GET`  | `/api/notifications/unread-count` | Authenticated | Own notifications | Poll the unread count for the notification bell | Planned |
 
 Push subscription management is a Server Action, not REST.
 
 ### 3.6 Administration
 
-| Method | Path | Auth | Permission | Purpose | Status |
-|---|---|---|---|---|---|
-| `GET` | `/api/admin/exports/[dataset]` | Super Admin | `export.dataset` | Download an approved CSV dataset | Planned |
-| `GET` | `/api/admin/backups/[id]` | Super Admin | `backup.download` | Download an authorized backup | Planned |
+| Method | Path                           | Auth        | Permission        | Purpose                          | Status  |
+| ------ | ------------------------------ | ----------- | ----------------- | -------------------------------- | ------- |
+| `GET`  | `/api/admin/exports/[dataset]` | Super Admin | `export.dataset`  | Download an approved CSV dataset | Planned |
+| `GET`  | `/api/admin/backups/[id]`      | Super Admin | `backup.download` | Download an authorized backup    | Planned |
 
 Admin page reads use Server Components. Admin mutations use Server Actions.
 
 ### 3.7 Operations
 
-| Method | Path | Auth | Permission | Purpose | Status |
-|---|---|---|---|---|---|
-| `GET` | `/api/health` | Public (minimal) | — | Application and dependency health | Planned |
-| `GET` | `/api/health/details` | Admin | `health.read` | Detailed diagnostics | Planned |
-| `GET` | `/api/openapi` | Public | — | OpenAPI JSON document | Planned |
-| `GET` | `/api/docs` | Public | — | Swagger UI | Planned |
+| Method | Path                  | Auth             | Permission    | Purpose                           | Status  |
+| ------ | --------------------- | ---------------- | ------------- | --------------------------------- | ------- |
+| `GET`  | `/api/health`         | Public (minimal) | —             | Application and dependency health | Planned |
+| `GET`  | `/api/health/details` | Admin            | `health.read` | Detailed diagnostics              | Planned |
+| `GET`  | `/api/openapi`        | Public           | —             | OpenAPI JSON document             | Planned |
+| `GET`  | `/api/docs`           | Public           | —             | Swagger UI                        | Planned |
 
 Public health responses expose only minimal status. Detailed diagnostics are admin-only.
 
@@ -202,23 +202,23 @@ Public health responses expose only minimal status. Detailed diagnostics are adm
 
 Server Actions are application operations, not REST endpoints. They are documented here with their permission keys and result shape.
 
-| Area | Operations | Permission examples | Status |
-|---|---|---|---|
-| Authentication | Sign out, revoke own session | — | Planned |
-| Profile | View private profile | — | Planned |
-| Bookmarks | Add, remove, toggle | Own bookmarks | Planned |
-| Playback | Mark watched/unwatched, remove from Continue Watching | Own progress | Planned |
-| Reviews | Submit/update rating, submit/edit review, react, report review | Authenticated | Planned |
-| Content reports | Submit a content report | Authenticated, rate-limited | Planned |
-| Notifications | Update preferences, mark read/unread, manage push subscription | Own notifications | Planned |
-| Content administration | Create/update/publish/unpublish/trash/restore content, seasons, episodes, movies | `drama.*`, `episode.*`, `movie.*` | Planned |
-| Source replacement | Replace an episode or movie source after preview and confirmation | `episode.replace_source`, `movie.replace_source` | Planned |
-| Taxonomy administration | Create/update/delete categories and platforms | `category.*`, `platform.*` | Planned |
-| Moderation | Resolve content reports, remove reviews | `report.resolve`, `review.moderate` | Planned |
-| User administration | Deactivate/reactivate users | `user.deactivate` | Planned |
-| Admin administration | Authorize/deactivate admins, assign roles, terminate sessions | `admin.*` | Planned |
-| System configuration | Update settings, restore a version, maintenance mode | `settings.update`, `maintenance_mode.update` | Planned |
-| CSV import | Dry run and apply metadata import | `import.dataset` | Planned |
+| Area                    | Operations                                                                       | Permission examples                              | Status  |
+| ----------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------ | ------- |
+| Authentication          | Sign out, revoke own session                                                     | —                                                | Planned |
+| Profile                 | View private profile                                                             | —                                                | Planned |
+| Bookmarks               | Add, remove, toggle                                                              | Own bookmarks                                    | Planned |
+| Playback                | Mark watched/unwatched, remove from Continue Watching                            | Own progress                                     | Planned |
+| Reviews                 | Submit/update rating, submit/edit review, react, report review                   | Authenticated                                    | Planned |
+| Content reports         | Submit a content report                                                          | Authenticated, rate-limited                      | Planned |
+| Notifications           | Update preferences, mark read/unread, manage push subscription                   | Own notifications                                | Planned |
+| Content administration  | Create/update/publish/unpublish/trash/restore content, seasons, episodes, movies | `drama.*`, `episode.*`, `movie.*`                | Planned |
+| Source replacement      | Replace an episode or movie source after preview and confirmation                | `episode.replace_source`, `movie.replace_source` | Planned |
+| Taxonomy administration | Create/update/delete categories and platforms                                    | `category.*`, `platform.*`                       | Planned |
+| Moderation              | Resolve content reports, remove reviews                                          | `report.resolve`, `review.moderate`              | Planned |
+| User administration     | Deactivate/reactivate users                                                      | `user.deactivate`                                | Planned |
+| Admin administration    | Authorize/deactivate admins, assign roles, terminate sessions                    | `admin.*`                                        | Planned |
+| System configuration    | Update settings, restore a version, maintenance mode                             | `settings.update`, `maintenance_mode.update`     | Planned |
+| CSV import              | Dry run and apply metadata import                                                | `import.dataset`                                 | Planned |
 
 Every action validates input with Zod, resolves a trusted actor, calls one service or workflow, and returns `ActionResult`.
 

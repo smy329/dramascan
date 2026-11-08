@@ -2,7 +2,7 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform  
 **Version:** 1.0  
-**Date:** 2026-11-08  
+**Date:** 2026-11-08
 
 This document defines the database naming, modeling, and migration conventions, derived from `CONVENTIONS.md` §5 and established by Prompt 004. It is the application-specific implementation of those conventions and must not be contradicted without a new recorded decision.
 
@@ -28,12 +28,12 @@ This document defines the database naming, modeling, and migration conventions, 
 
 Most application-owned tables include:
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | `uuid` | Primary key, UUIDv7, server-generated |
-| `created_at` | `timestamptz` | `not null default now()` |
+| Column       | Type          | Notes                                                 |
+| ------------ | ------------- | ----------------------------------------------------- |
+| `id`         | `uuid`        | Primary key, UUIDv7, server-generated                 |
+| `created_at` | `timestamptz` | `not null default now()`                              |
 | `updated_at` | `timestamptz` | `not null default now()`, set by repository on update |
-| `deleted_at` | `timestamptz` | `null` unless soft-deleted |
+| `deleted_at` | `timestamptz` | `null` unless soft-deleted                            |
 
 Additional columns are table-specific and documented in the catalog.
 
@@ -43,19 +43,19 @@ Additional columns are table-specific and documented in the catalog.
 
 Each module owns its schema file and tables. The planned ownership is:
 
-| Module | Planned tables |
-|---|---|
-| `auth` | `users`, `accounts`, `sessions`, `verifications` (Better Auth schema plus account status) |
-| `authorization` | `roles`, `permissions`, `role_permissions`, `user_roles` |
-| `content` | `dramas`, `seasons`, `episodes`, `movies`, `categories`, `platforms`, `drama_categories`, `drama_platforms`, `movie_categories`, `movie_platforms`, `similar_dramas`, `information_pages`, `content_slug_history`, `content_seo`, `content_assets`, `sitemap_exclusions` |
-| `users` | `bookmarks` |
-| `playback` | `subtitle_tracks`, `playback_progress`, `watch_history`, `episode_watch_state` |
-| `reviews` | `ratings`, `reviews`, `review_reactions`, `review_reports` |
-| `moderation` | `content_reports`, `moderation_actions` |
-| `notifications` | `notification_preferences`, `notifications`, `push_subscriptions`, `notification_deliveries`, `announcements`, `admin_notifications` |
-| `analytics` | `guest_sessions`, `content_view_events`, `playback_analytics_events`, `analytics_daily_aggregates`, `search_events` (if required) |
-| `administration` | `admin_accounts`, `admin_login_attempts`, `admin_session_events`, `system_settings`, `system_setting_versions`, `admin_dashboard_layouts`, `admin_audit_log` |
-| `maintenance` | `maintenance_task_runs`, `backup_manifests`, `system_alerts`, `incidents`, `incident_notes`, `incident_attachments`, `error_records`, `health_snapshots` |
+| Module           | Planned tables                                                                                                                                                                                                                                                           |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `auth`           | `users`, `accounts`, `sessions`, `verifications` (Better Auth schema plus account status)                                                                                                                                                                                |
+| `authorization`  | `roles`, `permissions`, `role_permissions`, `user_roles`                                                                                                                                                                                                                 |
+| `content`        | `dramas`, `seasons`, `episodes`, `movies`, `categories`, `platforms`, `drama_categories`, `drama_platforms`, `movie_categories`, `movie_platforms`, `similar_dramas`, `information_pages`, `content_slug_history`, `content_seo`, `content_assets`, `sitemap_exclusions` |
+| `users`          | `bookmarks`                                                                                                                                                                                                                                                              |
+| `playback`       | `subtitle_tracks`, `playback_progress`, `watch_history`, `episode_watch_state`                                                                                                                                                                                           |
+| `reviews`        | `ratings`, `reviews`, `review_reactions`, `review_reports`                                                                                                                                                                                                               |
+| `moderation`     | `content_reports`, `moderation_actions`                                                                                                                                                                                                                                  |
+| `notifications`  | `notification_preferences`, `notifications`, `push_subscriptions`, `notification_deliveries`, `announcements`, `admin_notifications`                                                                                                                                     |
+| `analytics`      | `guest_sessions`, `content_view_events`, `playback_analytics_events`, `analytics_daily_aggregates`, `search_events` (if required)                                                                                                                                        |
+| `administration` | `admin_accounts`, `admin_login_attempts`, `admin_session_events`, `system_settings`, `system_setting_versions`, `admin_dashboard_layouts`, `admin_audit_log`                                                                                                             |
+| `maintenance`    | `maintenance_task_runs`, `backup_manifests`, `system_alerts`, `incidents`, `incident_notes`, `incident_attachments`, `error_records`, `health_snapshots`                                                                                                                 |
 
 Table names may be refined in Prompt 020, but ownership may not move without an architecture decision.
 
@@ -86,7 +86,7 @@ Do not merge unrelated entities into one table. Do not create a single polymorph
 - For relationships spanning dramas and movies (ratings, reviews, bookmarks, view events), use one of:
   - typed FK columns plus a check constraint that exactly one target is set, or
   - separate typed relationship tables.
-  Do not use an unenforced polymorphic `content_id` without a documented integrity strategy. The choice is made in Prompt 020 and recorded here.
+    Do not use an unenforced polymorphic `content_id` without a documented integrity strategy. The choice is made in Prompt 020 and recorded here.
 - Deleting a season moves the season and its episodes to Trash together; permanent deletion cleanup is explicit and transactional.
 - Do not rely on `ON DELETE CASCADE` across module ownership boundaries. Destructive cleanup is performed by the owning module inside `workflows/permanently-delete-content`.
 - Stable IDs survive edits, reordering, moving, conversion, and source replacement.
@@ -128,9 +128,9 @@ Migration tooling and practices are defined in `CONVENTIONS.md` §10. Database-s
 
 This catalog is filled in as tables are implemented. Each entry records the table, owning module, purpose, key relationships, indexes, and status.
 
-| Table | Module | Purpose | Status |
-|---|---|---|---|
-| — | — | No tables implemented yet | Planned |
+| Table | Module | Purpose                   | Status  |
+| ----- | ------ | ------------------------- | ------- |
+| —     | —      | No tables implemented yet | Planned |
 
 When a table is added, record:
 

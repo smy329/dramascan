@@ -12,15 +12,15 @@ For the future upgrade backlog, see `future/`.
 
 ## Documentation Categories
 
-| Category | Location | Description |
-|---|---|---|
-| **Project Overview & Scope** | `project/` | Initial implementation scope, future upgrade backlog, and hard exclusions |
-| **Architecture** | `architecture/` | System architecture, module boundaries, dependency rules, and infrastructure |
-| **Requirements** | `requirements/` | Functional and non-functional product requirements |
-| **Decisions** | `decisions/` | Recorded technical and architecture decisions (D-000 through D-017+) |
-| **Development** | `development/` | Coding conventions, directory rules, database/API/error/logging/testing/migration conventions |
-| **Implementation** | `implementation/` | Implementation plan, progress tracker, and prompt completion log |
-| **Future** | `future/` | Future upgrade backlog items that are not part of the initial release |
+| Category                     | Location          | Description                                                                                   |
+| ---------------------------- | ----------------- | --------------------------------------------------------------------------------------------- |
+| **Project Overview & Scope** | `project/`        | Initial implementation scope, future upgrade backlog, and hard exclusions                     |
+| **Architecture**             | `architecture/`   | System architecture, module boundaries, dependency rules, and infrastructure                  |
+| **Requirements**             | `requirements/`   | Functional and non-functional product requirements                                            |
+| **Decisions**                | `decisions/`      | Recorded technical and architecture decisions (D-000 through D-017+)                          |
+| **Development**              | `development/`    | Coding conventions, directory rules, database/API/error/logging/testing/migration conventions |
+| **Implementation**           | `implementation/` | Implementation plan, progress tracker, and prompt completion log                              |
+| **Future**                   | `future/`         | Future upgrade backlog items that are not part of the initial release                         |
 
 ## How to Use This Index
 

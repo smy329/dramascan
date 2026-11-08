@@ -16,20 +16,20 @@
 
 ## 1. Status
 
-| Area | Status | Implemented in |
-|---|---|---|
-| Authentication (Google OAuth via Better Auth) | Not implemented | Auth phase (Prompt 030+) |
-| Session and cookie security | Not implemented | Auth phase |
-| RBAC and server-side authorization | Not implemented | Authorization phase |
-| Input validation with Zod | Not implemented | Per feature |
-| Environment configuration validation (server-only) | **Implemented** | Prompt 009 |
-| Rate limiting (PostgreSQL-backed) | Not implemented | Auth/abuse-prone features |
-| HTTP security headers and CSP | Not implemented | Foundation/security phase |
-| Structured logging with redaction | Not implemented | Foundation phase |
-| Database role separation and local-only access | Not implemented | Database phase (Prompt 019+) |
-| Image upload validation | Not implemented | Media phase |
-| Backup integrity and restore validation | Not implemented | Maintenance phase |
-| Error monitoring records | Not implemented | Operations phase |
+| Area                                               | Status          | Implemented in               |
+| -------------------------------------------------- | --------------- | ---------------------------- |
+| Authentication (Google OAuth via Better Auth)      | Not implemented | Auth phase (Prompt 030+)     |
+| Session and cookie security                        | Not implemented | Auth phase                   |
+| RBAC and server-side authorization                 | Not implemented | Authorization phase          |
+| Input validation with Zod                          | Not implemented | Per feature                  |
+| Environment configuration validation (server-only) | **Implemented** | Prompt 009                   |
+| Rate limiting (PostgreSQL-backed)                  | Not implemented | Auth/abuse-prone features    |
+| HTTP security headers and CSP                      | Not implemented | Foundation/security phase    |
+| Structured logging with redaction                  | Not implemented | Foundation phase             |
+| Database role separation and local-only access     | Not implemented | Database phase (Prompt 019+) |
+| Image upload validation                            | Not implemented | Media phase                  |
+| Backup integrity and restore validation            | Not implemented | Maintenance phase            |
+| Error monitoring records                           | Not implemented | Operations phase             |
 
 Until a control is implemented and tested, treat the corresponding threat as unmitigated.
 
@@ -214,22 +214,22 @@ Policies must remain compatible with Google OAuth, Vidstack, approved external M
 
 These are explicit, accepted limitations of the initial release. They are not hidden defects.
 
-| Limitation | Consequence | Status |
-|---|---|---|
-| No DRM or source-URL protection | Media URLs are visible to viewers and can be shared | Accepted |
-| No backend media proxy | Playback depends on the external host's CORS, byte-range, and availability | Accepted |
-| No email notifications | Security events are in-app/push only; no email fallback | Accepted |
-| No external object storage or CDN | Media and images depend on the configured host/server | Accepted |
-| Same-server backups | Backup and server can be lost together | Accepted (documented) |
-| No WAL archiving / PITR / incremental backup | Recovery point is the last valid backup | Accepted |
-| No Sentry/Prometheus/Grafana | Monitoring is logs, health checks, alerts, and error records | Accepted |
-| No real-time Google security-event integration | Some Google-side changes cannot trigger revocation | Accepted |
-| No password login or MFA managed by the platform | Security depends on the Google account | Accepted |
-| No self-service account deletion | Deactivation is administrative | Accepted |
-| No Redis | Rate limiting and caching are PostgreSQL-backed | Accepted |
-| No external secret manager | Secrets live in server environment configuration | Accepted |
-| No virus scanning of uploads | Image/subtitle/attachment uploads rely on type/size validation and access control | Accepted initially; revisit if attachments expand |
-| No per-request database RLS | Authorization is enforced in the application layer | Accepted initially |
+| Limitation                                       | Consequence                                                                       | Status                                            |
+| ------------------------------------------------ | --------------------------------------------------------------------------------- | ------------------------------------------------- |
+| No DRM or source-URL protection                  | Media URLs are visible to viewers and can be shared                               | Accepted                                          |
+| No backend media proxy                           | Playback depends on the external host's CORS, byte-range, and availability        | Accepted                                          |
+| No email notifications                           | Security events are in-app/push only; no email fallback                           | Accepted                                          |
+| No external object storage or CDN                | Media and images depend on the configured host/server                             | Accepted                                          |
+| Same-server backups                              | Backup and server can be lost together                                            | Accepted (documented)                             |
+| No WAL archiving / PITR / incremental backup     | Recovery point is the last valid backup                                           | Accepted                                          |
+| No Sentry/Prometheus/Grafana                     | Monitoring is logs, health checks, alerts, and error records                      | Accepted                                          |
+| No real-time Google security-event integration   | Some Google-side changes cannot trigger revocation                                | Accepted                                          |
+| No password login or MFA managed by the platform | Security depends on the Google account                                            | Accepted                                          |
+| No self-service account deletion                 | Deactivation is administrative                                                    | Accepted                                          |
+| No Redis                                         | Rate limiting and caching are PostgreSQL-backed                                   | Accepted                                          |
+| No external secret manager                       | Secrets live in server environment configuration                                  | Accepted                                          |
+| No virus scanning of uploads                     | Image/subtitle/attachment uploads rely on type/size validation and access control | Accepted initially; revisit if attachments expand |
+| No per-request database RLS                      | Authorization is enforced in the application layer                                | Accepted initially                                |
 
 Deferred controls must not be presented as delivered. If a limitation becomes unacceptable, it requires a recorded decision and a scheduled prompt.
 

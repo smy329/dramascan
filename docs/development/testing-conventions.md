@@ -2,7 +2,7 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform  
 **Version:** 1.0  
-**Date:** 2026-11-08  
+**Date:** 2026-11-08
 
 This document defines the testing conventions, derived from `CONVENTIONS.md` §9 and established by Prompt 004. It covers tools, layout, isolation, coverage, and rules.
 
@@ -15,12 +15,12 @@ This document defines the testing conventions, derived from `CONVENTIONS.md` §9
 
 ### 1.1 Test Layout
 
-| Directory | Purpose |
-|---|---|
-| `tests/unit/` | Mirrors `src/` and tests pure logic, validation, authorization decisions, and mappings. |
+| Directory            | Purpose                                                                                 |
+| -------------------- | --------------------------------------------------------------------------------------- |
+| `tests/unit/`        | Mirrors `src/` and tests pure logic, validation, authorization decisions, and mappings. |
 | `tests/integration/` | Tests repositories, transactions, and services against a real PostgreSQL test database. |
-| `tests/e2e/` | Tests critical user and admin flows against a running application. |
-| `tests/fixtures/` | Holds factories and seed helpers. |
+| `tests/e2e/`         | Tests critical user and admin flows against a running application.                      |
+| `tests/fixtures/`    | Holds factories and seed helpers.                                                       |
 
 ---
 
@@ -37,15 +37,15 @@ This document defines the testing conventions, derived from `CONVENTIONS.md` §9
 
 ## 3. What to Test
 
-| Layer | Required Coverage |
-|---|---|
-| Domain rules | Publication rules, availability, hierarchy, conversion, source replacement, completion threshold |
-| Authorization | Every permission key, ownership checks, last-Super-Admin invariant, deactivated accounts |
-| Validation | Zod boundaries, malformed input, URL/slug/image/CSV validation |
-| Transactions | Publish with notifications, source replacement, permanent deletion, moves, conversions |
-| Repositories | Critical queries, pagination, uniqueness, soft-delete filtering |
-| API | Status codes, envelopes, error codes, pagination meta, authorization parity with actions |
-| UI/E2E | Sign-in, browse, playback, bookmark, review, admin publish, moderation |
+| Layer         | Required Coverage                                                                                |
+| ------------- | ------------------------------------------------------------------------------------------------ |
+| Domain rules  | Publication rules, availability, hierarchy, conversion, source replacement, completion threshold |
+| Authorization | Every permission key, ownership checks, last-Super-Admin invariant, deactivated accounts         |
+| Validation    | Zod boundaries, malformed input, URL/slug/image/CSV validation                                   |
+| Transactions  | Publish with notifications, source replacement, permanent deletion, moves, conversions           |
+| Repositories  | Critical queries, pagination, uniqueness, soft-delete filtering                                  |
+| API           | Status codes, envelopes, error codes, pagination meta, authorization parity with actions         |
+| UI/E2E        | Sign-in, browse, playback, bookmark, review, admin publish, moderation                           |
 
 ---
 

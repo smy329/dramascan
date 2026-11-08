@@ -4,7 +4,7 @@
 **Document:** Initial scope and future upgrade backlog  
 **Version:** 1.0  
 **Date:** 2026-11-08  
-**Status:** Established by Prompt 004 (REQUIREMENTS.md §16); updated 2026-11-08 for consistency  
+**Status:** Established by Prompt 004 (REQUIREMENTS.md §16); updated 2026-11-08 for consistency
 
 ---
 

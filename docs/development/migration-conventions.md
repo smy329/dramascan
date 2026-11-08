@@ -2,7 +2,7 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform  
 **Version:** 1.0  
-**Date:** 2026-11-08  
+**Date:** 2026-11-08
 
 This document defines the migration practices, derived from `CONVENTIONS.md` §10 and established by Prompt 004. It covers tooling, expand-contract, safety rules, and the change process.
 

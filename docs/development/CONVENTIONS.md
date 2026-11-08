@@ -45,20 +45,20 @@ If the requested behavior is not established by the specification or an active d
 
 The full tree and layer rules are in `ARCHITECTURE.md` §4. Summary:
 
-| Path | Purpose |
-|---|---|
-| `src/app/` | App Router routes, layouts, Server Actions, route handlers. Entrypoints only. |
-| `src/workflows/` | Cross-module orchestration and transaction boundaries. |
-| `src/modules/<domain>/` | Feature module: `index.ts` (public API), `schema.ts`, `repository.ts`, `queries.ts`, `service.ts`, `validation.ts`, optional `read-models/` or `providers/`. |
-| `src/db/` | Composition root: schema registry and Drizzle client. |
-| `src/platform/` | Server infrastructure: pool, transaction, config, errors, logging, rate limiting, cache, HTTP mapping. |
-| `src/components/` | Client-safe UI. No data fetching, no module imports. |
-| `src/lib/` | Isomorphic helpers and `lib/contracts/` client-safe DTOs/form schemas. |
-| `src/scripts/maintenance/` | Short-lived systemd maintenance command entrypoints. |
-| `drizzle/` | Generated and reviewed SQL migrations plus Drizzle metadata. |
-| `public/` | Static, committed assets only. Not user uploads. |
-| `tests/` | `unit/`, `integration/`, `e2e/`, `fixtures/`. |
-| `docs/` | Canonical project documentation, indexed by `docs/README.md`. |
+| Path                       | Purpose                                                                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/app/`                 | App Router routes, layouts, Server Actions, route handlers. Entrypoints only.                                                                                |
+| `src/workflows/`           | Cross-module orchestration and transaction boundaries.                                                                                                       |
+| `src/modules/<domain>/`    | Feature module: `index.ts` (public API), `schema.ts`, `repository.ts`, `queries.ts`, `service.ts`, `validation.ts`, optional `read-models/` or `providers/`. |
+| `src/db/`                  | Composition root: schema registry and Drizzle client.                                                                                                        |
+| `src/platform/`            | Server infrastructure: pool, transaction, config, errors, logging, rate limiting, cache, HTTP mapping.                                                       |
+| `src/components/`          | Client-safe UI. No data fetching, no module imports.                                                                                                         |
+| `src/lib/`                 | Isomorphic helpers and `lib/contracts/` client-safe DTOs/form schemas.                                                                                       |
+| `src/scripts/maintenance/` | Short-lived systemd maintenance command entrypoints.                                                                                                         |
+| `drizzle/`                 | Generated and reviewed SQL migrations plus Drizzle metadata.                                                                                                 |
+| `public/`                  | Static, committed assets only. Not user uploads.                                                                                                             |
+| `tests/`                   | `unit/`, `integration/`, `e2e/`, `fixtures/`.                                                                                                                |
+| `docs/`                    | Canonical project documentation, indexed by `docs/README.md`.                                                                                                |
 
 ### 2.1 Route conventions
 
@@ -71,17 +71,17 @@ The full tree and layer rules are in `ARCHITECTURE.md` §4. Summary:
 
 ### 2.2 File naming
 
-| Kind | Convention | Example |
-|---|---|---|
-| Directories | kebab-case | `publish-content/`, `read-models/` |
-| React component files | PascalCase | `DramaCard.tsx`, `PlayerShell.tsx` |
-| All other TypeScript files | kebab-case | `content-service.ts`, `rate-limit.ts` |
-| Next.js special files | Framework names | `page.tsx`, `layout.tsx`, `route.ts`, `error.tsx`, `not-found.tsx` |
-| Unit/integration tests | `<subject>.test.ts(x)` | `publish-content.test.ts` |
-| End-to-end tests | `<flow>.spec.ts` | `admin-publish.spec.ts` |
-| SQL migrations | `NNNN_short_description.sql` | `0001_create_auth_tables.sql` |
-| Environment example | `.env.example` | committed |
-| Local environment | `.env.local` | ignored |
+| Kind                       | Convention                   | Example                                                            |
+| -------------------------- | ---------------------------- | ------------------------------------------------------------------ |
+| Directories                | kebab-case                   | `publish-content/`, `read-models/`                                 |
+| React component files      | PascalCase                   | `DramaCard.tsx`, `PlayerShell.tsx`                                 |
+| All other TypeScript files | kebab-case                   | `content-service.ts`, `rate-limit.ts`                              |
+| Next.js special files      | Framework names              | `page.tsx`, `layout.tsx`, `route.ts`, `error.tsx`, `not-found.tsx` |
+| Unit/integration tests     | `<subject>.test.ts(x)`       | `publish-content.test.ts`                                          |
+| End-to-end tests           | `<flow>.spec.ts`             | `admin-publish.spec.ts`                                            |
+| SQL migrations             | `NNNN_short_description.sql` | `0001_create_auth_tables.sql`                                      |
+| Environment example        | `.env.example`               | committed                                                          |
+| Local environment          | `.env.local`                 | ignored                                                            |
 
 Do not create barrel `index.ts` files for convenience. The only `index.ts` files are module public APIs and framework-required files.
 
@@ -91,43 +91,43 @@ Do not create barrel `index.ts` files for convenience. The only `index.ts` files
 
 ### 3.1 TypeScript identifiers
 
-| Kind | Convention | Example |
-|---|---|---|
-| Variables, parameters, functions | camelCase | `dramaId`, `listEpisodes()` |
-| Types, interfaces, classes, components | PascalCase | `DramaDetails`, `ContentService`, `DramaCard` |
-| Constants and enum-like objects | UPPER_SNAKE_CASE | `MAX_PAGE_SIZE`, `PERMISSIONS` |
-| Boolean variables | `is`/`has`/`can`/`should` prefix | `isPublished`, `hasNextPage`, `canPublish` |
-| Private/internal module helpers | camelCase, not exported | `mapDramaRow()` |
-| Zod schemas | `<Name>Schema` | `dramaInputSchema` |
-| Inferred types | `<Name>` | `type DramaInput = z.infer<...>` |
-| DTOs | `<Entity>Dto`, `<Entity>Summary`, `<Entity>Details` | `DramaSummaryDto` |
-| Database row types | `<Entity>Row` (internal only) | `DramaRow` |
-| Service inputs | `<Action>Input` | `PublishEpisodeInput` |
-| Errors | `<Domain><Condition>Error` | `ContentNotPlayableError` |
-| Permission keys | `resource.action` | `episode.publish`, `review.moderate` |
-| Workflows | verb-first, kebab-case directory | `replace-video-source` |
+| Kind                                   | Convention                                          | Example                                       |
+| -------------------------------------- | --------------------------------------------------- | --------------------------------------------- |
+| Variables, parameters, functions       | camelCase                                           | `dramaId`, `listEpisodes()`                   |
+| Types, interfaces, classes, components | PascalCase                                          | `DramaDetails`, `ContentService`, `DramaCard` |
+| Constants and enum-like objects        | UPPER_SNAKE_CASE                                    | `MAX_PAGE_SIZE`, `PERMISSIONS`                |
+| Boolean variables                      | `is`/`has`/`can`/`should` prefix                    | `isPublished`, `hasNextPage`, `canPublish`    |
+| Private/internal module helpers        | camelCase, not exported                             | `mapDramaRow()`                               |
+| Zod schemas                            | `<Name>Schema`                                      | `dramaInputSchema`                            |
+| Inferred types                         | `<Name>`                                            | `type DramaInput = z.infer<...>`              |
+| DTOs                                   | `<Entity>Dto`, `<Entity>Summary`, `<Entity>Details` | `DramaSummaryDto`                             |
+| Database row types                     | `<Entity>Row` (internal only)                       | `DramaRow`                                    |
+| Service inputs                         | `<Action>Input`                                     | `PublishEpisodeInput`                         |
+| Errors                                 | `<Domain><Condition>Error`                          | `ContentNotPlayableError`                     |
+| Permission keys                        | `resource.action`                                   | `episode.publish`, `review.moderate`          |
+| Workflows                              | verb-first, kebab-case directory                    | `replace-video-source`                        |
 
 ### 3.2 Function naming
 
-| Prefix | Meaning |
-|---|---|
-| `get*` | Read one record; throws `NotFoundError` if required and missing |
-| `find*` | Read one record or return `null` |
-| `list*` | Read a collection with documented pagination/filters |
-| `count*` | Return a numeric count |
-| `search*` | Full-text/trigram search |
-| `create*` | Insert a new record |
-| `update*` | Update an existing record |
-| `delete*` | Soft-delete (Trash) |
-| `purge*` | Permanent deletion (Super Admin only) |
-| `publish*` / `unpublish*` | Change publication state |
-| `restore*` | Restore from Trash |
-| `replace*` | Replace a source or value with explicit consequences |
-| `assert*` | Throw a typed error when an invariant is false |
-| `has*` / `can*` | Return a boolean capability check |
-| `map*` | Convert a row/domain object to a DTO |
-| `parse*` | Validate untrusted input with Zod |
-| `handle*` | Entrypoint adapter (route handler, action, event) |
+| Prefix                    | Meaning                                                         |
+| ------------------------- | --------------------------------------------------------------- |
+| `get*`                    | Read one record; throws `NotFoundError` if required and missing |
+| `find*`                   | Read one record or return `null`                                |
+| `list*`                   | Read a collection with documented pagination/filters            |
+| `count*`                  | Return a numeric count                                          |
+| `search*`                 | Full-text/trigram search                                        |
+| `create*`                 | Insert a new record                                             |
+| `update*`                 | Update an existing record                                       |
+| `delete*`                 | Soft-delete (Trash)                                             |
+| `purge*`                  | Permanent deletion (Super Admin only)                           |
+| `publish*` / `unpublish*` | Change publication state                                        |
+| `restore*`                | Restore from Trash                                              |
+| `replace*`                | Replace a source or value with explicit consequences            |
+| `assert*`                 | Throw a typed error when an invariant is false                  |
+| `has*` / `can*`           | Return a boolean capability check                               |
+| `map*`                    | Convert a row/domain object to a DTO                            |
+| `parse*`                  | Validate untrusted input with Zod                               |
+| `handle*`                 | Entrypoint adapter (route handler, action, event)               |
 
 ### 3.3 Module public API naming
 
@@ -149,15 +149,15 @@ Do not create barrel `index.ts` files for convenience. The only `index.ts` files
 
 Implemented in `src/platform/config/` (Prompt 009):
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `APP_URL` | Production; defaults to `http://localhost:3000` in development/test | Canonical public origin, validated as an origin. |
-| `TRUSTED_ORIGINS` | No | Comma-separated additional auth origins; `APP_URL` is always trusted. |
-| `DATABASE_URL` | Production | Server-only PostgreSQL connection string. |
-| `TEST_DATABASE_URL` | No | Test database; the name must end in `_test` and differ from `DATABASE_URL`. |
-| `BETTER_AUTH_SECRET` | Production | Server-only auth secret, at least 32 characters. |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Production | Server-only Google OAuth credentials. |
-| `SUPER_ADMIN_EMAIL` | Production | Google email allowed to bootstrap the first Super Admin. |
+| Variable                                   | Required                                                            | Purpose                                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `APP_URL`                                  | Production; defaults to `http://localhost:3000` in development/test | Canonical public origin, validated as an origin.                            |
+| `TRUSTED_ORIGINS`                          | No                                                                  | Comma-separated additional auth origins; `APP_URL` is always trusted.       |
+| `DATABASE_URL`                             | Production                                                          | Server-only PostgreSQL connection string.                                   |
+| `TEST_DATABASE_URL`                        | No                                                                  | Test database; the name must end in `_test` and differ from `DATABASE_URL`. |
+| `BETTER_AUTH_SECRET`                       | Production                                                          | Server-only auth secret, at least 32 characters.                            |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Production                                                          | Server-only Google OAuth credentials.                                       |
+| `SUPER_ADMIN_EMAIL`                        | Production                                                          | Google email allowed to bootstrap the first Super Admin.                    |
 
 - `src/platform/config/index.ts` imports `server-only` and exports the validated `serverConfig`.
 - Development and test may omit production-only values; any value that is present is still validated.
@@ -196,7 +196,7 @@ No ignored type errors. `@ts-ignore` is forbidden. `@ts-expect-error` requires a
 4. **Prefer `type`.** Use `interface` only for intentionally extensible public contracts.
 5. **No `enum`.** Use `as const` objects and union types:
    ```ts
-   export const PUBLICATION_STATUSES = ["draft", "published", "unpublished"] as const;
+   export const PUBLICATION_STATUSES = ['draft', 'published', 'unpublished'] as const;
    export type PublicationStatus = (typeof PUBLICATION_STATUSES)[number];
    ```
 6. **Discriminated unions for results.** Prefer `{ ok: true; data } | { ok: false; error }` over boolean flags plus nullable data.
@@ -227,21 +227,21 @@ No ignored type errors. `@ts-ignore` is forbidden. `@ts-expect-error` requires a
 
 ### 5.1 Naming
 
-| Object | Convention | Example |
-|---|---|---|
-| Tables | plural `snake_case` | `dramas`, `episodes`, `content_reports` |
-| Join tables | `<left>_<right>` plural | `drama_categories`, `user_roles` |
-| Columns | `snake_case` | `published_at`, `episode_number` |
-| Primary key | `id` | `id uuid primary key` |
-| Foreign key | `<singular_referenced_table>_id` | `drama_id`, `episode_id`, `user_id` |
-| Self-reference | role-based name | `parent_id`, `replaced_by_id` |
-| Timestamps | `*_at`, `timestamptz` | `created_at`, `updated_at`, `deleted_at`, `published_at` |
-| Booleans | `is_*` / `has_*` / `can_*` | `is_default`, `has_subtitles` |
-| Enums | `*_status`, `*_type`, `*_reason` | `publication_status`, `content_type`, `report_reason` |
-| Ordering | `position` | `position integer not null` |
-| Slugs | `slug` | lowercase, URL-safe |
-| Counts | `*_count`, `bigint` | `view_count`, `episode_count` |
-| JSONB | `metadata` only for genuinely flexible data | not for core relational fields |
+| Object         | Convention                                  | Example                                                  |
+| -------------- | ------------------------------------------- | -------------------------------------------------------- |
+| Tables         | plural `snake_case`                         | `dramas`, `episodes`, `content_reports`                  |
+| Join tables    | `<left>_<right>` plural                     | `drama_categories`, `user_roles`                         |
+| Columns        | `snake_case`                                | `published_at`, `episode_number`                         |
+| Primary key    | `id`                                        | `id uuid primary key`                                    |
+| Foreign key    | `<singular_referenced_table>_id`            | `drama_id`, `episode_id`, `user_id`                      |
+| Self-reference | role-based name                             | `parent_id`, `replaced_by_id`                            |
+| Timestamps     | `*_at`, `timestamptz`                       | `created_at`, `updated_at`, `deleted_at`, `published_at` |
+| Booleans       | `is_*` / `has_*` / `can_*`                  | `is_default`, `has_subtitles`                            |
+| Enums          | `*_status`, `*_type`, `*_reason`            | `publication_status`, `content_type`, `report_reason`    |
+| Ordering       | `position`                                  | `position integer not null`                              |
+| Slugs          | `slug`                                      | lowercase, URL-safe                                      |
+| Counts         | `*_count`, `bigint`                         | `view_count`, `episode_count`                            |
+| JSONB          | `metadata` only for genuinely flexible data | not for core relational fields                           |
 
 - Use `text` for strings unless a length limit is a real business rule. Validate lengths in Zod and with check constraints where appropriate.
 - Use `uuid` for application primary keys (see §5.2).
@@ -271,16 +271,16 @@ No ignored type errors. `@ts-ignore` is forbidden. `@ts-expect-error` requires a
 
 ### 5.4 Constraints and indexes
 
-| Object | Naming | Example |
-|---|---|---|
-| Primary key | `pk_<table>` | `pk_dramas` |
-| Foreign key | `fk_<table>_<column>` | `fk_episodes_drama_id` |
-| Unique constraint/index | `uq_<table>_<columns>` | `uq_dramas_slug` |
-| Check constraint | `ck_<table>_<rule>` | `ck_ratings_value_range` |
-| Index | `idx_<table>_<columns>` | `idx_episodes_drama_id_position` |
-| Partial unique index | `uq_<table>_<columns>_active` | `uq_dramas_slug_active` |
-| Full-text index | `idx_<table>_search` | `idx_dramas_search` |
-| Trigram index | `idx_<table>_<column>_trgm` | `idx_dramas_title_trgm` |
+| Object                  | Naming                        | Example                          |
+| ----------------------- | ----------------------------- | -------------------------------- |
+| Primary key             | `pk_<table>`                  | `pk_dramas`                      |
+| Foreign key             | `fk_<table>_<column>`         | `fk_episodes_drama_id`           |
+| Unique constraint/index | `uq_<table>_<columns>`        | `uq_dramas_slug`                 |
+| Check constraint        | `ck_<table>_<rule>`           | `ck_ratings_value_range`         |
+| Index                   | `idx_<table>_<columns>`       | `idx_episodes_drama_id_position` |
+| Partial unique index    | `uq_<table>_<columns>_active` | `uq_dramas_slug_active`          |
+| Full-text index         | `idx_<table>_search`          | `idx_dramas_search`              |
+| Trigram index           | `idx_<table>_<column>_trgm`   | `idx_dramas_title_trgm`          |
 
 - Every foreign key has an index on the referencing column unless an existing composite index covers it.
 - Every list query used in production has a supporting index, documented in `DATABASE.md`.
@@ -382,18 +382,18 @@ Collection:
 
 ### 6.6 HTTP status codes
 
-| Status | Use |
-|---|---|
-| `200 OK` | Successful read or update |
-| `201 Created` | Resource created |
-| `204 No Content` | Successful operation with no body |
-| `400 Bad Request` | Validation failure, malformed input |
-| `401 Unauthorized` | Missing or invalid session |
-| `403 Forbidden` | Authenticated but not permitted |
-| `404 Not Found` | Missing or intentionally hidden resource |
-| `409 Conflict` | Duplicate, state conflict, invariant violation |
-| `429 Too Many Requests` | Rate limit exceeded; include `Retry-After` |
-| `500 Internal Server Error` | Unexpected failure |
+| Status                      | Use                                            |
+| --------------------------- | ---------------------------------------------- |
+| `200 OK`                    | Successful read or update                      |
+| `201 Created`               | Resource created                               |
+| `204 No Content`            | Successful operation with no body              |
+| `400 Bad Request`           | Validation failure, malformed input            |
+| `401 Unauthorized`          | Missing or invalid session                     |
+| `403 Forbidden`             | Authenticated but not permitted                |
+| `404 Not Found`             | Missing or intentionally hidden resource       |
+| `409 Conflict`              | Duplicate, state conflict, invariant violation |
+| `429 Too Many Requests`     | Rate limit exceeded; include `Retry-After`     |
+| `500 Internal Server Error` | Unexpected failure                             |
 
 - Public unavailable content returns `404`, never `403`, to avoid revealing unpublished or trashed content.
 - Authenticated ownership violations on private resources return `404` where returning `403` would leak existence.
@@ -444,15 +444,15 @@ The same error codes and safe messages as REST apply. Server Actions may call `r
 
 `platform/errors` owns `AppError` and the base classes. Domain modules may extend them but must follow the same shape.
 
-| Error | Code | HTTP |
-|---|---|---|
-| `ValidationError` | `validation_error` | 400 |
-| `AuthenticationError` | `authentication_required` | 401 |
-| `AuthorizationError` | `forbidden` | 403 |
-| `NotFoundError` | `not_found` | 404 |
-| `ConflictError` | `conflict` | 409 |
-| `RateLimitError` | `rate_limited` | 429 |
-| `InternalError` | `internal_error` | 500 |
+| Error                 | Code                      | HTTP |
+| --------------------- | ------------------------- | ---- |
+| `ValidationError`     | `validation_error`        | 400  |
+| `AuthenticationError` | `authentication_required` | 401  |
+| `AuthorizationError`  | `forbidden`               | 403  |
+| `NotFoundError`       | `not_found`               | 404  |
+| `ConflictError`       | `conflict`                | 409  |
+| `RateLimitError`      | `rate_limited`            | 429  |
+| `InternalError`       | `internal_error`          | 500  |
 
 Domain errors extend a base class and add a stable code, for example `ContentNotPlayableError extends ConflictError` with code `content_not_playable`.
 
@@ -481,14 +481,14 @@ Domain errors extend a base class and add a stable code, for example `ContentNot
 
 ### 8.2 Levels
 
-| Level | Use |
-|---|---|
-| `fatal` | Process cannot continue |
-| `error` | Unexpected failure requiring attention |
-| `warn` | Expected but noteworthy failure (rate limit, validation spike, delivery failure) |
-| `info` | Request completion, state changes, maintenance results |
-| `debug` | Development diagnostics |
-| `trace` | Rare deep diagnostics; not enabled in production by default |
+| Level   | Use                                                                              |
+| ------- | -------------------------------------------------------------------------------- |
+| `fatal` | Process cannot continue                                                          |
+| `error` | Unexpected failure requiring attention                                           |
+| `warn`  | Expected but noteworthy failure (rate limit, validation spike, delivery failure) |
+| `info`  | Request completion, state changes, maintenance results                           |
+| `debug` | Development diagnostics                                                          |
+| `trace` | Rare deep diagnostics; not enabled in production by default                      |
 
 - Production default: `info`. Development default: `debug`. Override with `LOG_LEVEL`.
 - Log one request-completion line per request, not one per database query.
@@ -526,15 +526,15 @@ Domain errors extend a base class and add a stable code, for example `ContentNot
 
 ### 9.3 What to test
 
-| Layer | Required coverage |
-|---|---|
-| Domain rules | Publication rules, availability, hierarchy, conversion, source replacement, completion threshold |
-| Authorization | Every permission key, ownership checks, last-Super-Admin invariant, deactivated accounts |
-| Validation | Zod boundaries, malformed input, URL/slug/image/CSV validation |
-| Transactions | Publish with notifications, source replacement, permanent deletion, moves, conversions |
-| Repositories | Critical queries, pagination, uniqueness, soft-delete filtering |
-| API | Status codes, envelopes, error codes, pagination meta, authorization parity with actions |
-| UI/E2E | Sign-in, browse, playback, bookmark, review, admin publish, moderation |
+| Layer         | Required coverage                                                                                |
+| ------------- | ------------------------------------------------------------------------------------------------ |
+| Domain rules  | Publication rules, availability, hierarchy, conversion, source replacement, completion threshold |
+| Authorization | Every permission key, ownership checks, last-Super-Admin invariant, deactivated accounts         |
+| Validation    | Zod boundaries, malformed input, URL/slug/image/CSV validation                                   |
+| Transactions  | Publish with notifications, source replacement, permanent deletion, moves, conversions           |
+| Repositories  | Critical queries, pagination, uniqueness, soft-delete filtering                                  |
+| API           | Status codes, envelopes, error codes, pagination meta, authorization parity with actions         |
+| UI/E2E        | Sign-in, browse, playback, bookmark, review, admin publish, moderation                           |
 
 ### 9.4 Rules
 
@@ -599,18 +599,18 @@ A single release must not both add and remove a column that the previous release
 
 ### 12.1 Document responsibilities
 
-| Document | Responsibility |
-|---|---|
-| `AGENTS.md` | Authoritative specification pack |
-| `REQUIREMENTS.md` | Approved product scope |
-| `ARCHITECTURE.md` | Layers, modules, dependencies, entrypoints, data ownership |
-| `CONVENTIONS.md` | Day-to-day coding, data, API, testing, and migration rules |
-| `DATABASE.md` | Schema, relationships, indexes, migration notes |
-| `API.md` | REST and Server Action contracts |
-| `SECURITY.md` | Security decisions and known limitations |
-| `DECISIONS.md` | Approved decisions and supersessions |
-| `CHANGELOG.md` | Notable changes by date |
-| `PROJECT_STATUS.md` | Single source of truth for progress |
+| Document            | Responsibility                                             |
+| ------------------- | ---------------------------------------------------------- |
+| `AGENTS.md`         | Authoritative specification pack                           |
+| `REQUIREMENTS.md`   | Approved product scope                                     |
+| `ARCHITECTURE.md`   | Layers, modules, dependencies, entrypoints, data ownership |
+| `CONVENTIONS.md`    | Day-to-day coding, data, API, testing, and migration rules |
+| `DATABASE.md`       | Schema, relationships, indexes, migration notes            |
+| `API.md`            | REST and Server Action contracts                           |
+| `SECURITY.md`       | Security decisions and known limitations                   |
+| `DECISIONS.md`      | Approved decisions and supersessions                       |
+| `CHANGELOG.md`      | Notable changes by date                                    |
+| `PROJECT_STATUS.md` | Single source of truth for progress                        |
 
 Do not duplicate content across documents. Link to the owning document instead.
 
@@ -676,22 +676,22 @@ For a documentation-only prompt, "tests" is `N/A` with the reason, and the docum
 
 These scripts are established in later prompts; the names are fixed here so documentation and CI stay consistent.
 
-| Command | Purpose | Established in |
-|---|---|---|
-| `npm run dev` | Start the development server | Prompt 006 |
-| `npm run build` | Production build | Prompt 006 |
-| `npm run start` | Start the production server | Prompt 006 |
-| `npm run typecheck` | TypeScript check (`next typegen` + `tsc --noEmit`) | Prompt 007 |
-| `npm run lint` | ESLint, including architecture rules | Prompt 013 |
-| `npm run format` | Prettier write | Prompt 013 |
-| `npm run format:check` | Prettier check | Prompt 013 |
-| `npm run test` | Vitest unit tests | Prompt 017 |
-| `npm run test:integration` | Vitest integration tests | Prompt 017 |
-| `npm run test:e2e` | Playwright tests | Prompt 017 |
-| `npm run db:generate` | Generate a Drizzle migration | Prompt 021 |
-| `npm run db:migrate` | Apply migrations | Prompt 021 |
-| `npm run db:seed` | Seed reference data | Prompt 021+ |
-| `npm run maintenance -- <task>` | Run a maintenance command | Maintenance phase |
+| Command                         | Purpose                                            | Established in    |
+| ------------------------------- | -------------------------------------------------- | ----------------- |
+| `npm run dev`                   | Start the development server                       | Prompt 006        |
+| `npm run build`                 | Production build                                   | Prompt 006        |
+| `npm run start`                 | Start the production server                        | Prompt 006        |
+| `npm run typecheck`             | TypeScript check (`next typegen` + `tsc --noEmit`) | Prompt 007        |
+| `npm run lint`                  | ESLint, including architecture rules               | Prompt 013        |
+| `npm run format`                | Prettier write                                     | Prompt 013        |
+| `npm run format:check`          | Prettier check                                     | Prompt 013        |
+| `npm run test`                  | Vitest unit tests                                  | Prompt 017        |
+| `npm run test:integration`      | Vitest integration tests                           | Prompt 017        |
+| `npm run test:e2e`              | Playwright tests                                   | Prompt 017        |
+| `npm run db:generate`           | Generate a Drizzle migration                       | Prompt 021        |
+| `npm run db:migrate`            | Apply migrations                                   | Prompt 021        |
+| `npm run db:seed`               | Seed reference data                                | Prompt 021+       |
+| `npm run maintenance -- <task>` | Run a maintenance command                          | Maintenance phase |
 
 - Node.js 24 LTS is the runtime; pin it in `.nvmrc` and `package.json#engines`.
 - `next-env.d.ts` is generated by Next.js and ignored; run `next typegen` before type checking in a clean checkout.

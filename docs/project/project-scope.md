@@ -2,7 +2,7 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform  
 **Version:** 1.0  
-**Date:** 2026-11-08  
+**Date:** 2026-11-08
 
 This document consolidates the mandatory initial scope and the future upgrade backlog as established by REQUIREMENTS.md §16 and Prompt 005. It must not be treated as unfinished initial requirements.
 

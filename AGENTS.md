@@ -1,5 +1,7 @@
 # AI DRAMA STREAMING PLATFORM
+
 ## Complete Detailed Micro-Prompt Development Pack
+
 **Version:** Detailed Edition  
 **Total prompts:** 220  
 **Development approach:** Dependency-ordered, independently executable micro-tasks  
@@ -31,31 +33,31 @@ If a requirement is ambiguous or a decision has not been specified, ask the user
 
 Use the following stack unless a specific future upgrade is explicitly approved.
 
-| Area | Technology |
-|---|---|
-| Application | Next.js full-stack |
-| Framework | Next.js App Router |
-| Language | TypeScript |
-| UI | React Server Components by default |
-| Styling | Tailwind CSS |
-| UI components | shadcn/ui |
-| Database | PostgreSQL |
-| ORM | Drizzle ORM |
-| Authentication | Better Auth |
-| Social login | Google OAuth only |
-| Video player | Vidstack |
-| Forms | React Hook Form |
-| Validation | Zod |
-| Client-side server state | TanStack Query where needed |
-| Testing | Vitest and Playwright |
-| Logging | Pino structured JSON |
-| Search | PostgreSQL full-text search and trigram indexes |
-| API | Hybrid Server Actions and REST |
-| API documentation | OpenAPI/Swagger |
-| Reverse proxy | Nginx |
-| Process management | systemd |
-| OS | Ubuntu 24.04 LTS |
-| CI/CD | GitHub Actions |
+| Area                     | Technology                                      |
+| ------------------------ | ----------------------------------------------- |
+| Application              | Next.js full-stack                              |
+| Framework                | Next.js App Router                              |
+| Language                 | TypeScript                                      |
+| UI                       | React Server Components by default              |
+| Styling                  | Tailwind CSS                                    |
+| UI components            | shadcn/ui                                       |
+| Database                 | PostgreSQL                                      |
+| ORM                      | Drizzle ORM                                     |
+| Authentication           | Better Auth                                     |
+| Social login             | Google OAuth only                               |
+| Video player             | Vidstack                                        |
+| Forms                    | React Hook Form                                 |
+| Validation               | Zod                                             |
+| Client-side server state | TanStack Query where needed                     |
+| Testing                  | Vitest and Playwright                           |
+| Logging                  | Pino structured JSON                            |
+| Search                   | PostgreSQL full-text search and trigram indexes |
+| API                      | Hybrid Server Actions and REST                  |
+| API documentation        | OpenAPI/Swagger                                 |
+| Reverse proxy            | Nginx                                           |
+| Process management       | systemd                                         |
+| OS                       | Ubuntu 24.04 LTS                                |
+| CI/CD                    | GitHub Actions                                  |
 
 ## 1.3 Initial architecture restrictions
 
@@ -235,4 +237,3 @@ Provide:
 - Any unresolved issues.
 
 **Completion requirement:** A micro-prompt is considered fully completed only when its implementation has been verified, its changes have been committed, and its commit has been successfully pushed to the configured GitHub branch.
-

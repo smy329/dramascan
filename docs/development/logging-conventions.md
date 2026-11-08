@@ -2,7 +2,7 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform  
 **Version:** 1.0  
-**Date:** 2026-11-08  
+**Date:** 2026-11-08
 
 This document defines the Pino structured logging conventions, derived from `CONVENTIONS.md` §8 and established by Prompt 004. It covers the logging format, levels, redaction, and correlation requirements.
 
@@ -17,21 +17,30 @@ This document defines the Pino structured logging conventions, derived from `CON
 ### 1.1 Example Log Line
 
 ```json
-{"time":"2026-11-08T12:34:56.789Z","level":"info","msg":"request completed","requestId":"01JGZZZ3G9","module":"content","action":"list","durationMs":45,"outcome":"success"}
+{
+  "time": "2026-11-08T12:34:56.789Z",
+  "level": "info",
+  "msg": "request completed",
+  "requestId": "01JGZZZ3G9",
+  "module": "content",
+  "action": "list",
+  "durationMs": 45,
+  "outcome": "success"
+}
 ```
 
 ---
 
 ## 2. Log Levels
 
-| Level | Use |
-|---|---|
-| `fatal` | Process cannot continue |
-| `error` | Unexpected failure requiring attention |
-| `warn` | Expected but noteworthy failure (rate limit, validation spike, delivery failure) |
-| `info` | Request completion, state changes, maintenance results |
-| `debug` | Development diagnostics |
-| `trace` | Rare deep diagnostics; not enabled in production by default |
+| Level   | Use                                                                              |
+| ------- | -------------------------------------------------------------------------------- |
+| `fatal` | Process cannot continue                                                          |
+| `error` | Unexpected failure requiring attention                                           |
+| `warn`  | Expected but noteworthy failure (rate limit, validation spike, delivery failure) |
+| `info`  | Request completion, state changes, maintenance results                           |
+| `debug` | Development diagnostics                                                          |
+| `trace` | Rare deep diagnostics; not enabled in production by default                      |
 
 - Production default: `info`. Development default: `debug`. Override with `LOG_LEVEL`.
 - Log one request-completion line per request, not one per database query.

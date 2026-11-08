@@ -24,11 +24,11 @@ Open <http://localhost:3000>. Environment values are validated with Zod at serve
 startup; production requires `APP_URL`, `DATABASE_URL`, `BETTER_AUTH_SECRET`, Google
 OAuth credentials, and `SUPER_ADMIN_EMAIL`. Never commit real credentials.
 
-| Command | Purpose |
-|---|---|
-| `npm run dev` | Start the development server |
-| `npm run build` | Create a production build |
-| `npm run start` | Start the production server |
+| Command             | Purpose                                     |
+| ------------------- | ------------------------------------------- |
+| `npm run dev`       | Start the development server                |
+| `npm run build`     | Create a production build                   |
+| `npm run start`     | Start the production server                 |
 | `npm run typecheck` | Generate route types and run `tsc --noEmit` |
 
 ## Documentation Structure

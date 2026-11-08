@@ -2,7 +2,7 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform  
 **Version:** 1.0  
-**Date:** 2026-11-08  
+**Date:** 2026-11-08
 
 This document describes the eleven-domain-module structure and their boundaries, as approved in Prompt 003 and recorded in DECISIONS.md D-008–D-012.
 
@@ -23,19 +23,19 @@ The application has **eleven feature modules**, each owning its tables and expos
 
 Modules are assigned to fixed layers. See `ARCHITECTURE.md` §3 for the layer matrix.
 
-| Module | Layer | Purpose |
-|---|---|---|
-| `auth` | 1 | Authentication and identity |
-| `authorization` | 2 | RBAC and permission catalog |
-| `content` | 3 | Content management (dramas, seasons, episodes, movies) |
-| `users` | 3 | User profile and bookmarks |
-| `playback` | 3 | Playback, progress, and history |
-| `reviews` | 3 | Ratings, reviews, reactions, review reports |
-| `moderation` | 4 | Content reports and moderation records |
-| `notifications` | 4 | User and admin notifications |
-| `analytics` | 4 | Product analytics and reporting |
-| `administration` | 5 | Admin operations and system configuration |
-| `maintenance` | 5 | Operations and observability |
+| Module           | Layer | Purpose                                                |
+| ---------------- | ----- | ------------------------------------------------------ |
+| `auth`           | 1     | Authentication and identity                            |
+| `authorization`  | 2     | RBAC and permission catalog                            |
+| `content`        | 3     | Content management (dramas, seasons, episodes, movies) |
+| `users`          | 3     | User profile and bookmarks                             |
+| `playback`       | 3     | Playback, progress, and history                        |
+| `reviews`        | 3     | Ratings, reviews, reactions, review reports            |
+| `moderation`     | 4     | Content reports and moderation records                 |
+| `notifications`  | 4     | User and admin notifications                           |
+| `analytics`      | 4     | Product analytics and reporting                        |
+| `administration` | 5     | Admin operations and system configuration              |
+| `maintenance`    | 5     | Operations and observability                           |
 
 ---
 
@@ -144,16 +144,16 @@ Modules are assigned to fixed layers. See `ARCHITECTURE.md` §3 for the layer ma
 
 ## 3. Standard Module File Roles
 
-| File | Responsibility | May use the database client |
-|---|---|---|
-| `index.ts` | Public re-exports only | No |
-| `schema.ts` | Drizzle table definitions owned by the module | No (types only) |
-| `validation.ts` | Zod input schemas and parsers | No |
-| `repository.ts` / `repository/` | All Drizzle queries and mutations for owned tables | Yes (`@/db/client`) |
-| `queries.ts` / `queries/` | Read services; authorization and visibility filtering; DTO shaping | No (calls repository) |
-| `service.ts` / `service/` | Write services, domain rules, transaction participation | No (type-only `DbExecutor` allowed) |
-| `read-models/` | Approved cross-module read-only queries (`analytics`, `administration`, `users` only) | Yes (`@/db/client`) |
-| `providers/` | Isolated external-provider adapters (`notifications` only) | No |
+| File                            | Responsibility                                                                        | May use the database client         |
+| ------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------- |
+| `index.ts`                      | Public re-exports only                                                                | No                                  |
+| `schema.ts`                     | Drizzle table definitions owned by the module                                         | No (types only)                     |
+| `validation.ts`                 | Zod input schemas and parsers                                                         | No                                  |
+| `repository.ts` / `repository/` | All Drizzle queries and mutations for owned tables                                    | Yes (`@/db/client`)                 |
+| `queries.ts` / `queries/`       | Read services; authorization and visibility filtering; DTO shaping                    | No (calls repository)               |
+| `service.ts` / `service/`       | Write services, domain rules, transaction participation                               | No (type-only `DbExecutor` allowed) |
+| `read-models/`                  | Approved cross-module read-only queries (`analytics`, `administration`, `users` only) | Yes (`@/db/client`)                 |
+| `providers/`                    | Isolated external-provider adapters (`notifications` only)                            | No                                  |
 
 Large modules may split `service.ts` and `repository.ts` into folders, provided `index.ts` remains the only public surface.
 
@@ -161,13 +161,13 @@ Large modules may split `service.ts` and `repository.ts` into folders, provided 
 
 ## 4. Service Categories
 
-| Category | Location | Called by | Contains | Must not |
-|---|---|---|---|---|
-| Module query service | `modules/*/queries.ts` | Server Components, workflows, permitted modules | Visibility/authorization filtering, DTO shaping, read-only composition | Writes, HTTP, cache invalidation |
-| Module mutation service | `modules/*/service.ts` | Server Actions, route handlers, workflows | Domain rules, input validation, transaction participation | HTTP, cross-module side effects, independent commits |
-| Workflow (application service) | `src/workflows/` | Server Actions, route handlers, maintenance scripts | Sequencing, transaction boundary, post-commit effects | Domain rules, SQL, HTTP parsing |
-| Platform service | `src/platform/` | Modules, workflows, `app` | DB pool, config, errors, logging, rate limiting, cache, HTTP mapping | Domain rules, module imports |
-| Repository | `modules/*/repository.ts` | The owning module's services, queries, read models | Drizzle reads/writes for the module's own tables | Cross-module writes, business rules, authorization decisions |
+| Category                       | Location                  | Called by                                           | Contains                                                               | Must not                                                     |
+| ------------------------------ | ------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Module query service           | `modules/*/queries.ts`    | Server Components, workflows, permitted modules     | Visibility/authorization filtering, DTO shaping, read-only composition | Writes, HTTP, cache invalidation                             |
+| Module mutation service        | `modules/*/service.ts`    | Server Actions, route handlers, workflows           | Domain rules, input validation, transaction participation              | HTTP, cross-module side effects, independent commits         |
+| Workflow (application service) | `src/workflows/`          | Server Actions, route handlers, maintenance scripts | Sequencing, transaction boundary, post-commit effects                  | Domain rules, SQL, HTTP parsing                              |
+| Platform service               | `src/platform/`           | Modules, workflows, `app`                           | DB pool, config, errors, logging, rate limiting, cache, HTTP mapping   | Domain rules, module imports                                 |
+| Repository                     | `modules/*/repository.ts` | The owning module's services, queries, read models  | Drizzle reads/writes for the module's own tables                       | Cross-module writes, business rules, authorization decisions |
 
 There is no general-purpose "shared domain service" bucket. Cross-module reuse happens through a module's public API or a workflow. Shared code is limited to `platform` (server infrastructure) and `lib` (isomorphic helpers and contracts). This prevents a second, unowned domain layer from forming.
 
@@ -234,6 +234,7 @@ No other same-layer imports are allowed.
 ### 7.1 Direct calls
 
 A module calls another module only through that module's public `index.ts`, only when the dependency matrix permits it, and only for a read or a write that belongs to the callee. The caller passes:
+
 1. a trusted `ActorContext` (first argument),
 2. a validated input object,
 3. an optional shared `DbExecutor` when participating in a workflow transaction.
@@ -241,6 +242,7 @@ A module calls another module only through that module's public `index.ts`, only
 ### 7.2 Workflows
 
 A **workflow** is a thin application-layer function in `src/workflows/` that coordinates two or more modules. It:
+
 - contains sequencing, authorization entry checks, and transaction boundaries — **not** domain rules;
 - calls each participating module's public API independently;
 - passes validated payloads and the actor explicitly;
@@ -274,7 +276,7 @@ See `ARCHITECTURE.md` §8.4 for the full workflow catalog.
    - `modules/administration/read-models/` — admin operational summaries;
    - `modules/users/read-models/` — admin user listing over the `auth` identity table;
    - `modules/moderation/queries.ts` — the moderation queue combining content and review reports, documented as an approved read model.
-   Each read model documents the tables it reads, its owner, and why a public query is insufficient.
+     Each read model documents the tables it reads, its owner, and why a public query is insufficient.
 5. **Reporting is not a gatekeeper.** `analytics` is the reporting module, but the watch page reads `playback` + `content` directly, and the admin dashboard reads `administration` + `analytics`. Ordinary operational reads must not be forced through reporting.
 6. **Availability is enforced by the owner.** `content` enforces publication/Trash/empty-drama visibility. `playback` returns a source URL only after `content` confirms the content is publicly playable. A guessed URL or direct API call must not bypass this.
 7. **Sensitive projections are opt-in.** The video source URL is returned only by watch queries. Admin-only fields are returned only by admin query functions after authorization.
@@ -291,12 +293,12 @@ A module's `schema.ts` must not import another module's `schema.ts`. Cross-modul
 
 ### 9.1 Actor kinds
 
-| Actor | Construction | Typical use |
-|---|---|---|
-| `AnonymousActor` | No session; optional guest session id for analytics | Public reads, view counting |
-| `UserActor` | Session → active `auth` user | Authenticated features |
-| `AdminActor` | `UserActor` + resolved roles + effective permission set | Admin pages and operations |
-| `SystemActor` | Created only by a maintenance script; carries an explicit task identity and a narrow system permission set | Backups, retention, health, aggregation |
+| Actor            | Construction                                                                                               | Typical use                             |
+| ---------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `AnonymousActor` | No session; optional guest session id for analytics                                                        | Public reads, view counting             |
+| `UserActor`      | Session → active `auth` user                                                                               | Authenticated features                  |
+| `AdminActor`     | `UserActor` + resolved roles + effective permission set                                                    | Admin pages and operations              |
+| `SystemActor`    | Created only by a maintenance script; carries an explicit task identity and a narrow system permission set | Backups, retention, health, aggregation |
 
 Actors are server-generated. A request body, header, cookie value, or client state can never assert a user id, role, or permission.
 
@@ -363,15 +365,15 @@ Publishing with notifications, source replacement with progress reset, permanent
 
 `platform/errors` defines the base `AppError` with a stable `code`, a safe message, optional field errors, and an internal cause. Subclasses:
 
-| Error | Meaning | HTTP | Server Action result |
-|---|---|---|---|
-| `ValidationError` | Invalid input | 400 | `{ ok: false, code, fieldErrors }` |
-| `AuthenticationError` | No/invalid session | 401 | `{ ok: false, code }` |
-| `AuthorizationError` | Authenticated but not permitted | 403 | `{ ok: false, code }` |
-| `NotFoundError` | Missing or not visible | 404 | `{ ok: false, code }` |
-| `ConflictError` | State conflict, duplicate, invariant violation | 409 | `{ ok: false, code }` |
-| `RateLimitError` | Limit exceeded | 429 | `{ ok: false, code, retryAfter }` |
-| `InternalError` | Unexpected failure | 500 | `{ ok: false, code: "internal" }` |
+| Error                 | Meaning                                        | HTTP | Server Action result               |
+| --------------------- | ---------------------------------------------- | ---- | ---------------------------------- |
+| `ValidationError`     | Invalid input                                  | 400  | `{ ok: false, code, fieldErrors }` |
+| `AuthenticationError` | No/invalid session                             | 401  | `{ ok: false, code }`              |
+| `AuthorizationError`  | Authenticated but not permitted                | 403  | `{ ok: false, code }`              |
+| `NotFoundError`       | Missing or not visible                         | 404  | `{ ok: false, code }`              |
+| `ConflictError`       | State conflict, duplicate, invariant violation | 409  | `{ ok: false, code }`              |
+| `RateLimitError`      | Limit exceeded                                 | 429  | `{ ok: false, code, retryAfter }`  |
+| `InternalError`       | Unexpected failure                             | 500  | `{ ok: false, code: "internal" }`  |
 
 Modules may define domain errors that extend these classes (for example, `ContentNotPlayableError extends ConflictError`). They must not invent new transport semantics.
 

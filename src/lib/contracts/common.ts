@@ -21,6 +21,4 @@ export type ActionError = {
   requestId?: string;
 };
 
-export type ActionResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: ActionError };
+export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: ActionError };

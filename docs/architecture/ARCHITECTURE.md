@@ -16,34 +16,34 @@
 
 These are fixed by the specification and are not open for reinterpretation here:
 
-| Driver | Consequence |
-|---|---|
-| Single Next.js App Router deployment, low-RAM production server | One process, one PostgreSQL database, no service split |
-| PostgreSQL + Drizzle ORM | One connection pool; transactions are local and cheap |
-| Better Auth, Google OAuth only | Authentication is a bounded integration, not a general identity platform |
-| Server-side authorization is the security authority | Guards at every entrypoint and re-checks inside services |
-| Direct external HTTPS MP4 playback | No media pipeline, no storage service, no proxy module |
-| No Docker, Redis, queues, workers, SSE, WebSockets | No event bus, no asynchronous cross-module consistency |
-| Short-lived systemd maintenance commands | Maintenance is a CLI entrypoint, not a runtime service |
-| Preserve data across edits, moves, conversions, source replacement | Transactions and explicit ownership; no cross-module table writes |
-| Future extraction must remain possible | Modules own their tables and expose narrow public APIs |
+| Driver                                                             | Consequence                                                              |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Single Next.js App Router deployment, low-RAM production server    | One process, one PostgreSQL database, no service split                   |
+| PostgreSQL + Drizzle ORM                                           | One connection pool; transactions are local and cheap                    |
+| Better Auth, Google OAuth only                                     | Authentication is a bounded integration, not a general identity platform |
+| Server-side authorization is the security authority                | Guards at every entrypoint and re-checks inside services                 |
+| Direct external HTTPS MP4 playback                                 | No media pipeline, no storage service, no proxy module                   |
+| No Docker, Redis, queues, workers, SSE, WebSockets                 | No event bus, no asynchronous cross-module consistency                   |
+| Short-lived systemd maintenance commands                           | Maintenance is a CLI entrypoint, not a runtime service                   |
+| Preserve data across edits, moves, conversions, source replacement | Transactions and explicit ownership; no cross-module table writes        |
+| Future extraction must remain possible                             | Modules own their tables and expose narrow public APIs                   |
 
 ### 1.1 Approved rule index
 
 The nine rules approved with this architecture are binding. This index maps each rule to where it is specified and how it is enforced.
 
-| Rule | Subject | Specified in | Enforced by |
-|---|---|---|---|
-| 1 | Dependency direction and module boundaries | §3, §7 | ESLint boundaries, `import/no-cycle`, §17 |
-| 2 | Inter-module communication and orchestration | §8 | Workflow layer, dependency matrix, §17 |
-| 3 | Reads, writes, Server Actions, and REST boundaries | §9 | Entrypoint review, shared services, §17 |
-| 4 | Database ownership and cross-module data access | §10 | Repository boundaries, read-model allowlist, review |
-| 5 | Centralized authentication and authorization | §11 | Guards, typed permission catalog, service re-checks |
-| 6 | Transaction ownership and consistency | §12 | `withTransaction`, explicit `DbExecutor`, review |
-| 7 | Shared error handling and domain error boundaries | §13 | Typed errors, single HTTP mapping, logging |
-| 8 | Strict client-server and UI boundaries | §14 | `server-only`, lint zones, DTO contracts |
-| 9 | Automated enforcement and maintainability | §17, §18 | CI, lint, types, decision log |
-| Implementation principle | Single deployable, shared PostgreSQL, no excluded infrastructure | §2, §18 | Review, §17 |
+| Rule                     | Subject                                                          | Specified in | Enforced by                                         |
+| ------------------------ | ---------------------------------------------------------------- | ------------ | --------------------------------------------------- |
+| 1                        | Dependency direction and module boundaries                       | §3, §7       | ESLint boundaries, `import/no-cycle`, §17           |
+| 2                        | Inter-module communication and orchestration                     | §8           | Workflow layer, dependency matrix, §17              |
+| 3                        | Reads, writes, Server Actions, and REST boundaries               | §9           | Entrypoint review, shared services, §17             |
+| 4                        | Database ownership and cross-module data access                  | §10          | Repository boundaries, read-model allowlist, review |
+| 5                        | Centralized authentication and authorization                     | §11          | Guards, typed permission catalog, service re-checks |
+| 6                        | Transaction ownership and consistency                            | §12          | `withTransaction`, explicit `DbExecutor`, review    |
+| 7                        | Shared error handling and domain error boundaries                | §13          | Typed errors, single HTTP mapping, logging          |
+| 8                        | Strict client-server and UI boundaries                           | §14          | `server-only`, lint zones, DTO contracts            |
+| 9                        | Automated enforcement and maintainability                        | §17, §18     | CI, lint, types, decision log                       |
+| Implementation principle | Single deployable, shared PostgreSQL, no excluded infrastructure | §2, §18      | Review, §17                                         |
 
 ---
 
@@ -76,18 +76,18 @@ systemd timers ──► scripts/maintenance/*.ts ──────────
 
 Modules are assigned to fixed layers. **A module may import only modules in a strictly lower layer, plus the explicitly listed same-layer edges in §7.1.** Upward imports are prohibited.
 
-| Layer | Location | Contents | May import |
-|---|---|---|---|
-| 0 | `src/platform/` | DB client/pool, transaction primitive, env config, error base types, Pino logging, PG-backed rate limiter, cache helpers, HTTP helpers | Nothing from `modules`, `workflows`, `app`, `components` |
-| 1 | `src/modules/auth` | Authentication, identity, sessions, account status | Platform |
-| 2 | `src/modules/authorization` | RBAC, permission catalog, guards | Platform, `auth` |
-| 3 | `src/modules/content`, `users`, `playback`, `reviews` | Core domain | Platform, layers 1–2, and the same-layer edges in §7.1 |
-| 4 | `src/modules/moderation`, `notifications`, `analytics` | Supporting domain | Platform, layers 1–3, and listed same-layer edges |
-| 5 | `src/modules/administration`, `maintenance` | Administration and operations | Platform, layers 1–4; `administration` may also read `maintenance`; `maintenance` may read any module except `administration` |
-| A | `src/workflows/` | Application orchestration for cross-module operations | Any module, platform |
-| E | `src/app/` | App Router entrypoints: pages, layouts, Server Actions, route handlers | Workflows, modules, platform (limited), components, lib |
-| U | `src/components/` | Client-safe UI and client components | `lib`, `lib/contracts` only |
-| L | `src/lib/` | Isomorphic helpers and client-safe DTO/schema contracts | Third-party isomorphic libraries only |
+| Layer | Location                                               | Contents                                                                                                                               | May import                                                                                                                    |
+| ----- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 0     | `src/platform/`                                        | DB client/pool, transaction primitive, env config, error base types, Pino logging, PG-backed rate limiter, cache helpers, HTTP helpers | Nothing from `modules`, `workflows`, `app`, `components`                                                                      |
+| 1     | `src/modules/auth`                                     | Authentication, identity, sessions, account status                                                                                     | Platform                                                                                                                      |
+| 2     | `src/modules/authorization`                            | RBAC, permission catalog, guards                                                                                                       | Platform, `auth`                                                                                                              |
+| 3     | `src/modules/content`, `users`, `playback`, `reviews`  | Core domain                                                                                                                            | Platform, layers 1–2, and the same-layer edges in §7.1                                                                        |
+| 4     | `src/modules/moderation`, `notifications`, `analytics` | Supporting domain                                                                                                                      | Platform, layers 1–3, and listed same-layer edges                                                                             |
+| 5     | `src/modules/administration`, `maintenance`            | Administration and operations                                                                                                          | Platform, layers 1–4; `administration` may also read `maintenance`; `maintenance` may read any module except `administration` |
+| A     | `src/workflows/`                                       | Application orchestration for cross-module operations                                                                                  | Any module, platform                                                                                                          |
+| E     | `src/app/`                                             | App Router entrypoints: pages, layouts, Server Actions, route handlers                                                                 | Workflows, modules, platform (limited), components, lib                                                                       |
+| U     | `src/components/`                                      | Client-safe UI and client components                                                                                                   | `lib`, `lib/contracts` only                                                                                                   |
+| L     | `src/lib/`                                             | Isomorphic helpers and client-safe DTO/schema contracts                                                                                | Third-party isomorphic libraries only                                                                                         |
 
 `platform` is infrastructure, not a domain module. It owns no domain tables.
 
@@ -96,8 +96,8 @@ Modules are assigned to fixed layers. **A module may import only modules in a st
 ### 3.1 Authentication vs authorization dependency direction
 
 - **`authorization` may import `auth`. `auth` must never import `authorization`.**
-- `auth` answers *who is this?* It resolves a session to a canonical user identity and account status. It makes no permission decisions and has no concept of roles.
-- `authorization` answers *what may this actor do?* It resolves identity → roles → effective permissions and evaluates permission keys and resource-level rules.
+- `auth` answers _who is this?_ It resolves a session to a canonical user identity and account status. It makes no permission decisions and has no concept of roles.
+- `authorization` answers _what may this actor do?_ It resolves identity → roles → effective permissions and evaluates permission keys and resource-level rules.
 - This direction prevents the classic cycle where sign-in needs roles and roles need sign-in. Authentication is complete before authorization is consulted.
 
 ---
@@ -294,28 +294,28 @@ Rules for the tree:
 
 ### 5.1 Standard module file roles
 
-| File | Responsibility | May use the database client |
-|---|---|---|
-| `index.ts` | Public re-exports only | No |
-| `schema.ts` | Drizzle table definitions owned by the module | No (types only) |
-| `validation.ts` | Zod input schemas and parsers | No |
-| `repository.ts` / `repository/` | All Drizzle queries and mutations for owned tables | Yes (`@/db/client`) |
-| `queries.ts` / `queries/` | Read services; authorization and visibility filtering; DTO shaping | No (calls repository) |
-| `service.ts` / `service/` | Write services, domain rules, transaction participation | No (type-only `DbExecutor` allowed) |
-| `read-models/` | Approved cross-module read-only queries (`analytics`, `administration`, `users` only) | Yes (`@/db/client`) |
-| `providers/` | Isolated external-provider adapters (`notifications` only) | No |
+| File                            | Responsibility                                                                        | May use the database client         |
+| ------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------- |
+| `index.ts`                      | Public re-exports only                                                                | No                                  |
+| `schema.ts`                     | Drizzle table definitions owned by the module                                         | No (types only)                     |
+| `validation.ts`                 | Zod input schemas and parsers                                                         | No                                  |
+| `repository.ts` / `repository/` | All Drizzle queries and mutations for owned tables                                    | Yes (`@/db/client`)                 |
+| `queries.ts` / `queries/`       | Read services; authorization and visibility filtering; DTO shaping                    | No (calls repository)               |
+| `service.ts` / `service/`       | Write services, domain rules, transaction participation                               | No (type-only `DbExecutor` allowed) |
+| `read-models/`                  | Approved cross-module read-only queries (`analytics`, `administration`, `users` only) | Yes (`@/db/client`)                 |
+| `providers/`                    | Isolated external-provider adapters (`notifications` only)                            | No                                  |
 
 Large modules may split `service.ts` and `repository.ts` into folders, provided `index.ts` remains the only public surface.
 
 ### 5.2 Service categories
 
-| Category | Location | Called by | Contains | Must not |
-|---|---|---|---|---|
-| Module query service | `modules/*/queries.ts` | Server Components, workflows, permitted modules | Visibility/authorization filtering, DTO shaping, read-only composition | Writes, HTTP, cache invalidation |
-| Module mutation service | `modules/*/service.ts` | Server Actions, route handlers, workflows | Domain rules, input validation, transaction participation | HTTP, cross-module side effects, independent commits |
-| Workflow (application service) | `src/workflows/` | Server Actions, route handlers, maintenance scripts | Sequencing, transaction boundary, post-commit effects | Domain rules, SQL, HTTP parsing |
-| Platform service | `src/platform/` | Modules, workflows, `app` | DB pool, config, errors, logging, rate limiting, cache, HTTP mapping | Domain rules, module imports |
-| Repository | `modules/*/repository.ts` | The owning module's services, queries, read models | Drizzle reads/writes for the module's own tables | Cross-module writes, business rules, authorization decisions |
+| Category                       | Location                  | Called by                                           | Contains                                                               | Must not                                                     |
+| ------------------------------ | ------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Module query service           | `modules/*/queries.ts`    | Server Components, workflows, permitted modules     | Visibility/authorization filtering, DTO shaping, read-only composition | Writes, HTTP, cache invalidation                             |
+| Module mutation service        | `modules/*/service.ts`    | Server Actions, route handlers, workflows           | Domain rules, input validation, transaction participation              | HTTP, cross-module side effects, independent commits         |
+| Workflow (application service) | `src/workflows/`          | Server Actions, route handlers, maintenance scripts | Sequencing, transaction boundary, post-commit effects                  | Domain rules, SQL, HTTP parsing                              |
+| Platform service               | `src/platform/`           | Modules, workflows, `app`                           | DB pool, config, errors, logging, rate limiting, cache, HTTP mapping   | Domain rules, module imports                                 |
+| Repository                     | `modules/*/repository.ts` | The owning module's services, queries, read models  | Drizzle reads/writes for the module's own tables                       | Cross-module writes, business rules, authorization decisions |
 
 There is no general-purpose "shared domain service" bucket. Cross-module reuse happens through a module's public API or a workflow. Shared code is limited to `platform` (server infrastructure) and `lib` (isomorphic helpers and contracts). This prevents a second, unowned domain layer from forming.
 
@@ -430,35 +430,35 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 
 Rows may import columns marked ✓. Everything else is forbidden.
 
-| ↓ imports → | platform | auth | authz | content | users | playback | reviews | moderation | notifications | analytics | administration | maintenance | workflows |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **platform** | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **auth** | ✓ | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **authorization** | ✓ | ✓ | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **content** | ✓ | ✓ | ✓ | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **users** | ✓ | ✓ | ✓ | ✓ | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **playback** | ✓ | ✓ | ✓ | ✓ | ✗ | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **reviews** | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **moderation** | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | — | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **notifications** | ✓ | ✓ | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ | — | ✗ | ✗ | ✗ | ✗ |
-| **analytics** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | — | ✗ | ✗ | ✗ |
-| **administration** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✗ |
-| **maintenance** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | — | ✗ |
-| **workflows** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
-| **app** | ✓ (limited) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **components** | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **lib** | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| ↓ imports →        | platform    | auth | authz | content | users | playback | reviews | moderation | notifications | analytics | administration | maintenance | workflows |
+| ------------------ | ----------- | ---- | ----- | ------- | ----- | -------- | ------- | ---------- | ------------- | --------- | -------------- | ----------- | --------- |
+| **platform**       | —           | ✗    | ✗     | ✗       | ✗     | ✗        | ✗       | ✗          | ✗             | ✗         | ✗              | ✗           | ✗         |
+| **auth**           | ✓           | —    | ✗     | ✗       | ✗     | ✗        | ✗       | ✗          | ✗             | ✗         | ✗              | ✗           | ✗         |
+| **authorization**  | ✓           | ✓    | —     | ✗       | ✗     | ✗        | ✗       | ✗          | ✗             | ✗         | ✗              | ✗           | ✗         |
+| **content**        | ✓           | ✓    | ✓     | —       | ✗     | ✗        | ✗       | ✗          | ✗             | ✗         | ✗              | ✗           | ✗         |
+| **users**          | ✓           | ✓    | ✓     | ✓       | —     | ✗        | ✗       | ✗          | ✗             | ✗         | ✗              | ✗           | ✗         |
+| **playback**       | ✓           | ✓    | ✓     | ✓       | ✗     | —        | ✗       | ✗          | ✗             | ✗         | ✗              | ✗           | ✗         |
+| **reviews**        | ✓           | ✓    | ✓     | ✓       | ✗     | ✗        | —       | ✗          | ✗             | ✗         | ✗              | ✗           | ✗         |
+| **moderation**     | ✓           | ✓    | ✓     | ✓       | ✓     | ✗        | ✓       | —          | ✗             | ✗         | ✗              | ✗           | ✗         |
+| **notifications**  | ✓           | ✓    | ✓     | ✗       | ✓     | ✗        | ✗       | ✗          | —             | ✗         | ✗              | ✗           | ✗         |
+| **analytics**      | ✓           | ✓    | ✓     | ✓       | ✓     | ✓        | ✓       | ✗          | ✗             | —         | ✗              | ✗           | ✗         |
+| **administration** | ✓           | ✓    | ✓     | ✓       | ✓     | ✓        | ✓       | ✓          | ✓             | ✓         | —              | ✓           | ✗         |
+| **maintenance**    | ✓           | ✓    | ✓     | ✓       | ✓     | ✓        | ✓       | ✓          | ✓             | ✓         | ✗              | —           | ✗         |
+| **workflows**      | ✓           | ✓    | ✓     | ✓       | ✓     | ✓        | ✓       | ✓          | ✓             | ✓         | ✓              | ✓           | —         |
+| **app**            | ✓ (limited) | ✓    | ✓     | ✓       | ✓     | ✓        | ✓       | ✓          | ✓             | ✓         | ✓              | ✓           | ✓         |
+| **components**     | ✗           | ✗    | ✗     | ✗       | ✗     | ✗        | ✗       | ✗          | ✗             | ✗         | ✗              | ✗           | ✗         |
+| **lib**            | ✗           | ✗    | ✗     | ✗       | ✗     | ✗        | ✗       | ✗          | ✗             | ✗         | ✗              | ✗           | ✗         |
 
 ### 7.1 Same-layer exceptions (exhaustive)
 
 Only these same-layer edges are permitted:
 
-| Edge | Reason |
-|---|---|
-| `users → content` | Validate that a bookmarked drama/movie exists and is publicly available |
-| `playback → content` | Resolve episode/movie metadata, ordering, and the stored source URL for watch queries |
-| `reviews → content` | Validate that the rated/reviewed content item exists and is publicly available |
-| `administration → maintenance` | Admin operational summaries read health, alerts, and task history |
+| Edge                           | Reason                                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------- |
+| `users → content`              | Validate that a bookmarked drama/movie exists and is publicly available               |
+| `playback → content`           | Resolve episode/movie metadata, ordering, and the stored source URL for watch queries |
+| `reviews → content`            | Validate that the rated/reviewed content item exists and is publicly available        |
+| `administration → maintenance` | Admin operational summaries read health, alerts, and task history                     |
 
 No other same-layer imports are allowed. Adding one requires a recorded decision.
 
@@ -502,21 +502,21 @@ Workflows are not a general abstraction. A single-module operation stays in that
 
 ### 8.3 Workflow catalog (initial)
 
-| Workflow | Modules coordinated | Why it cannot live in one module |
-|---|---|---|
-| `publish-content` | content, notifications (+ cache invalidation via platform) | Publishing writes content and creates notifications |
-| `replace-video-source` | content, playback | Updates the URL and resets progress atomically |
-| `permanently-delete-content` | content, users, playback, reviews, moderation, analytics | Purge plus cleanup of dependent records and anonymization |
-| `record-content-view` | analytics, content | Verifies availability, then records a deduplicated view |
-| `save-playback-progress` | playback, analytics | Persists progress and records bounded analytics in one request |
-| `moderate-review` | reviews, moderation, notifications | Removes a review, records the action, notifies the reporter |
-| `resolve-content-report` | moderation, notifications | Resolves a report and notifies the reporter |
-| `deactivate-user` | auth, users, notifications | Changes account status and emits a mandatory security notification |
-| `authorize-admin` | auth, authorization, administration, notifications | Grants roles, records the admin account, notifies |
-| `change-admin-role` | authorization, administration, notifications | Changes roles and emits a security notification |
-| `terminate-admin-session` | auth, administration, notifications | Revokes a session, records it, notifies |
-| `export-dataset` | administration, owning module | Builds an approved dataset across modules |
-| `import-dataset` | administration, owning module | Dry-run and apply metadata across modules |
+| Workflow                     | Modules coordinated                                        | Why it cannot live in one module                                   |
+| ---------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------ |
+| `publish-content`            | content, notifications (+ cache invalidation via platform) | Publishing writes content and creates notifications                |
+| `replace-video-source`       | content, playback                                          | Updates the URL and resets progress atomically                     |
+| `permanently-delete-content` | content, users, playback, reviews, moderation, analytics   | Purge plus cleanup of dependent records and anonymization          |
+| `record-content-view`        | analytics, content                                         | Verifies availability, then records a deduplicated view            |
+| `save-playback-progress`     | playback, analytics                                        | Persists progress and records bounded analytics in one request     |
+| `moderate-review`            | reviews, moderation, notifications                         | Removes a review, records the action, notifies the reporter        |
+| `resolve-content-report`     | moderation, notifications                                  | Resolves a report and notifies the reporter                        |
+| `deactivate-user`            | auth, users, notifications                                 | Changes account status and emits a mandatory security notification |
+| `authorize-admin`            | auth, authorization, administration, notifications         | Grants roles, records the admin account, notifies                  |
+| `change-admin-role`          | authorization, administration, notifications               | Changes roles and emits a security notification                    |
+| `terminate-admin-session`    | auth, administration, notifications                        | Revokes a session, records it, notifies                            |
+| `export-dataset`             | administration, owning module                              | Builds an approved dataset across modules                          |
+| `import-dataset`             | administration, owning module                              | Dry-run and apply metadata across modules                          |
 
 ### 8.4 Prohibited communication mechanisms
 
@@ -532,11 +532,11 @@ Workflows are not a general abstraction. A single-module operation stays in that
 
 ### 9.1 Rules
 
-| Entrypoint | Responsibility | Must not |
-|---|---|---|
-| **Server Component** (`app/**/page.tsx`, layouts) | Resolve actor, call one or more module **query** services, render | Mutate data, access repositories or the DB, call write services |
-| **Server Action** (`app/actions/**`) | Parse `FormData`, validate with Zod, resolve actor, call one workflow or one module **service**, map errors, revalidate cache tags | Contain domain rules, access the DB, duplicate REST logic |
-| **REST route handler** (`app/api/**/route.ts`) | Parse request (params/query/body), resolve actor, call one workflow or one module service, map result/errors to HTTP, set headers | Contain domain rules, access the DB, implement logic not present in the shared service |
+| Entrypoint                                        | Responsibility                                                                                                                     | Must not                                                                               |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Server Component** (`app/**/page.tsx`, layouts) | Resolve actor, call one or more module **query** services, render                                                                  | Mutate data, access repositories or the DB, call write services                        |
+| **Server Action** (`app/actions/**`)              | Parse `FormData`, validate with Zod, resolve actor, call one workflow or one module **service**, map errors, revalidate cache tags | Contain domain rules, access the DB, duplicate REST logic                              |
+| **REST route handler** (`app/api/**/route.ts`)    | Parse request (params/query/body), resolve actor, call one workflow or one module service, map result/errors to HTTP, set headers  | Contain domain rules, access the DB, implement logic not present in the shared service |
 
 Every entrypoint performs authentication/authorization checks. Every protected service re-checks independently.
 
@@ -556,27 +556,27 @@ Push subscription management is a client-driven mutation and uses a Server Actio
 
 ### 9.3 Examples
 
-| Operation | Entrypoint | Service/workflow |
-|---|---|---|
-| Public drama/movie details | Server Component | `content.getDramaDetails` / `content.getMovieDetails` + `analytics.getContentViewCount` |
-| Record a details-page view | REST `POST /api/analytics/view` | `workflows/record-content-view` |
-| Live search suggestions | REST `GET /api/search/suggestions` | `content.searchContent` |
-| Search results page | Server Component | `content.searchContent` |
-| Bookmark toggle | Server Action | `users.toggleBookmark` |
-| Playback heartbeat | REST `POST /api/playback/progress` | `workflows/save-playback-progress` |
-| Continue Watching page | Server Component | `playback.getContinueWatching` |
-| Submit rating/review | Server Action | `reviews.submitRating` / `reviews.submitReview` |
-| Submit content report | Server Action | `moderation.submitContentReport` |
-| Admin content list | Server Component (search params) | `content.listAdminContent` |
-| Publish episode/drama/movie | Server Action | `workflows/publish-content` |
-| Replace video source | Server Action | `workflows/replace-video-source` |
-| Permanently delete content | Server Action | `workflows/permanently-delete-content` |
-| CSV export | REST `GET /api/admin/exports/[dataset]` | `workflows/export-dataset` |
-| Admin dashboard | Server Component | `administration.getOperationalSummary` + `analytics.getAnalyticsOverview` |
-| Notification unread count | REST `GET /api/notifications/unread-count` | `notifications.getUnreadCount` |
-| Push subscribe/unsubscribe | Server Action | `notifications.upsertPushSubscription` / `removePushSubscription` |
-| Health | REST `GET /api/health` | `maintenance.getHealth` |
-| OpenAPI | REST `GET /api/openapi` | Static/generated document |
+| Operation                   | Entrypoint                                 | Service/workflow                                                                        |
+| --------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Public drama/movie details  | Server Component                           | `content.getDramaDetails` / `content.getMovieDetails` + `analytics.getContentViewCount` |
+| Record a details-page view  | REST `POST /api/analytics/view`            | `workflows/record-content-view`                                                         |
+| Live search suggestions     | REST `GET /api/search/suggestions`         | `content.searchContent`                                                                 |
+| Search results page         | Server Component                           | `content.searchContent`                                                                 |
+| Bookmark toggle             | Server Action                              | `users.toggleBookmark`                                                                  |
+| Playback heartbeat          | REST `POST /api/playback/progress`         | `workflows/save-playback-progress`                                                      |
+| Continue Watching page      | Server Component                           | `playback.getContinueWatching`                                                          |
+| Submit rating/review        | Server Action                              | `reviews.submitRating` / `reviews.submitReview`                                         |
+| Submit content report       | Server Action                              | `moderation.submitContentReport`                                                        |
+| Admin content list          | Server Component (search params)           | `content.listAdminContent`                                                              |
+| Publish episode/drama/movie | Server Action                              | `workflows/publish-content`                                                             |
+| Replace video source        | Server Action                              | `workflows/replace-video-source`                                                        |
+| Permanently delete content  | Server Action                              | `workflows/permanently-delete-content`                                                  |
+| CSV export                  | REST `GET /api/admin/exports/[dataset]`    | `workflows/export-dataset`                                                              |
+| Admin dashboard             | Server Component                           | `administration.getOperationalSummary` + `analytics.getAnalyticsOverview`               |
+| Notification unread count   | REST `GET /api/notifications/unread-count` | `notifications.getUnreadCount`                                                          |
+| Push subscribe/unsubscribe  | Server Action                              | `notifications.upsertPushSubscription` / `removePushSubscription`                       |
+| Health                      | REST `GET /api/health`                     | `maintenance.getHealth`                                                                 |
+| OpenAPI                     | REST `GET /api/openapi`                    | Static/generated document                                                               |
 
 ### 9.4 HTTP concerns stay at the edge
 
@@ -594,7 +594,7 @@ Request parsing, status-code mapping, headers, cookies, and response envelopes l
    - `modules/administration/read-models/` — admin operational summaries;
    - `modules/users/read-models/` — admin user listing over the `auth` identity table;
    - `modules/moderation/queries.ts` — the moderation queue combining content and review reports, documented as an approved read model.
-   Each read model documents the tables it reads, its owner, and why a public query is insufficient.
+     Each read model documents the tables it reads, its owner, and why a public query is insufficient.
 5. **Reporting is not a gatekeeper.** `analytics` is the reporting module, but the watch page reads `playback` + `content` directly, and the admin dashboard reads `administration` + `analytics`. Ordinary operational reads must not be forced through reporting.
 6. **Availability is enforced by the owner.** `content` enforces publication/Trash/empty-drama visibility. `playback` returns a source URL only after `content` confirms the content is publicly playable. A guessed URL or direct API call must not bypass this.
 7. **Sensitive projections are opt-in.** The video source URL is returned only by watch queries. Admin-only fields are returned only by admin query functions after authorization.
@@ -611,12 +611,12 @@ A module's `schema.ts` must not import another module's `schema.ts`. Cross-modul
 
 ### 11.1 Actor kinds
 
-| Actor | Construction | Typical use |
-|---|---|---|
-| `AnonymousActor` | No session; optional guest session id for analytics | Public reads, view counting |
-| `UserActor` | Session → active `auth` user | Authenticated features |
-| `AdminActor` | `UserActor` + resolved roles + effective permission set | Admin pages and operations |
-| `SystemActor` | Created only by a maintenance script; carries an explicit task identity and a narrow system permission set | Backups, retention, health, aggregation |
+| Actor            | Construction                                                                                               | Typical use                             |
+| ---------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `AnonymousActor` | No session; optional guest session id for analytics                                                        | Public reads, view counting             |
+| `UserActor`      | Session → active `auth` user                                                                               | Authenticated features                  |
+| `AdminActor`     | `UserActor` + resolved roles + effective permission set                                                    | Admin pages and operations              |
+| `SystemActor`    | Created only by a maintenance script; carries an explicit task identity and a narrow system permission set | Backups, retention, health, aggregation |
 
 Actors are server-generated. A request body, header, cookie value, or client state can never assert a user id, role, or permission.
 
@@ -683,15 +683,15 @@ Publishing with notifications, source replacement with progress reset, permanent
 
 `platform/errors` defines the base `AppError` with a stable `code`, a safe message, optional field errors, and an internal cause. Subclasses:
 
-| Error | Meaning | HTTP | Server Action result |
-|---|---|---|---|
-| `ValidationError` | Invalid input | 400 | `{ ok: false, code, fieldErrors }` |
-| `AuthenticationError` | No/invalid session | 401 | `{ ok: false, code }` |
-| `AuthorizationError` | Authenticated but not permitted | 403 | `{ ok: false, code }` |
-| `NotFoundError` | Missing or not visible | 404 | `{ ok: false, code }` |
-| `ConflictError` | State conflict, duplicate, invariant violation | 409 | `{ ok: false, code }` |
-| `RateLimitError` | Limit exceeded | 429 | `{ ok: false, code, retryAfter }` |
-| `InternalError` | Unexpected failure | 500 | `{ ok: false, code: "internal" }` |
+| Error                 | Meaning                                        | HTTP | Server Action result               |
+| --------------------- | ---------------------------------------------- | ---- | ---------------------------------- |
+| `ValidationError`     | Invalid input                                  | 400  | `{ ok: false, code, fieldErrors }` |
+| `AuthenticationError` | No/invalid session                             | 401  | `{ ok: false, code }`              |
+| `AuthorizationError`  | Authenticated but not permitted                | 403  | `{ ok: false, code }`              |
+| `NotFoundError`       | Missing or not visible                         | 404  | `{ ok: false, code }`              |
+| `ConflictError`       | State conflict, duplicate, invariant violation | 409  | `{ ok: false, code }`              |
+| `RateLimitError`      | Limit exceeded                                 | 429  | `{ ok: false, code, retryAfter }`  |
+| `InternalError`       | Unexpected failure                             | 500  | `{ ok: false, code: "internal" }`  |
 
 Modules may define domain errors that extend these classes (for example, `ContentNotPlayableError extends ConflictError`). They must not invent new transport semantics.
 
@@ -747,17 +747,17 @@ Modules may define domain errors that extend these classes (for example, `Conten
 
 Architecture rules are enforced by tooling, not only by documentation.
 
-| Rule | Enforcement |
-|---|---|
-| Layer/module dependency direction | `eslint-plugin-boundaries` (or equivalent zone rules) in Prompt 013 |
-| No circular dependencies | `import/no-cycle` across `src` |
-| Public API only (`modules/x/index.ts`) | `no-restricted-imports` pattern `@/modules/*/**` excluding `index.ts` |
-| Server-only modules | `server-only` imports + lint rule forbidding `@/modules/*` and `@/platform/*` in `components` and `"use client"` files |
+| Rule                                       | Enforcement                                                                                                                                                                                              |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Layer/module dependency direction          | `eslint-plugin-boundaries` (or equivalent zone rules) in Prompt 013                                                                                                                                      |
+| No circular dependencies                   | `import/no-cycle` across `src`                                                                                                                                                                           |
+| Public API only (`modules/x/index.ts`)     | `no-restricted-imports` pattern `@/modules/*/**` excluding `index.ts`                                                                                                                                    |
+| Server-only modules                        | `server-only` imports + lint rule forbidding `@/modules/*` and `@/platform/*` in `components` and `"use client"` files                                                                                   |
 | DB access only in repositories/read-models | `no-restricted-imports` for `@/db/client` outside `modules/*/repository*`, `modules/*/read-models*`, and `src/db`; `@/db/schema` only in `src/db`; workflows may import only `@/platform/db/transaction` |
-| Permission catalog single source | Typed `PermissionKey` union; lint forbids permission-looking string literals in guard calls |
-| Type safety | TypeScript strict mode; no unrestricted `any`; no ignored type errors |
-| Data ownership | Repository boundaries + code review + read-model allowlist review |
-| New module/dependency/exception | Requires a `DECISIONS.md` entry and an update to this document before implementation |
+| Permission catalog single source           | Typed `PermissionKey` union; lint forbids permission-looking string literals in guard calls                                                                                                              |
+| Type safety                                | TypeScript strict mode; no unrestricted `any`; no ignored type errors                                                                                                                                    |
+| Data ownership                             | Repository boundaries + code review + read-model allowlist review                                                                                                                                        |
+| New module/dependency/exception            | Requires a `DECISIONS.md` entry and an update to this document before implementation                                                                                                                     |
 
 CI runs install, type check, lint (including architecture rules), unit tests, integration tests, and production build. A pull request that violates a boundary fails before review.
 
@@ -785,37 +785,37 @@ CI runs install, type check, lint (including architecture rules), unit tests, in
 
 These do not block Prompt 003 and are recorded so later prompts do not guess:
 
-| Item | Status | Owner prompt |
-|---|---|---|
-| Package manager (npm available; pnpm not installed) | Resolved: npm, lockfile committed (D-018) | Prompt 006 |
-| PostgreSQL development credentials | Pending from user | Prompt 019 |
-| Git repository initialization | Resolved: initialized on `main` with GitHub `origin` | Prompt 006 |
-| Exact ESLint boundary configuration and plugin choice | Deferred, rules fixed here | Prompt 013 |
-| Path alias (`@/*` → `src/*`) and `src/` root | Implemented in Prompt 006 | Prompt 006 |
-| Browser push provider (FCM vs native Web Push) | Deferred behind provider interface | Notification phase |
-| Image delivery (Nginx static vs route handler) | Deferred; metadata owned by `content` | Image management prompt |
-| OpenAPI generation approach | Deferred | API documentation prompt |
+| Item                                                  | Status                                               | Owner prompt             |
+| ----------------------------------------------------- | ---------------------------------------------------- | ------------------------ |
+| Package manager (npm available; pnpm not installed)   | Resolved: npm, lockfile committed (D-018)            | Prompt 006               |
+| PostgreSQL development credentials                    | Pending from user                                    | Prompt 019               |
+| Git repository initialization                         | Resolved: initialized on `main` with GitHub `origin` | Prompt 006               |
+| Exact ESLint boundary configuration and plugin choice | Deferred, rules fixed here                           | Prompt 013               |
+| Path alias (`@/*` → `src/*`) and `src/` root          | Implemented in Prompt 006                            | Prompt 006               |
+| Browser push provider (FCM vs native Web Push)        | Deferred behind provider interface                   | Notification phase       |
+| Image delivery (Nginx static vs route handler)        | Deferred; metadata owned by `content`                | Image management prompt  |
+| OpenAPI generation approach                           | Deferred                                             | API documentation prompt |
 
 ---
 
 ## 20. Traceability
 
-| Module | Primary requirement sections |
-|---|---|
-| `auth` | §7.1, §12.2 |
-| `authorization` | §3.2, §12.1, §12.3 |
-| `content` | §4, §6, §8.3, §8.6–8.7 |
-| `users` | §7.1–7.2, §8.5 |
-| `playback` | §5, §7.3–7.4 |
-| `reviews` | §7.5, §9 |
-| `moderation` | §7.6, §9 |
-| `notifications` | §11 |
-| `analytics` | §10 |
+| Module           | Primary requirement sections     |
+| ---------------- | -------------------------------- |
+| `auth`           | §7.1, §12.2                      |
+| `authorization`  | §3.2, §12.1, §12.3               |
+| `content`        | §4, §6, §8.3, §8.6–8.7           |
+| `users`          | §7.1–7.2, §8.5                   |
+| `playback`       | §5, §7.3–7.4                     |
+| `reviews`        | §7.5, §9                         |
+| `moderation`     | §7.6, §9                         |
+| `notifications`  | §11                              |
+| `analytics`      | §10                              |
 | `administration` | §8.1–8.2, §8.5, §8.8–8.10, §12.3 |
-| `maintenance` | §13, §14 |
-| `workflows` | §4.6, §5.7, §8.3, §11.4, §13.3 |
-| Platform | §12, §15 |
-| Entrypoints | §15.9, §12.7 |
+| `maintenance`    | §13, §14                         |
+| `workflows`      | §4.6, §5.7, §8.3, §11.4, §13.3   |
+| Platform         | §12, §15                         |
+| Entrypoints      | §15.9, §12.7                     |
 
 ---
 

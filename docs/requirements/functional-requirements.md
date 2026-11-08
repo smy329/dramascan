@@ -2,7 +2,7 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform  
 **Version:** 1.0  
-**Date:** 2026-11-08  
+**Date:** 2026-11-08
 
 This document captures the functional requirements from REQUIREMENTS.md §3–§15, organized by domain. It is the authoritative reference for what the initial release must do.
 

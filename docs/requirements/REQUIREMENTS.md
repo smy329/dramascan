@@ -59,15 +59,15 @@ The initial architecture must remain a **low-RAM modular monolith**. The future 
 
 ### 3.1 Actors
 
-| Actor | Description |
-|---|---|
-| Guest | Unauthenticated visitor. Can browse published content, search, view details and playback, and share content. Cannot submit content reports; content reports require authentication. Has no personalized data. |
-| Authenticated user | Google-authenticated account. Has a private profile, bookmarks, playback progress, Continue Watching, watch history, ratings/reviews/reactions, reports, and notification preferences. |
-| Content Manager | Administrator responsible for content creation, editing, hierarchy, images, video sources, publication, and content organization. |
-| Moderator | Administrator responsible for user moderation, content reports, review reports, and review removal. |
-| Analyst | Read-only administrator with dashboard and analytics access. |
-| Super Admin | Full administrator. Controls administrators, roles, permissions, system configuration, permanent deletion, CSV export, backups, maintenance, and all operational controls. |
-| Custom role | A role created by Super Admin with an explicit set of action/resource permissions. |
+| Actor              | Description                                                                                                                                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Guest              | Unauthenticated visitor. Can browse published content, search, view details and playback, and share content. Cannot submit content reports; content reports require authentication. Has no personalized data. |
+| Authenticated user | Google-authenticated account. Has a private profile, bookmarks, playback progress, Continue Watching, watch history, ratings/reviews/reactions, reports, and notification preferences.                        |
+| Content Manager    | Administrator responsible for content creation, editing, hierarchy, images, video sources, publication, and content organization.                                                                             |
+| Moderator          | Administrator responsible for user moderation, content reports, review reports, and review removal.                                                                                                           |
+| Analyst            | Read-only administrator with dashboard and analytics access.                                                                                                                                                  |
+| Super Admin        | Full administrator. Controls administrators, roles, permissions, system configuration, permanent deletion, CSV export, backups, maintenance, and all operational controls.                                    |
+| Custom role        | A role created by Super Admin with an explicit set of action/resource permissions.                                                                                                                            |
 
 ### 3.2 Role rules
 
@@ -89,19 +89,19 @@ The initial architecture must remain a **low-RAM modular monolith**. The future 
 
 ### 4.1 Content types
 
-| Content type | Structure | Required characteristics |
-|---|---|---|
-| Season-based drama | Drama → Seasons → Episodes | Multiple seasons; each season has a title/label and deterministic order; episodes belong to a season. |
-| Flat drama | Drama → Episodes | Episodes belong directly to the drama; no artificial season records. |
-| Standalone movie | Movie → single video | Independent content type; no seasons or episodes; own canonical URL and playback source. |
-| Season | Child of one drama | Title/season label, ordering position, publication state, episodes. |
-| Episode | Child of a drama, optionally of a season | Title, description, episode number, ordering position, thumbnail, publication state, direct video source, subtitle tracks. |
-| Category | Reusable taxonomy | Unique name and slug, ordering, visibility; many-to-many with dramas and movies. |
-| Platform | Reusable taxonomy | Unique name and slug, ordering; many-to-many with dramas and movies. |
-| Subtitle track | Playback metadata | Language label, source URL, default-track flag; attached to an episode or standalone movie. |
-| Information page | Public page | Terms, Privacy, Community Guidelines, Copyright/DMCA, About, Contact; title, slug, content, SEO fields, publication state, preview, footer visibility/order. |
-| Announcement | Operational content | Manually published website announcement with notification behavior; no scheduling. |
-| Similar-drama link | Recommendation relationship | Drama-to-drama recommendation with manual ordering; no self-reference or duplicates. |
+| Content type       | Structure                                | Required characteristics                                                                                                                                     |
+| ------------------ | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Season-based drama | Drama → Seasons → Episodes               | Multiple seasons; each season has a title/label and deterministic order; episodes belong to a season.                                                        |
+| Flat drama         | Drama → Episodes                         | Episodes belong directly to the drama; no artificial season records.                                                                                         |
+| Standalone movie   | Movie → single video                     | Independent content type; no seasons or episodes; own canonical URL and playback source.                                                                     |
+| Season             | Child of one drama                       | Title/season label, ordering position, publication state, episodes.                                                                                          |
+| Episode            | Child of a drama, optionally of a season | Title, description, episode number, ordering position, thumbnail, publication state, direct video source, subtitle tracks.                                   |
+| Category           | Reusable taxonomy                        | Unique name and slug, ordering, visibility; many-to-many with dramas and movies.                                                                             |
+| Platform           | Reusable taxonomy                        | Unique name and slug, ordering; many-to-many with dramas and movies.                                                                                         |
+| Subtitle track     | Playback metadata                        | Language label, source URL, default-track flag; attached to an episode or standalone movie.                                                                  |
+| Information page   | Public page                              | Terms, Privacy, Community Guidelines, Copyright/DMCA, About, Contact; title, slug, content, SEO fields, publication state, preview, footer visibility/order. |
+| Announcement       | Operational content                      | Manually published website announcement with notification behavior; no scheduling.                                                                           |
+| Similar-drama link | Recommendation relationship              | Drama-to-drama recommendation with manual ordering; no self-reference or duplicates.                                                                         |
 
 ### 4.2 Hierarchy rules
 
@@ -1191,15 +1191,15 @@ The initial release must not implement any item in §16.2. The items below are p
 
 The following decisions were approved by the user on 2026-11-08. They resolve the internal inconsistencies in the Detailed Pack and are recorded in `DECISIONS.md`.
 
-| ID | Issue | Approved resolution | Impact |
-|---|---|---|---|
-| OD-01 | Movie ratings and reviews | Content-level ratings and reviews apply to dramas and standalone movies; episodes are excluded. Movie details pages expose rating and review features. | Ratings/reviews link to a content item (drama or movie). Highest Rated includes both. CSV export and moderation cover both. |
-| OD-02 | Movie view counting | Content-level view counting applies to dramas and standalone movies using the same one-view-per-visitor-per-content-item-per-rolling-six-hour rule. | Analytics records the content item type; movie details pages display view counts. |
-| OD-03 | Content report authentication | Content reports require authentication. | The report form is available to authenticated users; rate limiting still applies. |
-| OD-04 | Movie subtitles | Subtitle tracks are supported for episodes and standalone movies. | Subtitle metadata attaches to playable content (episode or movie); the admin movie form supports tracks. |
-| OD-05 | Account/security notification triggers | Initial mandatory triggers: user account deactivation/reactivation; administrator account authorization/deactivation; administrator role changes; administrator session termination. No promise of Google-side security events. | The notification event model includes these mandatory triggers; they cannot be disabled through ordinary preferences. |
-| OD-06 | Movie watch history | Standalone movies are included in Watch History as content-level entries. | Watch-history records support dramas, movies, and episodes; last-watched date and cross-device sync apply. |
-| OD-07 | Movie canonical URL | `/movie/{stableId}/{slug}` using the stable movie ID and current slug; slug changes redirect to the canonical URL. | Routing, metadata, sitemap, and redirects use the movie pattern. |
+| ID    | Issue                                  | Approved resolution                                                                                                                                                                                                             | Impact                                                                                                                      |
+| ----- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| OD-01 | Movie ratings and reviews              | Content-level ratings and reviews apply to dramas and standalone movies; episodes are excluded. Movie details pages expose rating and review features.                                                                          | Ratings/reviews link to a content item (drama or movie). Highest Rated includes both. CSV export and moderation cover both. |
+| OD-02 | Movie view counting                    | Content-level view counting applies to dramas and standalone movies using the same one-view-per-visitor-per-content-item-per-rolling-six-hour rule.                                                                             | Analytics records the content item type; movie details pages display view counts.                                           |
+| OD-03 | Content report authentication          | Content reports require authentication.                                                                                                                                                                                         | The report form is available to authenticated users; rate limiting still applies.                                           |
+| OD-04 | Movie subtitles                        | Subtitle tracks are supported for episodes and standalone movies.                                                                                                                                                               | Subtitle metadata attaches to playable content (episode or movie); the admin movie form supports tracks.                    |
+| OD-05 | Account/security notification triggers | Initial mandatory triggers: user account deactivation/reactivation; administrator account authorization/deactivation; administrator role changes; administrator session termination. No promise of Google-side security events. | The notification event model includes these mandatory triggers; they cannot be disabled through ordinary preferences.       |
+| OD-06 | Movie watch history                    | Standalone movies are included in Watch History as content-level entries.                                                                                                                                                       | Watch-history records support dramas, movies, and episodes; last-watched date and cross-device sync apply.                  |
+| OD-07 | Movie canonical URL                    | `/movie/{stableId}/{slug}` using the stable movie ID and current slug; slug changes redirect to the canonical URL.                                                                                                              | Routing, metadata, sitemap, and redirects use the movie pattern.                                                            |
 
 ### 17.1 Configuration values not fixed by the pack
 
@@ -1219,23 +1219,23 @@ These are implementation settings, not unresolved product features. They must be
 
 ## 18. Traceability to the Detailed Pack
 
-| Phase / prompts | Primary requirement sections |
-|---|---|
-| Phase 0 (001–005) | §1, §2, §16, §17 |
-| Phase 1 (006–018) | §2, §15 |
-| Phase 2 (019–029) | §4, §7, §10, §11 |
-| Phase 3 (030–041) | §3, §12 |
-| Phase 4 (042–052) | §6, §8 |
-| Phase 5 (053–074) | §4, §8 |
-| Phase 6 (075–090) | §5, §8 |
-| Phase 7 (091–103) | §5, §6, §7 |
-| Phase 8 (104–114) | §7 |
-| Phase 9 (115–120) | §7, §9 |
-| Phase 10 (121–138) | §6 |
-| Phase 11 (139–154) | §10, §11 |
-| Phase 12 (155–174) | §6, §8, §9 |
-| Phase 13 (175–218) | §10, §12, §13, §14 |
-| Prompts 219–220 | §14, §15, §18 |
+| Phase / prompts    | Primary requirement sections |
+| ------------------ | ---------------------------- |
+| Phase 0 (001–005)  | §1, §2, §16, §17             |
+| Phase 1 (006–018)  | §2, §15                      |
+| Phase 2 (019–029)  | §4, §7, §10, §11             |
+| Phase 3 (030–041)  | §3, §12                      |
+| Phase 4 (042–052)  | §6, §8                       |
+| Phase 5 (053–074)  | §4, §8                       |
+| Phase 6 (075–090)  | §5, §8                       |
+| Phase 7 (091–103)  | §5, §6, §7                   |
+| Phase 8 (104–114)  | §7                           |
+| Phase 9 (115–120)  | §7, §9                       |
+| Phase 10 (121–138) | §6                           |
+| Phase 11 (139–154) | §10, §11                     |
+| Phase 12 (155–174) | §6, §8, §9                   |
+| Phase 13 (175–218) | §10, §12, §13, §14           |
+| Prompts 219–220    | §14, §15, §18                |
 
 ---
 
@@ -1254,21 +1254,20 @@ This requirements document is accepted when:
 
 ## 20. Glossary
 
-| Term | Meaning |
-|---|---|
-| Content item | A drama or standalone movie. |
-| Season-based drama | A drama whose episodes are grouped into seasons. |
-| Flat drama | A drama whose episodes belong directly to the drama without seasons. |
-| Standalone movie | An independent single-video content type with no seasons or episodes. |
-| Episode | A playable unit within a drama, optionally within a season. |
-| Publication state | Whether content is draft, published, unpublished, or trashed. |
-| Trash | Soft-deleted content retained for restoration until permanent deletion or retention expiry. |
-| Source replacement | An explicit, preview-verified replacement of an episode's direct video URL that resets progress for that episode. |
-| Completion threshold | The configurable percentage/point at which an episode is considered watched. |
-| Continue Watching | A personalized list of unfinished content with resume actions. |
-| Watch history | A historical record of recently watched dramas and episodes, separate from Continue Watching. |
-| Effective permissions | The union of permissions from all roles assigned to an administrator. |
-| Maintenance command | A short-lived systemd-triggered operational task, not a persistent worker or queue job. |
-| Hard exclusion | A capability that must not be implemented in the initial release. |
-| Future upgrade | A capability deferred beyond the initial release and requiring separate approval. |
-
+| Term                  | Meaning                                                                                                           |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Content item          | A drama or standalone movie.                                                                                      |
+| Season-based drama    | A drama whose episodes are grouped into seasons.                                                                  |
+| Flat drama            | A drama whose episodes belong directly to the drama without seasons.                                              |
+| Standalone movie      | An independent single-video content type with no seasons or episodes.                                             |
+| Episode               | A playable unit within a drama, optionally within a season.                                                       |
+| Publication state     | Whether content is draft, published, unpublished, or trashed.                                                     |
+| Trash                 | Soft-deleted content retained for restoration until permanent deletion or retention expiry.                       |
+| Source replacement    | An explicit, preview-verified replacement of an episode's direct video URL that resets progress for that episode. |
+| Completion threshold  | The configurable percentage/point at which an episode is considered watched.                                      |
+| Continue Watching     | A personalized list of unfinished content with resume actions.                                                    |
+| Watch history         | A historical record of recently watched dramas and episodes, separate from Continue Watching.                     |
+| Effective permissions | The union of permissions from all roles assigned to an administrator.                                             |
+| Maintenance command   | A short-lived systemd-triggered operational task, not a persistent worker or queue job.                           |
+| Hard exclusion        | A capability that must not be implemented in the initial release.                                                 |
+| Future upgrade        | A capability deferred beyond the initial release and requiring separate approval.                                 |

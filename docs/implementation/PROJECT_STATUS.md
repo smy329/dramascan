@@ -4,7 +4,7 @@
 **Baseline date:** 2026-11-07
 **Last updated:** 2026-11-08
 **Current prompt:** 014 — Configure Server and Client Module Boundaries
-**Status:** Prompts 009–013 completed; Prompt 014 in progress
+**Status:** Prompts 009–014 completed; Prompt 015 in progress
 
 ---
 
@@ -145,8 +145,14 @@ No product-scope decisions remain open.
    reviewed, and expand-contract.
 4. Documentation is split by responsibility; `PROJECT_STATUS.md` is the single progress
    source with one row per prompt.
-5. Services throw typed errors; entrypoints map them once; logging is Pino JSON with
-   redaction.
+5. Services throw typed errors; entrypoints map them once using `platform/http` mapping;
+   logging is Pino JSON with redaction.
+6. **Error hierarchy** (`src/platform/errors/`) owns `AppError` base class with seven
+   subclasses (`ValidationError`, `AuthenticationError`, `AuthorizationError`, `NotFoundError`,
+   `ConflictError`, `RateLimitError`, `InternalError`) each with stable snake_case codes
+   and HTTP status mappings. Domain services throw typed errors; entrypoints (`app` and
+   `src/platform/Http`) map them to HTTP responses or `ActionResult` once, preserving
+   `requestId` correlation and never exposing causes/stack traces to clients.
 
 The development rulebook is `CONVENTIONS.md`. Future agents must read it and the relevant
 area document before changing code.

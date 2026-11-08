@@ -1,4 +1,4 @@
-import { SiteIntro } from "@/components/public/SiteIntro";
+import { SiteIntro } from '@/components/public/SiteIntro';
 
 export default function HomePage() {
   return (

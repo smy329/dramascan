@@ -2,7 +2,7 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform  
 **Version:** 1.0  
-**Date:** 2026-11-08  
+**Date:** 2026-11-08
 
 This document defines the canonical directory structure and file placement rules for the DramaScan codebase. It is derived from `ARCHITECTURE.md` §4 and `CONVENTIONS.md` §2 and §3, and must not be contradicted without a new recorded decision.
 
@@ -12,20 +12,20 @@ This document defines the canonical directory structure and file placement rules
 
 The project root contains:
 
-| File/Folder | Purpose |
-|---|---|
-| `AGENTS.md` | Global instructions for OpenCode and coding agents (must remain in root). |
-| `README.md` | Concise project introduction; points to `docs/README.md` for detailed documentation. |
-| `package.json` | Project configuration and scripts. |
-| `tsconfig.json` | TypeScript compiler configuration. |
-| `docs/` | Project documentation directory (see `docs/README.md`). |
-| `src/` | Application source code (full tree defined in `ARCHITECTURE.md` §4). |
-| `public/` | Static, committed assets only. Not user uploads. |
-| `tests/` | Test fixtures and configuration. |
-| `drizzle/` | Generated SQL migrations and Drizzle metadata. |
-| `.gitignore` | Git ignore patterns. |
-| `.env.example` | Example environment variables (committed). |
-| `.env.local` | Local overrides (ignored; not committed). |
+| File/Folder     | Purpose                                                                              |
+| --------------- | ------------------------------------------------------------------------------------ |
+| `AGENTS.md`     | Global instructions for OpenCode and coding agents (must remain in root).            |
+| `README.md`     | Concise project introduction; points to `docs/README.md` for detailed documentation. |
+| `package.json`  | Project configuration and scripts.                                                   |
+| `tsconfig.json` | TypeScript compiler configuration.                                                   |
+| `docs/`         | Project documentation directory (see `docs/README.md`).                              |
+| `src/`          | Application source code (full tree defined in `ARCHITECTURE.md` §4).                 |
+| `public/`       | Static, committed assets only. Not user uploads.                                     |
+| `tests/`        | Test fixtures and configuration.                                                     |
+| `drizzle/`      | Generated SQL migrations and Drizzle metadata.                                       |
+| `.gitignore`    | Git ignore patterns.                                                                 |
+| `.env.example`  | Example environment variables (committed).                                           |
+| `.env.local`    | Local overrides (ignored; not committed).                                            |
 
 ---
 
@@ -284,15 +284,15 @@ drizzle/
 
 These files exist at the root but are **not** part of the application source or documentation:
 
-| File | Purpose | Status |
-|---|---|---|
-| `.env.example` | Example env vars with safe placeholders and comments | Committed to repo |
-| `.env.local` | Local overrides (not committed) | Ignored by `.gitignore` |
-| `node_modules/` | Dependencies; installed via npm | Ignored by `.gitignore` |
-| `.next/` | Next.js build output | Ignored by `.gitignore` |
-| `drizzle/` | Generated migrations (during development) | Not committed until reviewed |
-| `*.profiler` | Performance profiling data | Not committed |
-| `coverage/` | Test coverage reports | Not committed |
+| File            | Purpose                                              | Status                       |
+| --------------- | ---------------------------------------------------- | ---------------------------- |
+| `.env.example`  | Example env vars with safe placeholders and comments | Committed to repo            |
+| `.env.local`    | Local overrides (not committed)                      | Ignored by `.gitignore`      |
+| `node_modules/` | Dependencies; installed via npm                      | Ignored by `.gitignore`      |
+| `.next/`        | Next.js build output                                 | Ignored by `.gitignore`      |
+| `drizzle/`      | Generated migrations (during development)            | Not committed until reviewed |
+| `*.profiler`    | Performance profiling data                           | Not committed                |
+| `coverage/`     | Test coverage reports                                | Not committed                |
 
 ---
 
@@ -343,15 +343,15 @@ These files exist at the root but are **not** part of the application source or 
 
 ## 8. Progress Tracking Format
 
-| Field | Description |
-|---|---|
-| Prompt Number | Original micro-prompt number |
-| Prompt Title | Name of the implementation prompt |
-| Status | Not Started / In Progress / Completed / Blocked |
-| Changed Files | Files created, modified, or removed |
-| Tests | Tests executed and their results |
+| Field             | Description                                        |
+| ----------------- | -------------------------------------------------- |
+| Prompt Number     | Original micro-prompt number                       |
+| Prompt Title      | Name of the implementation prompt                  |
+| Status            | Not Started / In Progress / Completed / Blocked    |
+| Changed Files     | Files created, modified, or removed                |
+| Tests             | Tests executed and their results                   |
 | Unresolved Issues | Remaining problems or decisions requiring approval |
-| Completion Date | Date of completion |
+| Completion Date   | Date of completion                                 |
 
 Do not falsely mark prompts as completed. Preserve existing progress information.
 

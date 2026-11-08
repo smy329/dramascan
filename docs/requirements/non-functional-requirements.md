@@ -2,7 +2,7 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform  
 **Version:** 1.0  
-**Date:** 2026-11-08  
+**Date:** 2026-11-08
 
 This document captures the non-functional requirements from REQUIREMENTS.md §15, organized by category. It is the authoritative reference for how the system should behave beyond functional behavior.
 
@@ -166,14 +166,14 @@ This document captures the non-functional requirements from REQUIREMENTS.md §15
 
 ### 7.2 Log Levels
 
-| Level | Use |
-|---|---|
-| `fatal` | Process cannot continue |
-| `error` | Unexpected failure requiring attention |
-| `warn` | Expected but noteworthy failure (rate limit, validation spike, delivery failure) |
-| `info` | Request completion, state changes, maintenance results |
-| `debug` | Development diagnostics |
-| `trace` | Rare deep diagnostics; not enabled in production by default |
+| Level   | Use                                                                              |
+| ------- | -------------------------------------------------------------------------------- |
+| `fatal` | Process cannot continue                                                          |
+| `error` | Unexpected failure requiring attention                                           |
+| `warn`  | Expected but noteworthy failure (rate limit, validation spike, delivery failure) |
+| `info`  | Request completion, state changes, maintenance results                           |
+| `debug` | Development diagnostics                                                          |
+| `trace` | Rare deep diagnostics; not enabled in production by default                      |
 
 - Production default: `info`. Development default: `debug`. Override with `LOG_LEVEL`.
 - Log one request-completion line per request, not one per database query.

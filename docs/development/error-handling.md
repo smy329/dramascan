@@ -2,7 +2,7 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform  
 **Version:** 1.0  
-**Date:** 2026-11-08  
+**Date:** 2026-11-08
 
 This document defines the error handling conventions, derived from `CONVENTIONS.md` §7 and established by Prompt 004. It covers the error hierarchy, rules for services and entrypoints, and client response mapping.
 
@@ -12,15 +12,15 @@ This document defines the error handling conventions, derived from `CONVENTIONS.
 
 `platform/errors` owns the base `AppError` with a stable `code`, a safe message, optional field errors, and an internal cause. Subclasses are defined below.
 
-| Error | Meaning | HTTP | Server Action Result |
-|---|---|---|---|
-| `ValidationError` | Invalid input | 400 | `{ ok: false, code, fieldErrors }` |
-| `AuthenticationError` | No/invalid session | 401 | `{ ok: false, code }` |
-| `AuthorizationError` | Authenticated but not permitted | 403 | `{ ok: false, code }` |
-| `NotFoundError` | Missing or not visible | 404 | `{ ok: false, code }` |
-| `ConflictError` | State conflict, duplicate, invariant violation | 409 | `{ ok: false, code }` |
-| `RateLimitError` | Limit exceeded | 429 | `{ ok: false, code, retryAfter }` |
-| `InternalError` | Unexpected failure | 500 | `{ ok: false, code: "internal" }` |
+| Error                 | Meaning                                        | HTTP | Server Action Result               |
+| --------------------- | ---------------------------------------------- | ---- | ---------------------------------- |
+| `ValidationError`     | Invalid input                                  | 400  | `{ ok: false, code, fieldErrors }` |
+| `AuthenticationError` | No/invalid session                             | 401  | `{ ok: false, code }`              |
+| `AuthorizationError`  | Authenticated but not permitted                | 403  | `{ ok: false, code }`              |
+| `NotFoundError`       | Missing or not visible                         | 404  | `{ ok: false, code }`              |
+| `ConflictError`       | State conflict, duplicate, invariant violation | 409  | `{ ok: false, code }`              |
+| `RateLimitError`      | Limit exceeded                                 | 429  | `{ ok: false, code, retryAfter }`  |
+| `InternalError`       | Unexpected failure                             | 500  | `{ ok: false, code: "internal" }`  |
 
 Domain errors may extend these classes (for example, `ContentNotPlayableError extends ConflictError` with code `content_not_playable`). They must not invent new transport semantics.
 
@@ -59,15 +59,15 @@ Domain errors may extend these classes (for example, `ContentNotPlayableError ex
 
 `platform/http` maps errors to HTTP responses. The mapping is applied once and consistently:
 
-| Error | HTTP | Client Response |
-|---|---|---|
-| `ValidationError` | 400 | `{ error: { code: "validation_error", message, fieldErrors, requestId } }` |
-| `AuthenticationError` | 401 | `{ error: { code: "authentication_required", message, requestId } }` |
-| `AuthorizationError` | 403 | `{ error: { code: "forbidden", message, requestId } }` |
-| `NotFoundError` | 404 | `{ error: { code: "not_found", message, requestId } }` |
-| `ConflictError` | 409 | `{ error: { code: "conflict", message, requestId } }` |
-| `RateLimitError` | 429 | `{ error: { code: "rate_limited", message, requestId, retryAfter } }` |
-| `InternalError` | 500 | `{ error: { code: "internal_error", message, requestId } }` |
+| Error                 | HTTP | Client Response                                                            |
+| --------------------- | ---- | -------------------------------------------------------------------------- |
+| `ValidationError`     | 400  | `{ error: { code: "validation_error", message, fieldErrors, requestId } }` |
+| `AuthenticationError` | 401  | `{ error: { code: "authentication_required", message, requestId } }`       |
+| `AuthorizationError`  | 403  | `{ error: { code: "forbidden", message, requestId } }`                     |
+| `NotFoundError`       | 404  | `{ error: { code: "not_found", message, requestId } }`                     |
+| `ConflictError`       | 409  | `{ error: { code: "conflict", message, requestId } }`                      |
+| `RateLimitError`      | 429  | `{ error: { code: "rate_limited", message, requestId, retryAfter } }`      |
+| `InternalError`       | 500  | `{ error: { code: "internal_error", message, requestId } }`                |
 
 Client-facing messages are safe; causes and stack traces stay in logs.
 
@@ -86,15 +86,15 @@ Client-facing messages are safe; causes and stack traces stay in logs.
 
 This document defines the progress tracker format, as specified in `CONVENTIONS.md` §13 and `DECISIONS.md` D-016.
 
-| Field | Description |
-|---|---|
-| Prompt Number | Original micro-prompt number (e.g., `004`) |
-| Prompt Title | Name of the implementation prompt (e.g., `Create project documentation and development conventions`) |
-| Status | Not Started / In Progress / Completed / Blocked |
-| Changed Files | Files created, modified, or removed |
-| Tests | Tests executed and their results (command and outcome, or `N/A` with reason) |
-| Unresolved Issues | Remaining problems or decisions requiring approval |
-| Completion Date | Date of completion (ISO format, e.g., `2026-11-08`) |
+| Field             | Description                                                                                          |
+| ----------------- | ---------------------------------------------------------------------------------------------------- |
+| Prompt Number     | Original micro-prompt number (e.g., `004`)                                                           |
+| Prompt Title      | Name of the implementation prompt (e.g., `Create project documentation and development conventions`) |
+| Status            | Not Started / In Progress / Completed / Blocked                                                      |
+| Changed Files     | Files created, modified, or removed                                                                  |
+| Tests             | Tests executed and their results (command and outcome, or `N/A` with reason)                         |
+| Unresolved Issues | Remaining problems or decisions requiring approval                                                   |
+| Completion Date   | Date of completion (ISO format, e.g., `2026-11-08`)                                                  |
 
 A prompt is not complete until its status row, the next task, and applicable changelog or decision entries are accurate.
 

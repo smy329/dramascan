@@ -2,7 +2,7 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform  
 **Version:** 1.0  
-**Date:** 2026-11-08  
+**Date:** 2026-11-08
 
 This document defines the REST and Server Action response conventions, derived from `CONVENTIONS.md` §6 and established by Prompt 004. It is the human-readable contract for endpoints and application operations. The OpenAPI document is the machine-readable contract.
 

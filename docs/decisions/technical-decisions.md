@@ -2,7 +2,7 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform  
 **Version:** 1.0  
-**Date:** 2026-11-08  
+**Date:** 2026-11-08
 
 This document records all finalized technical decisions, as approved by the user or established by the specification. Each entry resolves a specific issue and must not be silently contradicted.
 
@@ -11,7 +11,7 @@ This document records all finalized technical decisions, as approved by the user
 ## D-000 — Specification Authority
 
 **Date:** 2026-11-07  
-**Status:** Approved by specification  
+**Status:** Approved by specification
 
 **Decision:** The Detailed Micro-Prompt Development Pack (`AGENTS.md` and `Detailed MICRO-PROMPT DEVELOPMENT PACK.txt`) is authoritative. The older `MASTER DEVELOPMENT PROMPT.txt` is historical reference only and is not authoritative where it conflicts with the Detailed Pack.
 
@@ -27,7 +27,7 @@ This document records all finalized technical decisions, as approved by the user
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** OD-01  
+**Resolves:** OD-01
 
 **Decision:** Ratings and written reviews are content-level features for dramas and standalone movies. Episodes do not support ratings or reviews. Movie details pages expose rating and review features.
 
@@ -44,7 +44,7 @@ This document records all finalized technical decisions, as approved by the user
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** OD-02  
+**Resolves:** OD-02
 
 **Decision:** View counting is content-level for dramas and standalone movies. A view is counted when a visitor views a drama or movie details page, at most once per visitor per content item during a rolling six-hour window.
 
@@ -61,7 +61,7 @@ This document records all finalized technical decisions, as approved by the user
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** OD-03  
+**Resolves:** OD-03
 
 **Decision:** Submitting a content report requires authentication.
 
@@ -77,7 +77,7 @@ This document records all finalized technical decisions, as approved by the user
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** OD-04  
+**Resolves:** OD-04
 
 **Decision:** Subtitle tracks are supported for episodes and standalone movies.
 
@@ -93,7 +93,7 @@ This document records all finalized technical decisions, as approved by the user
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** OD-05  
+**Resolves:** OD-05
 
 **Decision:** The initial mandatory account/security notification triggers are:
 
@@ -116,7 +116,7 @@ The platform does not promise Google-side security notifications it cannot relia
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** OD-06  
+**Resolves:** OD-06
 
 **Decision:** Watch History includes standalone movies as content-level entries, in addition to dramas and episodes.
 
@@ -133,7 +133,7 @@ The platform does not promise Google-side security notifications it cannot relia
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** OD-07  
+**Resolves:** OD-07
 
 **Decision:** Standalone movies use the canonical URL format `/movie/{stableId}/{slug}`.
 
@@ -150,7 +150,7 @@ The platform does not promise Google-side security notifications it cannot relia
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** Prompt 003  
+**Resolves:** Prompt 003
 
 **Decision:** The application is a single-deployable Next.js modular monolith with feature modules over a shared platform layer, plus an explicit application-level workflow layer.
 
@@ -175,7 +175,7 @@ The platform does not promise Google-side security notifications it cannot relia
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** Prompt 003  
+**Resolves:** Prompt 003
 
 **Decision:** Modules never import another module to trigger a side effect. Cross-module operations are coordinated by a thin workflow in `src/workflows/` that calls each participating module's public API independently with explicit, validated payloads and a trusted actor context. Workflows own sequencing and transaction boundaries, not domain rules. Single-module operations remain in that module's service; no workflow is created for them.
 
@@ -192,7 +192,7 @@ The platform does not promise Google-side security notifications it cannot relia
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** Prompt 003  
+**Resolves:** Prompt 003
 
 **Decision:** Server Components perform all public and admin page reads through module query services. Server Actions perform form submissions and mutations through the relevant service or workflow. REST route handlers exist only for client-driven reads/polling, analytics beacons, exports/downloads, Better Auth, health checks, OpenAPI, and explicitly approved external integrations. Server Actions and REST call the same services and guards; no parallel business logic is permitted.
 
@@ -209,7 +209,7 @@ The platform does not promise Google-side security notifications it cannot relia
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** Prompt 003  
+**Resolves:** Prompt 003
 
 **Decision:** Each module exclusively owns and writes its tables. Cross-module reads normally use the owner's public query API. Cross-module JOINs are permitted only in explicitly documented read-only locations: `analytics/read-models/` (reporting), `administration/read-models/` (operational summaries), `users/read-models/` (admin user listing over `auth` identity), and the moderation queue query. `analytics` is the reporting module but is not a mandatory intermediary for watch-page or admin operational reads.
 
@@ -226,7 +226,7 @@ The platform does not promise Google-side security notifications it cannot relia
 
 **Date:** 2026-11-08  
 **Status:** Approved by user  
-**Resolves:** Prompt 003  
+**Resolves:** Prompt 003
 
 **Decision:** A workflow that requires atomicity opens one PostgreSQL transaction through `platform/db/transaction.ts` and passes the same `DbExecutor` explicitly to every participating module operation. Repositories and services accept the executor and never open or commit a competing transaction. Any thrown error rolls back; partial writes are not allowed for all-or-nothing operations.
 
@@ -242,7 +242,7 @@ The platform does not promise Google-side security notifications it cannot relia
 
 **Date:** 2026-11-08  
 **Status:** Established by Prompt 004 (convention choice; supersedable)  
-**Resolves:** Prompt 004  
+**Resolves:** Prompt 004
 
 **Context:** Prompt 004 requires consistent database naming before any schema exists. Prompt 020 will implement the schema; without a fixed identity and naming strategy, modules would choose incompatible keys and timestamps.
 
@@ -261,7 +261,7 @@ The platform does not promise Google-side security notifications it cannot relia
 
 **Date:** 2026-11-08  
 **Status:** Established by Prompt 004 (convention choice; supersedable)  
-**Resolves:** Prompt 004  
+**Resolves:** Prompt 004
 
 **Context:** Prompt 004 requires consistent API response conventions across REST endpoints and Server Actions. Two entrypoints must not produce different shapes for the same failure.
 
@@ -280,7 +280,7 @@ The platform does not promise Google-side security notifications it cannot relia
 
 **Date:** 2026-11-08  
 **Status:** Established by Prompt 004 (convention choice; supersedable)  
-**Resolves:** Prompt 004  
+**Resolves:** Prompt 004
 
 **Context:** Prompt 004 requires testing and migration practices before the database and CI exist. Unsafe migration habits are difficult to reverse once production data exists.
 
@@ -299,7 +299,7 @@ The platform does not promise Google-side security notifications it cannot relia
 
 **Date:** 2026-11-08  
 **Status:** Established by Prompt 004 (convention choice; supersedable)  
-**Resolves:** Prompt 004  
+**Resolves:** Prompt 004
 
 **Context:** Prompt 004 requires that future developers and agents understand completed work before changing it, and that progress records prompt number, status, changed files, tests, and unresolved issues.
 
@@ -318,7 +318,7 @@ The platform does not promise Google-side security notifications it cannot relia
 
 **Date:** 2026-11-08  
 **Status:** Established by Prompt 004 (convention choice; supersedable)  
-**Resolves:** Prompt 004  
+**Resolves:** Prompt 004
 
 **Context:** Prompt 004 requires consistent error handling and logging. Domain code must not depend on HTTP, and client responses must not leak internal detail.
 
