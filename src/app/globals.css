@@ -1,6 +1,14 @@
+@tailwind base;
+@tailwind components;
 @tailwind utilities;
 
-/* Application design tokens — referenced by tailwind.config.js */
+/* ==========================================================================
+   Design Tokens — shared foundation for public and admin sections
+   These values are intentionally minimal; component-specific styling lives
+   in their respective component files (shadcn/ui, admin UI, etc.).
+   ========================================================================== */
+
+/* Color surface palette */
 :root {
   --color-background: #070708;
   --color-foreground: #f4f4f5;
@@ -8,7 +16,58 @@
   --color-accent: #f43f5e;
 }
 
-/* Component overrides using Tailwind utility classes */
-.page {
-  @apply max-w-3xl mx-auto p-6;
-}
+/* ==========================================================================
+   Typography
+   ========================================================================== */
+
+/* Heading hierarchy — ramping scale */
+h1 { font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1.1; letter-spacing: -0.03em; }
+h2 { font-size: clamp(1.5rem, 4vw, 2.5rem); font-weight: 600; line-height: 1.2; }
+h3 { font-size: clamp(1.25rem, 3vw, 2rem); font-weight: 500; line-height: 1.4; }
+h4 { font-size: 1.25rem; font-weight: 500; }
+h5 { font-size: 1.1rem; font-weight: 500; }
+h6 { font-size: 1rem; font-weight: 500; }
+
+/* Body and paragraph text */
+p { line-height: 1.6; }
+
+/* Links */
+a { color: var(--color-accent); text-decoration: none; transition: color 0.2s; }
+a:hover { color: #e8222f; }
+a:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+/* ==========================================================================
+   Container / Layout
+   ========================================================================== */
+
+/* Main content container — used by both public and admin */
+.page { max-width: 48rem; margin: 0 auto; padding: 2rem; }
+
+/* ==========================================================================
+   Focus states — consistent across public and admin
+   ========================================================================== */
+
+/* Focus-visible ring for keyboard navigation */
+*:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+/* Skip link for keyboard navigation */
+.skip-link { position: fixed; top: 0; left: 0; z-index: 9999; padding: 0.5rem 1rem; background: var(--color-background); color: var(--color-foreground); visibility: hidden; opacity: 0; transition: visibility 0.3s, opacity 0.3s; }
+.skip-link:focus { visibility: visible; opacity: 1; }
+
+/* ==========================================================================
+   Responsive bridge
+   ========================================================================== */
+
+/* Utility to set max-width breakpoints */
+.max-w-full { max-width: 100%; }
+.max-w-sm { max-width: 24rem; }
+.max-w-md { max-width: 28rem; }
+.max-w-lg { max-width: 32rem; }
+.max-w-xl { max-width: 36rem; }
+.max-w-2xl { max-width: 42rem; }
+.max-w-3xl { max-width: 48rem; }
+.max-w-4xl { max-width: 56rem; }
+.max-w-5xl { max-width: 64rem; }
+
+.w-full { width: 100%; }
+.w-screen { width: 100vw; }
