@@ -62,6 +62,10 @@ this file records notable outcomes, not every edit.
   settings as implemented rather than planned.
 - **Repository workflow:** `AGENTS.md` now requires committing and pushing each completed
   prompt, with conventional commit messages and explicit Git safety rules.
+- **Prompt 007 follow-up:** Clarified that PostgreSQL development credentials remain an
+  uncommitted environment prerequisite (real values only in ignored `.env.local`, with
+  `.env.example` placeholders deferred to Prompt 009) and that domain-specific types
+  belong in their owning modules, with no speculative types or empty module directories.
 
 ### Fixed
 

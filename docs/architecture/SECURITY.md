@@ -161,6 +161,7 @@ Replacing an episode or movie source is a consequential operation:
 - **Role separation:** a migration role holds DDL rights; the application role holds DML rights only. The application does not create or alter schema.
 - The application does not auto-run migrations at startup in production.
 - Connection strings and database passwords are server-only secrets.
+- Development database credentials are an operator-supplied prerequisite. They are never invented, documented as real values, or committed. Local values belong only in ignored environment files; `.env.example` contains safe placeholders only.
 - Backups are protected and access-controlled; see §11.
 - Queries use parameterization and least-privilege access. Reporting and read models do not gain write access.
 - Guest session identifiers are pseudonymous analytics identifiers, not authentication credentials and not public profiles. They follow the documented retention policy.

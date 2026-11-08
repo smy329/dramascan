@@ -266,6 +266,7 @@ Rules for the tree:
 - `src/lib/contracts` holds the only types/schemas that may cross into the browser bundle from a domain.
 - `src/db` is the schema/client composition root. It may import every module's `schema.ts` and the platform pool; nothing else may import `@/db/schema`. This is the single documented exception to the module `index.ts` import rule, because assembling the Drizzle schema requires the table definitions.
 - `src/scripts/maintenance` is an application-layer consumer of modules and workflows. It is never imported by `app`.
+- Do not pre-create module directories or speculative domain types. Add a module's structure when its implementation begins; shared cross-cutting contracts remain in `src/lib/contracts`.
 
 ---
 

@@ -18,7 +18,7 @@ This document defines the implementation plan structure, as required by `CONVENT
 | 004 | Create project documentation and development conventions | ✅ Completed | `CONVENTIONS.md` (new), `DATABASE.md` (new; §9 instruction corrected), `API.md` (new), `SECURITY.md` (new), `CHANGELOG.md` (new), `DECISIONS.md` (D-013–D-017 added), `PROJECT_STATUS.md` (updated), `DATABASE.md` typo fix | N/A (documentation only); consistency checked against `REQUIREMENTS.md`, `ARCHITECTURE.md`, and active decisions | Naming/directory/TypeScript/database/API/error/logging/testing/migration rules; read-before-change process; prompt progress format; security principles and accepted limitations; no application code written | 2026-11-08 |
 | 005 | Define the initial scope and future upgrade backlog | ✅ Completed | `INITIAL_SCOPE_AND_FUTURE_BACKLOG.md` (new), `REQUIREMENTS.md` §16 updated, `PROJECT_STATUS.md` (updated) | N/A (documentation only); consistency checked against `REQUIREMENTS.md` and active decisions | Two clearly separated lists (initial scope / future upgrade backlog); scope enforcement rules | 2026-11-08 |
 | 006 | Initialize the Next.js application | ✅ Completed | `package.json` (new), `package-lock.json` (new), `tsconfig.json` (new), `next.config.ts` (new), `.nvmrc` (new), `.gitignore` (new), `src/app/layout.tsx` (new), `src/app/page.tsx` (new), `src/app/globals.css` (new), docs updates | `npm install`; `npx tsc --noEmit`; `npm run build`; `npm run start` (HTTP 200); `npm run dev` (HTTP 200) | Next.js 16.4.5, React 19.3.1, TypeScript 5.9.3, npm, Node 24 LTS; no Tailwind/ESLint/shadcn yet | 2026-11-08 |
-| 007 | Configure Strict TypeScript | ✅ Completed | `tsconfig.json`, `package.json`, `src/lib/contracts/common.ts` (new), docs updates | `npm run typecheck` (exit 0); `npm run build` (exit 0) | Strict compiler flags; shared cross-cutting contracts; no `any`/ignored errors/unsafe assertions | 2026-11-08 |
+| 007 | Configure Strict TypeScript | ✅ Completed | `tsconfig.json`, `package.json`, `src/lib/contracts/common.ts` (new), docs updates | `npm run typecheck` (exit 0); `npm run build` (exit 0) | Strict compiler flags; shared cross-cutting contracts; domain types deferred to owning modules; no `any`/ignored errors/unsafe assertions | 2026-11-08 |
 | 008 | Establish the Application Directory Structure | ⏸ Not started | — | — | — | — |
 
 ---
@@ -65,6 +65,8 @@ Create a modular directory structure separating App Router routes, public pages,
 Avoid placing all business logic inside route components or Server Actions. Keep server-only code clearly separated from browser-accessible code.
 
 **Completion:** The directory structure supports independent development of the major platform modules.
+
+**Constraint:** Create only directories with a current purpose. Do not pre-create empty module directories or speculative domain types; each module's structure is added when its implementation begins.
 
 ---
 

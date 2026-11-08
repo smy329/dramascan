@@ -77,13 +77,35 @@ database, and component directories are introduced by their assigned prompts.
 
 ---
 
-## 4. Inputs Required Before Foundation Work
+## 4. Inputs and Environment Prerequisites
 
-These are operational inputs, not unresolved product decisions:
+These are operational prerequisites, not unresolved product decisions.
 
-1. **PostgreSQL development credentials** — superuser (or role) name and password for
-   the local PostgreSQL 18.6 instance, so the application database and role can be
-   created.
+### 4.1 PostgreSQL development credentials — pending
+
+- The local PostgreSQL 18.6 server requires password authentication; no development
+  credentials have been supplied.
+- This is an environment setup prerequisite, not a code or product decision. The
+  application foundation, type checks, and production build do not require a database
+  connection.
+- Do not invent credentials, document real values, or commit secrets. Real development
+  values go only in `.env.local`, which is ignored.
+- `.env.example` is intentionally absent until Prompt 009. Prompt 009 creates it with
+  safe placeholders and explanatory comments only; it must never contain working
+  credentials.
+- Database-dependent work begins with the schema and migration prompts. Until then this
+  prerequisite does not block database-free foundation work.
+
+### 4.2 Type placement and module directories — decided
+
+- `src/lib/contracts/` holds only cross-cutting, client-safe contracts shared across
+  application areas, such as `ActionResult` and pagination metadata.
+- Domain-specific types belong inside the owning module (`src/modules/<domain>/`) and are
+  created when that module is implemented. They cross module boundaries only through the
+  module's `index.ts`.
+- Do not create speculative types or empty directories for unimplemented modules.
+
+### 4.3 Resolved operational inputs
 
 **Git resolved 2026-11-08:** the repository is initialized on `main` with the GitHub
 remote `origin`; after Prompt 007, changes are committed and pushed per `AGENTS.md`.
@@ -146,7 +168,7 @@ area document before changing code.
 | 004 | Create project documentation and development conventions | ✅ Completed | `CONVENTIONS.md` (new), `DATABASE.md` (new; §9 instruction corrected), `API.md` (new), `SECURITY.md` (new), `CHANGELOG.md` (new), `DECISIONS.md` (D-013–D-017 added), `PROJECT_STATUS.md` (updated), `DATABASE.md` typo fix | N/A (documentation only); consistency checked against `REQUIREMENTS.md`, `ARCHITECTURE.md`, and active decisions | Naming/directory/TypeScript/database/API/error/logging/testing/migration rules; read-before-change process; prompt progress format; security principles and accepted limitations; no application code written |
 | 005 | Define the initial scope and future upgrade backlog | ✅ Completed | `INITIAL_SCOPE_AND_FUTURE_BACKLOG.md` (new), `REQUIREMENTS.md` §16 updated, `PROJECT_STATUS.md` (updated) | N/A (documentation only); consistency checked against `REQUIREMENTS.md` and active decisions | Two clearly separated lists (initial scope / future upgrade backlog); scope enforcement rules |
 | 006 | Initialize the Next.js application | ✅ Completed | `package.json` (new), `package-lock.json` (new), `tsconfig.json` (new), `next.config.ts` (new), `.nvmrc` (new), `.gitignore` (new), `src/app/layout.tsx` (new), `src/app/page.tsx` (new), `src/app/globals.css` (new), `README.md`, `CONVENTIONS.md`, `coding-conventions.md`, `DECISIONS.md`, `CHANGELOG.md`, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md` | `npm install` (29 packages, 0 vulnerabilities); `npx tsc --noEmit` (passed); `npm run build` (passed, Next 16.4.5/Turbopack); `npm run start` on port 3100 → HTTP 200 with expected content; `npm run dev` on port 3101 → HTTP 200; `agentRules: false` verified to keep `AGENTS.md` unchanged | Next 16 requires `jsx: "react-jsx"`; `next-env.d.ts` is generated and ignored; scaffold contains no Tailwind, ESLint boilerplate, shadcn/ui, demo assets, or product dependencies; strict TypeScript flags remain for Prompt 007 |
-| 007 | Configure Strict TypeScript | ✅ Completed | `tsconfig.json`, `package.json` (`typecheck` script), `src/lib/contracts/common.ts` (new), `CONVENTIONS.md`, `coding-conventions.md`, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md`, `CHANGELOG.md` | `npm run typecheck` (exit 0; `next typegen` + `tsc --noEmit`); `npm run build` (exit 0); source scan found no `any`, `@ts-ignore`, `@ts-expect-error`, or unsafe assertions | Strict flags enabled; shared cross-cutting contracts only, no global domain type dump; typecheck runs `next typegen` for clean checkouts |
+| 007 | Configure Strict TypeScript | ✅ Completed | `tsconfig.json`, `package.json` (`typecheck` script), `src/lib/contracts/common.ts` (new), `CONVENTIONS.md`, `coding-conventions.md`, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md`, `CHANGELOG.md` | `npm run typecheck` (exit 0; `next typegen` + `tsc --noEmit`); `npm run build` (exit 0); source scan found no `any`, `@ts-ignore`, `@ts-expect-error`, or unsafe assertions | Strict flags enabled; shared cross-cutting contracts only; no speculative types or empty module directories; database credentials remain an environment prerequisite, not a code decision; typecheck runs `next typegen` for clean checkouts |
 | 008 | Establish the Application Directory Structure | ⏸ Not started | — | — | — |
 
 ---
@@ -160,3 +182,5 @@ Create a modular directory structure separating App Router routes, public pages,
 Avoid placing all business logic inside route components or Server Actions. Keep server-only code clearly separated from browser-accessible code.
 
 **Completion:** The directory structure supports independent development of the major platform modules.
+
+**Constraint:** Create only directories with a current purpose. Do not pre-create empty module directories or speculative domain types; each module's structure is added when its implementation begins.

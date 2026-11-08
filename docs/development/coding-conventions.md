@@ -130,6 +130,8 @@ Do not create barrel `index.ts` files for convenience. The only `index.ts` files
 - Public browser-safe values may use `NEXT_PUBLIC_` only when intentionally public.
 - Required variables are validated by `platform/config` with Zod at startup.
 - `.env.example` documents every variable with a safe placeholder and a comment.
+- Real credentials live only in ignored local environment files; never commit `.env` or `.env.local`.
+- `.env.example` is created when environment configuration is implemented and contains placeholders only, never working credentials.
 
 ---
 
@@ -175,6 +177,7 @@ No ignored type errors. `@ts-ignore` is forbidden. `@ts-expect-error` requires a
 13. **No floating promises.** Await or explicitly handle every promise; `void promise` only with a comment when fire-and-forget is intended.
 14. **No `console.*` in application code.** Use the Pino logger.
 15. **Dates are `Date` in TypeScript, ISO 8601 UTC strings at API boundaries, `timestamptz` in PostgreSQL.** Domain logic receives an injectable clock where time matters.
+16. **Type ownership.** `src/lib/contracts/` holds only cross-cutting, client-safe contracts. Domain-specific types live in the owning `src/modules/<domain>/` module and cross module boundaries only through its `index.ts`. Do not create speculative types or empty directories for unimplemented modules.
 
 ### 4.3 React and Next.js
 

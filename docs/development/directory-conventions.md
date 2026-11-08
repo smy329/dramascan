@@ -192,6 +192,7 @@ src/
 - `src/modules/*/index.ts` is the only cross-module import target. Everything else inside a module is private.
 - `src/components` contains no data fetching and imports no module. Data fetching happens in `app` Server Components; presentational components receive props.
 - `src/lib/contracts` holds the only types/schemas that may cross into the browser bundle from a domain. It imports no server code.
+- Do not create empty directories or placeholder types for unimplemented modules. A module's structure is added when its implementation begins; domain-specific types stay inside that module.
 - `src/db` is the schema/client composition root. It may import every module's `schema.ts` and the platform pool; nothing else may import `@/db/schema`. This is the single documented exception to the module `index.ts` import rule, because assembling the Drizzle schema requires the table definitions.
 - `src/scripts/maintenance` is an application-layer consumer of modules and workflows. It is never imported by `app`.
 
