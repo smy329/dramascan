@@ -159,3 +159,80 @@ When starting any project task, coding agents must follow this discovery procedu
 
 If the requested behavior is not established by the specification or an active decision, ask. Do not repeatedly ask questions whose answers are already defined in this specification.
 
+## Git and GitHub Version Control Workflow
+
+### Mandatory Rule
+
+After successfully completing every individual micro-prompt, save the completed changes in Git and push them to the configured GitHub repository.
+
+This workflow applies to all implementation prompts, documentation prompts, configuration changes, bug fixes, and approved project modifications.
+
+### Required Workflow After Every Prompt
+
+1. Finish the requested implementation.
+2. Review all changed and newly created files.
+3. Inspect `git status` and review the complete relevant `git diff`.
+4. Check for accidental changes, unrelated modifications, debug code, temporary files, credentials, API keys, `.env` files, and other sensitive information.
+5. Run the relevant tests, lint checks, TypeScript checks, and build checks when applicable.
+6. Fix issues caused by the current implementation before considering the prompt complete.
+7. Stage only the intended project changes.
+8. Create one meaningful Git commit for the completed micro-prompt.
+9. Push that commit to the configured GitHub remote and current working branch.
+10. Verify that the push succeeded.
+11. Report the result to the user.
+
+### Commit Message Convention
+
+Use clear conventional commit messages.
+
+Examples:
+
+- `docs: organize project documentation`
+- `feat: implement Google OAuth authentication`
+- `feat: add drama management`
+- `fix: resolve episode ordering issue`
+- `refactor: improve database repository structure`
+- `test: add playback progress tests`
+- `chore: configure production environment`
+
+Include the micro-prompt number in the commit message when practical.
+
+Example:
+
+`feat: implement Google OAuth authentication (Prompt 030)`
+
+### Git Safety Rules
+
+- Never commit `.env` files, secrets, credentials, private keys, access tokens, or other sensitive information.
+- Check `.gitignore` before staging files.
+- Never use `git push --force` or rewrite shared Git history.
+- Never run destructive Git commands such as `git reset --hard`, `git clean -fd`, or mass file deletion without explicit user approval.
+- Never overwrite or discard unrelated user changes.
+- Do not amend previous commits to hide the history of completed prompts.
+- Do not commit generated build artifacts, temporary files, or unnecessary dependencies.
+- Preserve the existing branch and remote configuration unless the user explicitly approves a change.
+- Never claim that a commit or push succeeded without verifying the command result.
+
+### Existing Changes and Failures
+
+- Before committing, identify whether uncommitted changes existed before the current prompt.
+- Do not include unrelated user changes in the current prompt's commit.
+- If tests, lint, type checking, or build fail, investigate and fix failures caused by the current work.
+- If an unresolved issue prevents safe completion, do not falsely report success. Explain the issue and request approval before pushing an unsafe state.
+- If GitHub authentication or network connectivity prevents pushing, preserve the local commit and clearly report that the push remains incomplete.
+- Never silently skip the GitHub push step.
+
+### Final Report After Every Prompt
+
+Provide:
+
+- Prompt number and title.
+- Implementation status.
+- Tests and verification results.
+- Commit message.
+- Commit hash.
+- GitHub push status.
+- Any unresolved issues.
+
+**Completion requirement:** A micro-prompt is considered fully completed only when its implementation has been verified, its changes have been committed, and its commit has been successfully pushed to the configured GitHub branch.
+
