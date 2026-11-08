@@ -13,7 +13,15 @@
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx --ignore-pattern .next --ignore-pattern next.config.ts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest run --watch",
+    "test:integration": "TEST_DATABASE_URL=postgresql://dramascan_test:CHANGE_ME@localhost:5432/dramascan_test vitest run --dir tests/integration",
+    "test:e2e": "playwright test",
+    "test:e2e:setup": "playwright install",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit push",
+    "db:push": "npm run db:generate && npm run db:migrate"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -34,16 +42,23 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@playwright/test": "^1.65.0",
     "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
+    "@vitest/coverage-v8": "^5.1.0",
     "eslint": "^9.39.5",
     "eslint-plugin-import": "^2.30.0",
     "eslint-plugin-react": "^7.34.0",
     "eslint-plugin-react-hooks": "^4.6.0",
+    "pg": "^8.23.1",
+    "playwright": "^1.65.0",
     "prettier": "^3.0.2",
-    "typescript": "^5.9.3"
+    "supertest": "^7.3.2",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.0"
   }
 }

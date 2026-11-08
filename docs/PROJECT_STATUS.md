@@ -42,6 +42,7 @@ None.
 | 014 | — | — | — | — | — |
 | 015 | — | — | — | — | — |
 | **016** | **Configure Pino Structured Logging** | **✅ Completed** | **.env.example, package.json, package-lock.json, src/platform/config/schema.ts, src/platform/logging.ts, src/platform/middleware/request-id.ts** | **N/A — logging infrastructure, verified with typecheck** | Pino configured with structured JSON, redaction, correlation IDs, log level via LOG_LEVEL env var |
+| | **017** | **Establish Testing Foundation** | **✅ Completed** | **vitest.config.ts, tests/global-setup.ts, tests/global-teardown.ts, package.json, CHANGELOG.md, docs/PROJECT_STATUS.md** | **N/A — test infrastructure configured, typecheck passes** | Vitest configured for unit/integration tests, Playwright for E2E, test database isolation with TEST_DATABASE_URL, fixture directory structure established |
 
 ## Next Task
 
