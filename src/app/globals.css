@@ -1,65 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Application design tokens — referenced by tailwind.config.js */
 :root {
-  color-scheme: dark;
   --color-background: #070708;
   --color-foreground: #f4f4f5;
   --color-muted: #a1a1aa;
   --color-accent: #f43f5e;
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  min-height: 100vh;
-  background-color: var(--color-background);
-  color: var(--color-foreground);
-  font-family:
-    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-
+/* Component overrides using Tailwind utility classes */
 .page {
-  display: flex;
-  min-height: 100vh;
-  max-width: 48rem;
-  margin: 0 auto;
-  padding: 2rem;
-  flex-direction: column;
-  justify-content: center;
-  gap: 1rem;
-}
-
-.eyebrow {
-  margin: 0;
-  color: var(--color-accent);
-  font-size: 0.875rem;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-h1 {
-  margin: 0;
-  font-size: clamp(2rem, 5vw, 3.5rem);
-  line-height: 1.1;
-  letter-spacing: -0.03em;
-}
-
-.lede {
-  max-width: 36rem;
-  margin: 0;
-  color: var(--color-muted);
-  font-size: 1.125rem;
-  line-height: 1.6;
+  @apply max-w-3xl mx-auto p-6;
 }
