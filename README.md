@@ -11,14 +11,18 @@ Detailed project documentation is organized in the `docs/` directory. See
 
 ## Quick Start
 
-Requirements: Node.js 24 LTS and npm.
+Requirements: Node.js 24 LTS and npm. PostgreSQL is required once database-backed
+features are used.
 
 ```bash
 npm install
+cp .env.example .env.local   # then replace every CHANGE_ME value
 npm run dev
 ```
 
-Open <http://localhost:3000>.
+Open <http://localhost:3000>. Environment values are validated with Zod at server
+startup; production requires `APP_URL`, `DATABASE_URL`, `BETTER_AUTH_SECRET`, Google
+OAuth credentials, and `SUPER_ADMIN_EMAIL`. Never commit real credentials.
 
 | Command | Purpose |
 |---|---|

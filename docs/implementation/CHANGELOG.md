@@ -54,6 +54,14 @@ this file records notable outcomes, not every edit.
   boundary note only, no modules yet), database composition root, server platform,
   workflows, shared utilities/validation, maintenance scripts, and tests. Empty layer
   directories use `.gitkeep` placeholders only.
+- **Prompt 009:** Server-only environment configuration in `src/platform/config/` with
+  Zod validation, `server-only` enforcement, a validated `serverConfig`, and a
+  `ConfigurationError` that lists invalid fields without values. Production requires
+  `APP_URL`, `DATABASE_URL`, `BETTER_AUTH_SECRET`, Google OAuth credentials, and
+  `SUPER_ADMIN_EMAIL`; development and test may omit them while still validating any
+  provided value. `src/instrumentation.ts` validates configuration at server startup;
+  `.env.example` documents every variable with placeholders only. Decision D-019 records
+  the contract.
 
 ### Changed
 
@@ -75,6 +83,9 @@ this file records notable outcomes, not every edit.
 - **Prompt 008:** The home route moved to `src/app/(public)/page.tsx`; its markup moved
   into the server-compatible presentational `src/components/public/SiteIntro.tsx`, so the
   route only composes components.
+- **Prompt 009:** `README.md` now documents copying `.env.example` to `.env.local` and
+  replacing placeholders. `CONVENTIONS.md` §3.4 and `SECURITY.md` record the implemented
+  configuration boundary and variable contract.
 
 ### Fixed
 

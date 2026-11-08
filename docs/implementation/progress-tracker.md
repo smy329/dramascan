@@ -19,6 +19,7 @@ This document serves as the single source of truth for prompt progress, as requi
 | 006 | Initialize the Next.js application | ✅ Completed | `package.json` (new), `package-lock.json` (new), `tsconfig.json` (new), `next.config.ts` (new), `.nvmrc` (new), `.gitignore` (new), `src/app/layout.tsx` (new), `src/app/page.tsx` (new), `src/app/globals.css` (new), `README.md`, `CONVENTIONS.md`, `coding-conventions.md`, `DECISIONS.md`, `CHANGELOG.md`, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md` | `npm install` (29 packages, 0 vulnerabilities); `npx tsc --noEmit` (passed); `npm run build` (passed); `npm run start` (HTTP 200); `npm run dev` (HTTP 200) | Next.js 16.4.5/React 19.3.1/TypeScript 5.9.3 on npm and Node 24 LTS; `next-env.d.ts` generated and ignored; no Tailwind, ESLint, or shadcn/ui yet; DB credentials still pending | 2026-11-08 |
 | 007 | Configure Strict TypeScript | ✅ Completed | `tsconfig.json`, `package.json` (`typecheck` script), `src/lib/contracts/common.ts` (new), `CONVENTIONS.md`, `coding-conventions.md`, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md`, `CHANGELOG.md` | `npm run typecheck` (exit 0); `npm run build` (exit 0); no `any`/ignored errors/unsafe assertions in `src/` | Strict flags enabled; shared contracts are cross-cutting only; no speculative types or empty module directories; `typecheck` uses `next typegen`; DB credentials remain a documented environment prerequisite | 2026-11-08 |
 | 008 | Establish the Application Directory Structure | ✅ Completed | `src/app/(public)/page.tsx` (moved), `src/components/public/SiteIntro.tsx` (new), `src/modules/README.md` (new), 17 layer/test `.gitkeep` placeholders, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md`, `CHANGELOG.md` | `npm run typecheck` (exit 0 after clearing stale `.next` route types); `npm run build` (exit 0; `/` static) | Route groups, component boundary, and server-only/browser-safe split documented; no business logic in routes; no domain modules or speculative types | 2026-11-08 |
+| 009 | Configure Environment Variables | ✅ Completed | `src/platform/config/schema.ts` (new), `src/platform/config/index.ts` (new), `src/instrumentation.ts` (new), `.env.example` (new), `package.json`/`package-lock.json`, `README.md`, `CONVENTIONS.md`, `SECURITY.md`, `DECISIONS.md` (D-019), docs updates | `npm run typecheck` (exit 0); `npm run build` (exit 0); parser checks; `next start` fails without production env and serves HTTP 200 with safe dummy env | Server-only config enforced by `server-only`; production fails closed; development defaults; no secrets committed | 2026-11-08 |
 
 ---
 
@@ -43,21 +44,16 @@ This document serves as the single source of truth for prompt progress, as requi
 
 ## 3. Next Task
 
-**Prompt 009 — Configure Environment Variables.**
+**Prompt 010 — Configure Tailwind CSS.**
 
-Create a typed and validated environment configuration using Zod. Separate required
-production secrets from optional development settings.
+Configure Tailwind CSS for the application's design system. Establish consistent spacing,
+typography, responsive breakpoints, dark theme colors, border styles, and reusable design
+tokens.
 
-Include database connection details, Google OAuth credentials, authentication secrets,
-application URL, trusted origins, and other necessary configuration. Never expose
-server-only secrets through public environment variables.
+The initial interface is dark-only. Do not implement an unnecessary light-theme switching
+system.
 
-**Completion:** Missing or invalid required configuration produces a clear startup or
-validation error instead of unpredictable runtime failures.
-
-**Environment constraint:** PostgreSQL development credentials remain an operator-supplied
-prerequisite. `.env.example` will contain safe placeholders and explanatory comments only;
-never commit real credentials.
+**Completion:** All application areas can use the same consistent styling foundation.
 
 ---
 

@@ -20,6 +20,7 @@ This document defines the implementation plan structure, as required by `CONVENT
 | 006 | Initialize the Next.js application | ✅ Completed | `package.json` (new), `package-lock.json` (new), `tsconfig.json` (new), `next.config.ts` (new), `.nvmrc` (new), `.gitignore` (new), `src/app/layout.tsx` (new), `src/app/page.tsx` (new), `src/app/globals.css` (new), docs updates | `npm install`; `npx tsc --noEmit`; `npm run build`; `npm run start` (HTTP 200); `npm run dev` (HTTP 200) | Next.js 16.4.5, React 19.3.1, TypeScript 5.9.3, npm, Node 24 LTS; no Tailwind/ESLint/shadcn yet | 2026-11-08 |
 | 007 | Configure Strict TypeScript | ✅ Completed | `tsconfig.json`, `package.json`, `src/lib/contracts/common.ts` (new), docs updates | `npm run typecheck` (exit 0); `npm run build` (exit 0) | Strict compiler flags; shared cross-cutting contracts; domain types deferred to owning modules; no `any`/ignored errors/unsafe assertions | 2026-11-08 |
 | 008 | Establish the Application Directory Structure | ✅ Completed | `src/app/(public)/page.tsx` (moved), `src/components/public/SiteIntro.tsx` (new), `src/modules/README.md` (new), 17 layer/test `.gitkeep` placeholders, docs updates | `npm run typecheck` (exit 0); `npm run build` (exit 0) | Route/component boundary established; server-only vs browser-safe split documented; no domain modules or speculative types | 2026-11-08 |
+| 009 | Configure Environment Variables | ✅ Completed | `src/platform/config/` (new), `src/instrumentation.ts` (new), `.env.example` (new), dependencies, docs updates | `npm run typecheck` (exit 0); `npm run build` (exit 0); parser checks; startup failure without prod env; HTTP 200 with dummy env | Server-only Zod config; production fails closed; dev defaults; no secrets committed | 2026-11-08 |
 
 ---
 
@@ -53,26 +54,22 @@ Prompts are dependency-ordered but independently executable. Later prompts may d
 | 006 | Initialize the Next.js application | ✅ Completed |
 | 007 | Configure Strict TypeScript | ✅ Completed |
 | 008 | Establish the Application Directory Structure | ✅ Completed |
+| 009 | Configure Environment Variables | ✅ Completed |
 
 ---
 
 ## 4. Next Task
 
-**Prompt 009 — Configure Environment Variables.**
+**Prompt 010 — Configure Tailwind CSS.**
 
-Create a typed and validated environment configuration using Zod. Separate required
-production secrets from optional development settings.
+Configure Tailwind CSS for the application's design system. Establish consistent spacing,
+typography, responsive breakpoints, dark theme colors, border styles, and reusable design
+tokens.
 
-Include database connection details, Google OAuth credentials, authentication secrets,
-application URL, trusted origins, and other necessary configuration. Never expose
-server-only secrets through public environment variables.
+The initial interface is dark-only. Do not implement an unnecessary light-theme switching
+system.
 
-**Completion:** Missing or invalid required configuration produces a clear startup or
-validation error instead of unpredictable runtime failures.
-
-**Environment constraint:** PostgreSQL development credentials remain an operator-supplied
-prerequisite. `.env.example` will contain safe placeholders and explanatory comments only;
-never commit real credentials.
+**Completion:** All application areas can use the same consistent styling foundation.
 
 ---
 

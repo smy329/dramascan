@@ -147,6 +147,24 @@ Do not create barrel `index.ts` files for convenience. The only `index.ts` files
 - Real credentials live only in ignored local environment files; never commit `.env` or `.env.local`.
 - `.env.example` is created when environment configuration is implemented and contains placeholders only, never working credentials.
 
+Implemented in `src/platform/config/` (Prompt 009):
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `APP_URL` | Production; defaults to `http://localhost:3000` in development/test | Canonical public origin, validated as an origin. |
+| `TRUSTED_ORIGINS` | No | Comma-separated additional auth origins; `APP_URL` is always trusted. |
+| `DATABASE_URL` | Production | Server-only PostgreSQL connection string. |
+| `TEST_DATABASE_URL` | No | Test database; the name must end in `_test` and differ from `DATABASE_URL`. |
+| `BETTER_AUTH_SECRET` | Production | Server-only auth secret, at least 32 characters. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Production | Server-only Google OAuth credentials. |
+| `SUPER_ADMIN_EMAIL` | Production | Google email allowed to bootstrap the first Super Admin. |
+
+- `src/platform/config/index.ts` imports `server-only` and exports the validated `serverConfig`.
+- Development and test may omit production-only values; any value that is present is still validated.
+- Production startup fails with `ConfigurationError` naming missing or invalid fields, never their values.
+- Only public, non-secret values may use `NEXT_PUBLIC_*`; none are defined currently.
+- HSTS-style HTTPS origin rules apply in production; HTTP is accepted only for loopback origins outside production.
+
 ---
 
 ## 4. TypeScript Standards

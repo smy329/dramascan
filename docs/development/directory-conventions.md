@@ -35,6 +35,7 @@ The `src/` tree is strictly layered. No module may import outside its permitted 
 
 ```
 src/
+  instrumentation.ts          # server startup hook; validates environment config
   app/                      # App Router entrypoints
     (public)/               # public pages, Server Components by default
     (auth)/                 # sign-in, auth error pages

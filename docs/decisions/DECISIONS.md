@@ -424,6 +424,43 @@ cannot be rewritten by the framework.
 
 ---
 
+## D-019 — Server environment configuration contract
+
+**Date:** 2026-11-08
+**Status:** Established by Prompt 009
+**Resolves:** Prompt 009
+
+**Context:** Prompt 009 requires typed, validated environment configuration that keeps
+server-only secrets out of public variables and fails clearly when production
+configuration is missing or invalid.
+
+**Decision:** `src/platform/config/` is the only place application code reads environment
+variables. It imports `server-only`, validates `process.env` with Zod at module load, and
+exports a frozen `serverConfig`. `src/instrumentation.ts` imports the module at server
+startup (skipping the production build phase) so invalid configuration fails startup.
+Variables: `APP_URL` (HTTP/HTTPS origin; production requires HTTPS), `TRUSTED_ORIGINS`
+(comma-separated origins; `APP_URL` is always included), `DATABASE_URL`,
+`TEST_DATABASE_URL` (name must end in `_test` and differ from `DATABASE_URL`),
+`BETTER_AUTH_SECRET` (minimum 32 characters), `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET`, and `SUPER_ADMIN_EMAIL`. Production requires all secrets;
+development and test may omit them, but any provided value is validated. Public
+`NEXT_PUBLIC_*` variables are limited to intentionally public values; no secret may use
+that prefix. Errors list field names and messages, never values.
+
+**Consequences:**
+
+- Server code imports configuration only from `@/platform/config`.
+- Client Components cannot import the config module; `server-only` fails the build if
+  they try.
+- New environment variables require a schema update, a `.env.example` entry, and
+  documentation.
+- `.env.example` contains placeholders only; real credentials stay in ignored
+  `.env.local` or production environment configuration.
+- Development defaults do not make production configuration optional; production
+  startup fails closed.
+
+---
+
 ## Decision log rules
 
 - A decision is added only after explicit user approval or when the specification

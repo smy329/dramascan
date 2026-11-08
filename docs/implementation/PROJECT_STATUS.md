@@ -3,8 +3,8 @@
 **Project:** DramaScan — International Drama & Movie Streaming Platform
 **Baseline date:** 2026-11-07
 **Last updated:** 2026-11-08
-**Current prompt:** 009 — Configure Environment Variables
-**Status:** Prompt 008 completed; Prompt 009 not started
+**Current prompt:** 010 — Configure Tailwind CSS
+**Status:** Prompt 009 completed; Prompt 010 not started
 
 ---
 
@@ -18,9 +18,9 @@
 | Application framework | **Next.js 16.4.5** (App Router), React 19.3.1, TypeScript 5.9.3 |
 | Package manager | **npm 11.12.1**; `package-lock.json` committed in the baseline |
 | Scripts | `dev`, `build`, `start`, `typecheck` |
-| Application source | `src/app/(public)/page.tsx`, `src/app/layout.tsx`, `src/app/globals.css`, `src/components/public/SiteIntro.tsx`, `src/lib/contracts/common.ts`, `src/modules/README.md`; layer placeholders under `src/` and `tests/` |
-| Configuration | `package.json`, `tsconfig.json` (strict flags), `next.config.ts`, `.nvmrc`, `.gitignore` |
-| Environment configuration | None yet (Prompt 009) |
+| Application source | `src/app/(public)/page.tsx`, `src/app/layout.tsx`, `src/app/globals.css`, `src/components/public/SiteIntro.tsx`, `src/instrumentation.ts`, `src/lib/contracts/common.ts`, `src/platform/config/`, `src/modules/README.md`; layer placeholders under `src/` and `tests/` |
+| Configuration | `package.json`, `tsconfig.json` (strict flags), `next.config.ts`, `.nvmrc`, `.gitignore`, `.env.example` |
+| Environment configuration | **Zod-validated server config** in `src/platform/config/` (Prompt 009); `.env.example` contains safe placeholders only |
 | Database schema | None; no ORM, migrations, or seed data yet |
 | Existing UI | Minimal branded home route rendered by the `SiteIntro` presentational component; no product UI yet |
 | Partially implemented features | None |
@@ -33,12 +33,13 @@ reference material, not part of the application.
 
 Current repository documents and application files: `AGENTS.md`, `README.md`,
 `package.json`, `package-lock.json`, `tsconfig.json`, `next.config.ts`, `.nvmrc`,
-`.gitignore`, `src/app/`, `src/components/`, `src/lib/contracts/`, `src/modules/`,
-`tests/`, and the consolidated documentation under `docs/`.
+`.gitignore`, `.env.example`, `src/app/`, `src/components/`, `src/instrumentation.ts`,
+`src/lib/contracts/`, `src/modules/`, `src/platform/config/`, `tests/`, and the
+consolidated documentation under `docs/`.
 
 **Conclusion:** This remains a new project with no user data to preserve. The
-application scaffold, strict TypeScript, and directory layering are in place; the next
-foundation prompts add validated environment configuration and styling.
+application scaffold, strict TypeScript, directory layering, and validated server
+environment configuration are in place; the next foundation prompt adds styling.
 
 ---
 
@@ -78,7 +79,8 @@ remaining layer directories (`app/(auth)`, `app/admin`, `app/api`, `app/actions`
 `components/ui`, `components/admin`, `components/player`, `db`, `platform`, `workflows`,
 `lib/utils`, `lib/validation`, `scripts/maintenance`, and `tests/*`) exist as documented
 placeholders until their assigned prompts fill them. Domain module directories are
-intentionally absent until each module is implemented.
+intentionally absent until each module is implemented. `src/platform/config/` is now
+implemented as the single server-only environment boundary, validated at startup.
 
 ---
 
@@ -175,23 +177,19 @@ area document before changing code.
 | 006 | Initialize the Next.js application | ✅ Completed | `package.json` (new), `package-lock.json` (new), `tsconfig.json` (new), `next.config.ts` (new), `.nvmrc` (new), `.gitignore` (new), `src/app/layout.tsx` (new), `src/app/page.tsx` (new), `src/app/globals.css` (new), `README.md`, `CONVENTIONS.md`, `coding-conventions.md`, `DECISIONS.md`, `CHANGELOG.md`, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md` | `npm install` (29 packages, 0 vulnerabilities); `npx tsc --noEmit` (passed); `npm run build` (passed, Next 16.4.5/Turbopack); `npm run start` on port 3100 → HTTP 200 with expected content; `npm run dev` on port 3101 → HTTP 200; `agentRules: false` verified to keep `AGENTS.md` unchanged | Next 16 requires `jsx: "react-jsx"`; `next-env.d.ts` is generated and ignored; scaffold contains no Tailwind, ESLint boilerplate, shadcn/ui, demo assets, or product dependencies; strict TypeScript flags remain for Prompt 007 |
 | 007 | Configure Strict TypeScript | ✅ Completed | `tsconfig.json`, `package.json` (`typecheck` script), `src/lib/contracts/common.ts` (new), `CONVENTIONS.md`, `coding-conventions.md`, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md`, `CHANGELOG.md` | `npm run typecheck` (exit 0; `next typegen` + `tsc --noEmit`); `npm run build` (exit 0); source scan found no `any`, `@ts-ignore`, `@ts-expect-error`, or unsafe assertions | Strict flags enabled; shared cross-cutting contracts only; no speculative types or empty module directories; database credentials remain an environment prerequisite, not a code decision; typecheck runs `next typegen` for clean checkouts |
 | 008 | Establish the Application Directory Structure | ✅ Completed | `src/app/(public)/page.tsx` (moved from `src/app/page.tsx`), `src/components/public/SiteIntro.tsx` (new), `src/modules/README.md` (new), 17 layer/test `.gitkeep` placeholders, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md`, `CHANGELOG.md` | `npm run typecheck` (exit 0 after clearing stale `.next` route types); `npm run build` (exit 0; `/` static); no business logic or data fetching in components | Route group plus component extraction demonstrates the app/component boundary; server-only and browser-safe areas documented; no domain modules or speculative types created |
+| 009 | Configure Environment Variables | ✅ Completed | `src/platform/config/schema.ts` (new), `src/platform/config/index.ts` (new), `src/instrumentation.ts` (new), `.env.example` (new), `package.json`/`package-lock.json` (`zod`, `server-only`), `README.md`, `CONVENTIONS.md`, `SECURITY.md`, `DECISIONS.md` (D-019), `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md`, `CHANGELOG.md` | `npm run typecheck` (exit 0); `npm run build` (exit 0); parser checks for defaults, production requirements, HTTPS/origin rules, test-database naming, and error output; `next start` without production env failed with a clear `ConfigurationError`; `next start` with safe dummy env served HTTP 200 | Server-only config enforced by `server-only`; production fails closed; development defaults allow database-free foundation work; no secrets committed |
 
 ---
 
 ## 6. Next Task
 
-**Prompt 009 — Configure Environment Variables.**
+**Prompt 010 — Configure Tailwind CSS.**
 
-Create a typed and validated environment configuration using Zod. Separate required
-production secrets from optional development settings.
+Configure Tailwind CSS for the application's design system. Establish consistent spacing,
+typography, responsive breakpoints, dark theme colors, border styles, and reusable design
+tokens.
 
-Include database connection details, Google OAuth credentials, authentication secrets,
-application URL, trusted origins, and other necessary configuration. Never expose
-server-only secrets through public environment variables.
+The initial interface is dark-only. Do not implement an unnecessary light-theme switching
+system.
 
-**Completion:** Missing or invalid required configuration produces a clear startup or
-validation error instead of unpredictable runtime failures.
-
-**Environment constraint:** PostgreSQL development credentials remain an operator-supplied
-prerequisite. `.env.example` will contain safe placeholders and explanatory comments only;
-never commit real credentials.
+**Completion:** All application areas can use the same consistent styling foundation.

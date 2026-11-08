@@ -132,6 +132,7 @@ Do not create barrel `index.ts` files for convenience. The only `index.ts` files
 - `.env.example` documents every variable with a safe placeholder and a comment.
 - Real credentials live only in ignored local environment files; never commit `.env` or `.env.local`.
 - `.env.example` is created when environment configuration is implemented and contains placeholders only, never working credentials.
+- The implemented variable contract, production-vs-development rules, and origin validation are defined in `CONVENTIONS.md` §3.4 and `src/platform/config/` (Prompt 009).
 
 ---
 

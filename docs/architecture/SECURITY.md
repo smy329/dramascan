@@ -22,6 +22,7 @@
 | Session and cookie security | Not implemented | Auth phase |
 | RBAC and server-side authorization | Not implemented | Authorization phase |
 | Input validation with Zod | Not implemented | Per feature |
+| Environment configuration validation (server-only) | **Implemented** | Prompt 009 |
 | Rate limiting (PostgreSQL-backed) | Not implemented | Auth/abuse-prone features |
 | HTTP security headers and CSP | Not implemented | Foundation/security phase |
 | Structured logging with redaction | Not implemented | Foundation phase |

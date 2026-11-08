@@ -106,6 +106,7 @@ Modules are assigned to fixed layers. **A module may import only modules in a st
 
 ```
 src/
+  instrumentation.ts              # server startup hook; validates environment config
   app/
     (public)/                     # public pages, Server Components by default
     (auth)/                       # sign-in, auth error pages
