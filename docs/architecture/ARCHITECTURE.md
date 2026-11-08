@@ -781,7 +781,7 @@ These do not block Prompt 003 and are recorded so later prompts do not guess:
 |---|---|---|
 | Package manager (npm available; pnpm not installed) | Resolved: npm, lockfile committed (D-018) | Prompt 006 |
 | PostgreSQL development credentials | Pending from user | Prompt 019 |
-| Git repository initialization | Pending; recommended before further prompt work | Prompt 006 |
+| Git repository initialization | Resolved: initialized on `main` with GitHub `origin` | Prompt 006 |
 | Exact ESLint boundary configuration and plugin choice | Deferred, rules fixed here | Prompt 013 |
 | Path alias (`@/*` → `src/*`) and `src/` root | Implemented in Prompt 006 | Prompt 006 |
 | Browser push provider (FCM vs native Web Push) | Deferred behind provider interface | Notification phase |

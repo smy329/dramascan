@@ -151,7 +151,7 @@ Do not create barrel `index.ts` files for convenience. The only `index.ts` files
 
 ### 4.1 Compiler settings
 
-The project uses strict TypeScript. Required settings (configured in Prompt 007):
+The project uses strict TypeScript. Required settings (implemented in Prompt 007):
 
 - `strict: true`
 - `noUncheckedIndexedAccess: true`
@@ -660,7 +660,7 @@ These scripts are established in later prompts; the names are fixed here so docu
 | `npm run dev` | Start the development server | Prompt 006 |
 | `npm run build` | Production build | Prompt 006 |
 | `npm run start` | Start the production server | Prompt 006 |
-| `npm run typecheck` | TypeScript check | Prompt 007 |
+| `npm run typecheck` | TypeScript check (`next typegen` + `tsc --noEmit`) | Prompt 007 |
 | `npm run lint` | ESLint, including architecture rules | Prompt 013 |
 | `npm run format` | Prettier write | Prompt 013 |
 | `npm run format:check` | Prettier check | Prompt 013 |

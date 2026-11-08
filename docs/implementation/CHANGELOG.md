@@ -43,6 +43,11 @@ this file records notable outcomes, not every edit.
   19.3.1, npm lockfile, `dev`/`build`/`start` scripts, Node 24 engine pinning, a root
   layout, branded home route, and dark global styles. Decision D-018 records the runtime
   and package-manager baseline.
+- **Prompt 007:** Strict TypeScript compiler flags (`noUncheckedIndexedAccess`,
+  `noImplicitOverride`, `noFallthroughCasesInSwitch`, `noUnusedLocals`,
+  `noUnusedParameters`, `forceConsistentCasingInFileNames`), a `typecheck` script backed
+  by `next typegen`, and shared cross-cutting `ActionResult`/pagination contracts in
+  `src/lib/contracts/common.ts`.
 
 ### Changed
 
@@ -53,6 +58,10 @@ this file records notable outcomes, not every edit.
 - **Prompt 006:** `README.md` now documents installation and the development/production
   scripts; progress documents and TypeScript conventions reflect the initialized
   application and Next.js 16's required `react-jsx` mode.
+- **Prompt 007:** `CONVENTIONS.md` and `coding-conventions.md` now describe the strict
+  settings as implemented rather than planned.
+- **Repository workflow:** `AGENTS.md` now requires committing and pushing each completed
+  prompt, with conventional commit messages and explicit Git safety rules.
 
 ### Fixed
 

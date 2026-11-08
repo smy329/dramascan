@@ -17,7 +17,8 @@ This document serves as the single source of truth for prompt progress, as requi
 | 004 | Create project documentation and development conventions | ✅ Completed | `CONVENTIONS.md` (new), `DATABASE.md` (new; §9 instruction corrected), `API.md` (new), `SECURITY.md` (new), `CHANGELOG.md` (new), `DECISIONS.md` (D-013–D-017 added), `PROJECT_STATUS.md` (updated), `DATABASE.md` typo fix | N/A (documentation only); consistency checked against `REQUIREMENTS.md`, `ARCHITECTURE.md`, and active decisions | Naming/directory/TypeScript/database/API/error/logging/testing/migration rules; read-before-change process; prompt progress format; security principles and accepted limitations; no application code written | 2026-11-08 |
 | 005 | Define the initial scope and future upgrade backlog | ✅ Completed | `INITIAL_SCOPE_AND_FUTURE_BACKLOG.md` (new), `REQUIREMENTS.md` §16 updated, `PROJECT_STATUS.md` (updated) | N/A (documentation only); consistency checked against `REQUIREMENTS.md` and active decisions | Two clearly separated lists (initial scope / future upgrade backlog); scope enforcement rules | 2026-11-08 |
 | 006 | Initialize the Next.js application | ✅ Completed | `package.json` (new), `package-lock.json` (new), `tsconfig.json` (new), `next.config.ts` (new), `.nvmrc` (new), `.gitignore` (new), `src/app/layout.tsx` (new), `src/app/page.tsx` (new), `src/app/globals.css` (new), `README.md`, `CONVENTIONS.md`, `coding-conventions.md`, `DECISIONS.md`, `CHANGELOG.md`, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md` | `npm install` (29 packages, 0 vulnerabilities); `npx tsc --noEmit` (passed); `npm run build` (passed); `npm run start` (HTTP 200); `npm run dev` (HTTP 200) | Next.js 16.4.5/React 19.3.1/TypeScript 5.9.3 on npm and Node 24 LTS; `next-env.d.ts` generated and ignored; no Tailwind, ESLint, or shadcn/ui yet; DB credentials still pending | 2026-11-08 |
-| 007 | Configure Strict TypeScript | ⏸ Not started | — | — | — | — |
+| 007 | Configure Strict TypeScript | ✅ Completed | `tsconfig.json`, `package.json` (`typecheck` script), `src/lib/contracts/common.ts` (new), `CONVENTIONS.md`, `coding-conventions.md`, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md`, `CHANGELOG.md` | `npm run typecheck` (exit 0); `npm run build` (exit 0); no `any`/ignored errors/unsafe assertions in `src/` | Strict flags enabled; shared contracts are cross-cutting only; `typecheck` uses `next typegen`; DB credentials still pending | 2026-11-08 |
+| 008 | Establish the Application Directory Structure | ⏸ Not started | — | — | — | — |
 
 ---
 
@@ -35,13 +36,13 @@ This document serves as the single source of truth for prompt progress, as requi
 
 ## 3. Next Task
 
-**Prompt 007 — Configure Strict TypeScript.**
+**Prompt 008 — Establish the Application Directory Structure.**
 
-Configure TypeScript with strict type checking. Ensure application code does not rely on unrestricted `any`, unsafe type assertions, or ignored type errors.
+Create a modular directory structure separating App Router routes, public pages, admin pages, UI components, domain modules, database access, shared utilities, validation, API handlers, and tests.
 
-Define shared types for common application concepts where appropriate. Keep domain-specific types inside their respective modules rather than creating one enormous global type file.
+Avoid placing all business logic inside route components or Server Actions. Keep server-only code clearly separated from browser-accessible code.
 
-**Completion:** TypeScript checks pass and new modules can follow consistent strict typing rules.
+**Completion:** The directory structure supports independent development of the major platform modules.
 
 ---
 

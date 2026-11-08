@@ -3,8 +3,8 @@
 **Project:** DramaScan — International Drama & Movie Streaming Platform
 **Baseline date:** 2026-11-07
 **Last updated:** 2026-11-08
-**Current prompt:** 007 — Configure Strict TypeScript
-**Status:** Prompt 006 completed; Prompt 007 not started
+**Current prompt:** 008 — Establish the Application Directory Structure
+**Status:** Prompt 007 completed; Prompt 008 not started
 
 ---
 
@@ -14,12 +14,12 @@
 |---|---|
 | Repository state | Greenfield baseline established in Prompt 001; application initialized in Prompt 006 |
 | Project root | `D:\Source code\Opencode\DramaScan\DramaScan` |
-| Git repository | **Not initialized** (no `.git`, `git rev-parse` fails) |
+| Git repository | **Initialized** on `main`; remote `origin` = `https://github.com/smy329/dramascan.git`; baseline commit `7ab51da` |
 | Application framework | **Next.js 16.4.5** (App Router), React 19.3.1, TypeScript 5.9.3 |
-| Package manager | **npm 11.12.1**; `package-lock.json` generated (Git not yet initialized) |
-| Scripts | `dev`, `build`, `start` |
-| Application source | `src/app/layout.tsx`, `src/app/page.tsx`, `src/app/globals.css` |
-| Configuration | `package.json`, `tsconfig.json`, `next.config.ts`, `.nvmrc`, `.gitignore` |
+| Package manager | **npm 11.12.1**; `package-lock.json` committed in the baseline |
+| Scripts | `dev`, `build`, `start`, `typecheck` |
+| Application source | `src/app/layout.tsx`, `src/app/page.tsx`, `src/app/globals.css`, `src/lib/contracts/common.ts` |
+| Configuration | `package.json`, `tsconfig.json` (strict flags), `next.config.ts`, `.nvmrc`, `.gitignore` |
 | Environment configuration | None yet (Prompt 009) |
 | Database schema | None; no ORM, migrations, or seed data yet |
 | Existing UI | Minimal branded root route; no product UI yet |
@@ -33,7 +33,8 @@ reference material, not part of the application.
 
 Current repository documents and application files: `AGENTS.md`, `README.md`,
 `package.json`, `package-lock.json`, `tsconfig.json`, `next.config.ts`, `.nvmrc`,
-`.gitignore`, `src/app/`, and the consolidated documentation under `docs/`.
+`.gitignore`, `src/app/`, `src/lib/contracts/`, and the consolidated documentation under
+`docs/`.
 
 **Conclusion:** This remains a new project with no user data to preserve. The
 application scaffold is in place and the next foundation prompts add strict TypeScript,
@@ -83,17 +84,18 @@ These are operational inputs, not unresolved product decisions:
 1. **PostgreSQL development credentials** — superuser (or role) name and password for
    the local PostgreSQL 18.6 instance, so the application database and role can be
    created.
-2. **Git initialization** — the repository is not under version control. Recommended
-   so each subsequent prompt can be reviewed and committed independently.
+
+**Git resolved 2026-11-08:** the repository is initialized on `main` with the GitHub
+remote `origin`; after Prompt 007, changes are committed and pushed per `AGENTS.md`.
 
 **Package manager resolved 2026-11-08:** npm is confirmed for Prompt 006
-(`package-lock.json` is generated). No further package-manager choice is pending.
+(`package-lock.json` is committed). No further package-manager choice is pending.
 
 **Runtime and framework baseline resolved 2026-11-08** (see `DECISIONS.md` D-018):
 
 - Next.js 16.4.5 with the App Router.
 - React 19.3.1.
-- TypeScript 5.9.3.
+- TypeScript 5.9.3, with strict compiler flags and a `next typegen`-backed `typecheck` script.
 - Node.js 24 LTS, pinned in `.nvmrc` and `package.json#engines`.
 
 **Product-scope decisions resolved 2026-11-08** (see `DECISIONS.md`):
@@ -144,16 +146,17 @@ area document before changing code.
 | 004 | Create project documentation and development conventions | ✅ Completed | `CONVENTIONS.md` (new), `DATABASE.md` (new; §9 instruction corrected), `API.md` (new), `SECURITY.md` (new), `CHANGELOG.md` (new), `DECISIONS.md` (D-013–D-017 added), `PROJECT_STATUS.md` (updated), `DATABASE.md` typo fix | N/A (documentation only); consistency checked against `REQUIREMENTS.md`, `ARCHITECTURE.md`, and active decisions | Naming/directory/TypeScript/database/API/error/logging/testing/migration rules; read-before-change process; prompt progress format; security principles and accepted limitations; no application code written |
 | 005 | Define the initial scope and future upgrade backlog | ✅ Completed | `INITIAL_SCOPE_AND_FUTURE_BACKLOG.md` (new), `REQUIREMENTS.md` §16 updated, `PROJECT_STATUS.md` (updated) | N/A (documentation only); consistency checked against `REQUIREMENTS.md` and active decisions | Two clearly separated lists (initial scope / future upgrade backlog); scope enforcement rules |
 | 006 | Initialize the Next.js application | ✅ Completed | `package.json` (new), `package-lock.json` (new), `tsconfig.json` (new), `next.config.ts` (new), `.nvmrc` (new), `.gitignore` (new), `src/app/layout.tsx` (new), `src/app/page.tsx` (new), `src/app/globals.css` (new), `README.md`, `CONVENTIONS.md`, `coding-conventions.md`, `DECISIONS.md`, `CHANGELOG.md`, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md` | `npm install` (29 packages, 0 vulnerabilities); `npx tsc --noEmit` (passed); `npm run build` (passed, Next 16.4.5/Turbopack); `npm run start` on port 3100 → HTTP 200 with expected content; `npm run dev` on port 3101 → HTTP 200; `agentRules: false` verified to keep `AGENTS.md` unchanged | Next 16 requires `jsx: "react-jsx"`; `next-env.d.ts` is generated and ignored; scaffold contains no Tailwind, ESLint boilerplate, shadcn/ui, demo assets, or product dependencies; strict TypeScript flags remain for Prompt 007 |
-| 007 | Configure Strict TypeScript | ⏸ Not started | — | — | — |
+| 007 | Configure Strict TypeScript | ✅ Completed | `tsconfig.json`, `package.json` (`typecheck` script), `src/lib/contracts/common.ts` (new), `CONVENTIONS.md`, `coding-conventions.md`, `PROJECT_STATUS.md`, `progress-tracker.md`, `implementation-plan.md`, `CHANGELOG.md` | `npm run typecheck` (exit 0; `next typegen` + `tsc --noEmit`); `npm run build` (exit 0); source scan found no `any`, `@ts-ignore`, `@ts-expect-error`, or unsafe assertions | Strict flags enabled; shared cross-cutting contracts only, no global domain type dump; typecheck runs `next typegen` for clean checkouts |
+| 008 | Establish the Application Directory Structure | ⏸ Not started | — | — | — |
 
 ---
 
 ## 6. Next Task
 
-**Prompt 007 — Configure Strict TypeScript.**
+**Prompt 008 — Establish the Application Directory Structure.**
 
-Configure TypeScript with strict type checking. Ensure application code does not rely on unrestricted `any`, unsafe type assertions, or ignored type errors.
+Create a modular directory structure separating App Router routes, public pages, admin pages, UI components, domain modules, database access, shared utilities, validation, API handlers, and tests.
 
-Define shared types for common application concepts where appropriate. Keep domain-specific types inside their respective modules rather than creating one enormous global type file.
+Avoid placing all business logic inside route components or Server Actions. Keep server-only code clearly separated from browser-accessible code.
 
-**Completion:** TypeScript checks pass and new modules can follow consistent strict typing rules.
+**Completion:** The directory structure supports independent development of the major platform modules.
