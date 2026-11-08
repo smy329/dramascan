@@ -1,9 +1,9 @@
-import "server-only";
+import 'server-only';
 
-import { parseServerConfig } from "./schema";
+import { parseServerConfig } from './schema';
 
-export type { Environment, ServerConfig } from "./schema";
-export { ConfigurationError, parseServerConfig } from "./schema";
+export type { Environment, ServerConfig } from './schema';
+export { ConfigurationError, parseServerConfig } from './schema';
 
 /**
  * Validated server-only configuration. Importing this module in a Client

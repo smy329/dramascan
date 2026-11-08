@@ -15,33 +15,28 @@
   "parserOptions": {
     "ecmaVersion": "latest",
     "sourceType": "module",
-    "project: true"
+    "project": true
   },
-  "plugins": [
-    "react",
-    "@typescript-eslint",
-    "import"
-  ],
+  "plugins": ["react", "@typescript-eslint", "import"],
   "rules": {
     "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
     "no-unused-expressions": "error",
     "no-implicit-coercion": ["error", { "boolean": false, "number": true, "string": true }],
     "no-extra-parens": "error",
     "no-floating-decimal": "error",
-    "comma-dangle": ["error", "always-multiline"],
-    "eol-last": "error",
-    "no-trailing-spaces": "error",
-    "consistent-return": "error",
-    "default-case": "error",
-    "no-confusing-arrow": "error",
-    "arrow-body-style": ["error", "as-needed"],
     "react/jsx-uses-react": "error",
     "react-hooks/exhaustive-deps": "warn",
     "react-hooks/rules-of-hooks": "error",
     "react/no-unknown-property": "error",
     "react/no-danger": "error",
     "react/no-direct-mutation-state": "error",
-    "import/order": ["error", { "groups": ["builtin", "external", "internal", "parent", "sibling", "index"], "pathPatterns": ["@/"] }],
+    "import/order": [
+      "error",
+      {
+        "groups": ["builtin", "external", "internal", "parent", "sibling", "index"],
+        "pathPatterns": ["@/"]
+      }
+    ],
     "import/no-duplicates": "error",
     "import/no-unresolved": "error",
     "no-eval": "error",
