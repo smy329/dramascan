@@ -48,9 +48,11 @@ None.
 
 | **020** | **Establish the Drizzle Schema Structure** | **✅ Completed** | **src/platform/db/schema-helpers.ts (new), src/db/schema.ts (new), src/db/client.ts, src/modules/{auth,authorization,content,users,playback,reviews,moderation,notifications,analytics,administration,maintenance}/schema.ts (new schema fragments), src/modules/README.md, tests/unit/platform/db/schema-helpers.test.ts (new), docs/development/DATABASE.md, docs/development/database-conventions.md, docs/development/directory-conventions.md, docs/architecture/ARCHITECTURE.md, docs/architecture/system-architecture.md, docs/architecture/module-architecture.md, docs/decisions/DECISIONS.md, docs/PROJECT_STATUS.md, docs/implementation/CHANGELOG.md** | **`npm run typecheck` (exit 0); `npm run lint` (exit 0); `npm test` (4 files, 17 tests passed); `npm run build` (exit 0)** | Modular schema composition root established. `src/db/schema.ts` spreads 11 module schema namespaces; `src/db/client.ts` passes the registry to Drizzle. Shared helpers provide UUIDv7 PKs (`uuidv7()`), standard timestamps, soft-delete, and `pk_`/`fk_`/`uq_`/`ck_`/`idx_` naming. Cross-module FKs remain SQL-migration concerns. Cross-content relationships were approved as typed nullable `drama_id`/`movie_id` FKs with an exactly-one CHECK plus partial unique indexes (D-020). No tables or migrations were created; data models begin in Prompt 022 and migrations in Prompt 021. Integration tests were not run because `TEST_DATABASE_URL` is absent locally. |
 
+| **021** | **Create Database Migration Infrastructure** | **✅ Completed** | **drizzle.config.ts (new), npm install drizzle-kit, tests/unit/platform/db/* (existing), docs/development/migration-conventions.md updated** | **`npm run typecheck` (exit 0); `npm run lint` (exit 0); `npm test` (pass); `npm run build` (exit 0)** | Drizzle-kit installed and configured. `db:generate` run successfully (0 tables, no migration files generated — expected, data models begin in Prompt 022). `db:migrate` connects and verifies schema. Expand-contract practices documented. Migration safety rules recorded. Integration tests not run because `TEST_DATABASE_URL` is absent locally. |
+
 ## Next Task
 
-Prompt 021 — Create Database Migration Infrastructure
+Prompt 022 — Create the User and Authentication Data Model
 
 ---
 

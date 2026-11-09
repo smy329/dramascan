@@ -108,6 +108,14 @@ this file records notable outcomes, not every edit.
   boundary for cross-module foreign keys, and the approved typed-FK + CHECK model for
   drama/movie relationships. The architecture and directory documents now point to the
   settled Drizzle composition mechanism instead of deferring it.
+- **Prompt 021:** Drizzle-kit migration infrastructure configured. `drizzle.config.ts`
+  established, `db:generate`/`db:migrate` scripts functional, expand-contract migration
+  practices documented in `docs/development/migration-conventions.md`. Migration tooling
+  verified: `db:generate` runs without errors (0 tables, expected), `db:migrate`
+  connects to PostgreSQL and validates schema. Production uses versioned migrations only,
+  never `drizzle-kit push`. Schema changes follow expand-contract: expand (new nullable
+  columns, new tables), migrate (bounded data backfill), switch (application code
+  adaptation), contract (old column removal in future release).
 
 ### Fixed
 

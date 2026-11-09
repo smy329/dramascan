@@ -4,7 +4,9 @@
 **Version:** 1.0  
 **Date:** 2026-11-08
 
-This document defines the migration practices, derived from `CONVENTIONS.md` §10 and established by Prompt 004. It covers tooling, expand-contract, safety rules, and the change process.
+This document defines the migration practices, derived from `CONVENTIONS.md` §10 and established by Prompt 004. It covers tooling, expand-contract, safety rules, and the change process. Prompt 021 configures the drizzle-kit migration infrastructure.
+
+**Completion:** Drizzle-kit is installed and configured; `db:generate` and `db:migrate` scripts are functional.
 
 ---
 
@@ -15,6 +17,8 @@ This document defines the migration practices, derived from `CONVENTIONS.md` §1
 - Never edit an applied migration. Create a new migration.
 - Migrations are reviewed like code and committed with the schema change.
 - `drizzle-kit push` is forbidden in production. Production uses versioned migrations only.
+
+**Prompt 021:** Drizzle-kit installed and configured via `drizzle.config.ts`. `db:generate` generates migration skeleton into `drizzle/`. `db:migrate` applies migrations against the connected PostgreSQL database. Initial run with no tables produced no schema changes (expected; data models begin in Prompt 022).
 
 ---
 
