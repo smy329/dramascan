@@ -53,6 +53,7 @@
     "@typescript-eslint/parser": "^8.72.1",
     "@vitest/coverage-v8": "^5.1.0",
     "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.11",
     "eslint": "^9.39.5",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-react": "^7.37.5",
