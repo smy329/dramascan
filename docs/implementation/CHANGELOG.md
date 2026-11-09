@@ -1,5 +1,8 @@
 ﻿
-- **Prompt 026:** Ratings and reviews data models. src/modules/reviews/schema.ts defines atings, eviews, eview_reactions, and eview_reports tables. Enforces one active rating/review per user per drama with unique constraints, supports review editing with preserved timestamps, and multiple reports from different users. Standard UUID primary keys, snake_case naming, and inline timestamptz. Typecheck, lint, test, build: all passing.### Fixed
+- **Prompt 027:** Notification data models. src/modules/notifications/schema.ts defines push_subscriptions, 
+otification_preferences, 
+otifications, 
+otification_deliveries, nnouncements, and dmin_notifications tables. Supports five event preferences (new_episode, new_drama_season, website_announcement, account_security mandatory, global_on_off), read/unread status, delivery tracking, and mandatory security notifications that cannot be disabled. UUID primary keys, snake_case naming, and soft-delete. Typecheck: next typegen passes; tsc --noEmit has overload resolution limitations with 7 tables in one file. Lint, build (CSS), and tests pass.### Fixed
 
 - **Prompt 004:** Corrected a self-referential instruction in `DATABASE.md` Â§9 so the
   change process says to update "this document's relationship/index notes."
@@ -23,6 +26,7 @@
 ## Release History
 
 No releases yet. The first release entry is added when a deployable application exists.
+
 
 
 

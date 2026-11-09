@@ -3,7 +3,7 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-09  
-**Current Prompt:** 026 — Create Ratings and Reviews Data Model
+**Current Prompt:** 027 — Create Notification Data Models
 
 ---
 
@@ -54,10 +54,11 @@ None.
 | **024** | **Create Categories and Platforms Data Models** | ✅ Completed | (handled by Prompt 023 content schema) | `npm run typecheck` (exit 0); `npm run lint` (exit 0); `npm test` (4 files, 17 tests passed); `npm run build` (exit 0)` | Categories and platforms tables with unique slugs and names, plus many-to-many join tables. Reusable taxonomy entities enable content classification across drama and movie types. |
 | **025** | **Create User Bookmark and Viewing Data Models** | ✅ Completed | src/modules/users/schema.ts (new), docs/development/DATABASE.md updated, docs/implementation/CHANGELOG.md updated | `npm run typecheck` (exit 0); `npm run lint` (exit 0); `npm test` (4 files, 17 tests passed); `npm run build` (exit 0)` | Drama-level bookmarks, per-episode playback progress, watched/unwatched state with completion threshold, and watch history with timestamps. All checks passing. |
 | **026** | **Create Ratings and Reviews Data Model** | ✅ Completed | src/modules/reviews/schema.ts (new), docs/development/DATABASE.md updated, docs/implementation/CHANGELOG.md updated | `npm run typecheck` (exit 0); `npm run lint` (exit 0); `npm test` (4 files, 17 tests passed); `npm run build` (exit 0)` | Ratings, reviews, review reactions, and review reports. One active rating/review per user per drama with unique constraints. Review editing preserves creation timestamp and updates last-edited timestamp. Multiple reports from different users supported. |
+| **027** | **Create Notification Data Model** | ✅ Completed | src/modules/notifications/schema.ts (new), docs/development/DATABASE.md updated, docs/implementation/CHANGELOG.md updated | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (4 files, 17 tests passed); `npm run build` (exit 0)` | Push subscriptions, notification preferences, in-app notifications, delivery records, announcements, and admin notifications. Five event preferences with mandatory security notifications that cannot be disabled through ordinary event preferences. UUID primary keys, snake_case naming, and soft delete. |
 
 ## Next Task
 
-All prompts 020–026 are complete. The next development phase would continue with prompt 027 or feature implementation.
+All prompts 020–027 are complete. The next development phase would continue with prompt 028 or feature implementation.
 
 ---
 
