@@ -3,7 +3,7 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-09  
-**Current Prompt:** 031 — Implement Google OAuth Only
+**Current Prompt:** 032 — Implement User Account Creation and Synchronization
 
 ---
 
@@ -61,9 +61,11 @@ None.
 
 | **031** | **Implement Google OAuth Only** | ✅ Completed | src/workflows/auth/google-oauth.ts (new), src/app/api/auth/callback/google/route.ts (new), src/app/auth/signin/page.tsx (new), src/app/dashboard/page.tsx (new), src/platform/auth/better-auth.ts (modified), package.json, package-lock.json | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack compiles) | Google OAuth sign-in flow, callback handling, and account linking implemented. No password login or other OAuth providers. Secure cookie settings (HttpOnly, Secure in production, SameSite=Lax). Authentication state available to server-side modules. |
 
+| **032** | **Implement User Account Creation and Synchronization** | ✅ Completed | src/platform/auth/better-auth.ts (modified), package.json, package-lock.json | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack compiles) | Better Auth handles user creation and account linking automatically via the Drizzle adapter with Google OAuth. On first sign-in, a user record is created with Google profile (name & image). On subsequent logins, the account is linked if the Google email matches. No custom profile names, pictures, or account-switching functionality introduced. |
+
 ## Next Task
 
-Prompt 032 — (to be determined, e.g. dashboard features or content management)
+Prompt 033 — (to be determined, e.g. content browser or playback features)
 
 ---
 

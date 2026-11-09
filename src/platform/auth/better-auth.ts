@@ -12,6 +12,12 @@
  *
  * Session cookie settings (HttpOnly, Secure, SameSite) are
  * managed by the Drizzle adapter and browser.
+ *
+ * Better Auth handles user creation and account linking automatically
+ * when using the Drizzle adapter with Google OAuth. On first sign-in,
+ * a user record is created. On subsequent logins, the account is linked
+ * if the Google email matches an existing user. The Google profile
+ * (name & image) is stored in the users table via the adapter.
  * Only imported on the server (via `server-only`).
  */
 import 'server-only';
@@ -22,6 +28,7 @@ import { betterAuth } from 'better-auth';
 // (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET) by better-auth core.
 // The core reads these and configures the Google provider automatically.
 // Session cookie settings are handled by the adapter and browser.
+// User creation and account linking are handled by Better Auth core.
 export const auth = betterAuth({});
 
 // Export type for use in server components and actions
