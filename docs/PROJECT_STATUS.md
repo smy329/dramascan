@@ -3,7 +3,7 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-09  
-**Current Prompt:** 029 — Add Database Constraints and Indexes
+**Current Prompt:** 031 — Implement Google OAuth Only
 
 ---
 
@@ -59,9 +59,11 @@ None.
 
 | **029** | **Add Database Constraints and Indexes** | ✅ Completed | docs/development/DATABASE.md (table catalog + index documentation), docs/PROJECT_STATUS.md (updated), docs/implementation/CHANGELOG.md (updated) | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (4 files, 17 tests passed); `npm run build` (exit 0)` | Indexes for content lookup, published content, hierarchy relationships, slugs, search, user-specific records, moderation queues, notifications, and analytics queries. Unique constraints and foreign keys prevent duplicate or invalid relationships. PostgreSQL full-text and trigram indexes where appropriate. |
 
+| **031** | **Implement Google OAuth Only** | ✅ Completed | src/workflows/auth/google-oauth.ts (new), src/app/api/auth/callback/google/route.ts (new), src/app/auth/signin/page.tsx (new), src/app/dashboard/page.tsx (new), src/platform/auth/better-auth.ts (modified), package.json, package-lock.json | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack compiles) | Google OAuth sign-in flow, callback handling, and account linking implemented. No password login or other OAuth providers. Secure cookie settings (HttpOnly, Secure in production, SameSite=Lax). Authentication state available to server-side modules. |
+
 ## Next Task
 
-Prompt 030 — (to be determined, e.g. API layer or feature implementation)
+Prompt 032 — (to be determined, e.g. dashboard features or content management)
 
 ---
 
