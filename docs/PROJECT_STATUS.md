@@ -3,7 +3,7 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-09  
-**Current Prompt:** 034 — Implement the First Super Admin Bootstrap
+**Current Prompt:** 035 — Create Admin Accounts
 
 ---
 
@@ -65,9 +65,13 @@ None.
 
 | **033** | **Implement User Deactivation and Account Status** | ✅ Completed | src/workflows/admin/users.ts (new), src/app/admin/api/users/route.ts (new), src/workflows/auth/google-oauth.ts (modified), src/modules/auth/schema.ts (modified), package.json, package-lock.json | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack compiles) | Administrators can deactivate/reactivate user accounts without data loss. The `is_active` flag in the users table controls access. Deactivation preserves all historical data (reviews, ratings, analytics, viewing records). No self-service account deletion. Reactivation restores authenticated access. |
 
+| **034** | **Implement the First Super Admin Bootstrap** | ✅ Completed | src/modules/auth/schema.ts (modified), .env.local (modified), .env.example (modified), src/app/admin/api/users/route.ts (new), src/workflows/admin/users.ts (new), package.json, package-lock.json | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack completes) | First Super Admin can be established from configuration via SUPER_ADMIN_EMAIL. The first user signing in with this email becomes Super Admin. No public setup wizard — privilege checked internally during sign-in. |
+
+| **035** | **Create Admin Accounts** | ✅ Completed | src/modules/auth/schema.ts (modified), src/workflows/admin/users.ts (new), src/app/admin/api/users/route.ts (new), package.json, package-lock.json | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack completes) | Super Admin can authorize existing Google-authenticated accounts as administrators. Super Admin can activate/deactivate admin accounts. Public users cannot register as administrators — only Super Admin can create or authorize administrator access. Role inspection workflows included. |
+
 ## Next Task
 
-All prompts 020–034 complete.
+All prompts 020–035 complete.
 
 ---
 
