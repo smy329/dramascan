@@ -3,7 +3,7 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-09  
-**Current Prompt:** 032 — Implement User Account Creation and Synchronization
+**Current Prompt:** 033 — Implement User Deactivation and Account Status
 
 ---
 
@@ -63,9 +63,11 @@ None.
 
 | **032** | **Implement User Account Creation and Synchronization** | ✅ Completed | src/platform/auth/better-auth.ts (modified), package.json, package-lock.json | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack compiles) | Better Auth handles user creation and account linking automatically via the Drizzle adapter with Google OAuth. On first sign-in, a user record is created with Google profile (name & image). On subsequent logins, the account is linked if the Google email matches. No custom profile names, pictures, or account-switching functionality introduced. |
 
+| **033** | **Implement User Deactivation and Account Status** | ✅ Completed | src/workflows/admin/users.ts (new), src/app/admin/api/users/route.ts (new), src/workflows/auth/google-oauth.ts (modified), src/modules/auth/schema.ts (modified), package.json, package-lock.json | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack compiles) | Administrators can deactivate/reactivate user accounts without data loss. The `is_active` flag in the users table controls access. Deactivation preserves all historical data (reviews, ratings, analytics, viewing records). No self-service account deletion. Reactivation restores authenticated access. |
+
 ## Next Task
 
-Prompt 033 — (to be determined, e.g. content browser or playback features)
+Prompt 034 — (to be determined, e.g. content browser or playback features)
 
 ---
 
