@@ -170,7 +170,76 @@ This catalog is filled in as tables are implemented. Each entry records the tabl
 
 | Table | Module | Purpose                   | Status  |
 | ----- | ------ | ------------------------- | ------- |
-| —     | —      | No tables implemented yet | Planned |
+| dramas              | content      | Dramas ( TV/streaming series ) | ✅ Implemented |
+| seasons             | content      | Seasons per drama              | ✅ Implemented |
+| episodes            | content      | Episodes per season            | ✅ Implemented |
+| movies              | content      Standalone films                 | ✅ Implemented |
+| categories          | content      Content taxonomies           | ✅ Implemented |
+| platforms           | content      Streaming platforms        | ✅ Implemented |
+| drama_categories    | content      Drama–category many-to-many | ✅ Implemented |
+| drama_platforms     | content      Drama–platform many-to-many | ✅ Implemented |
+| movie_categories    | content      Movie–category many-to-many | ✅ Implemented |
+| movie_platforms     | content      Movie–platform many-to-many | ✅ Implemented |
+| similar_dramas      | content      Similarity recommendations | ✅ Implemented |
+| information_pages   | content      Static pages ( About, FAQ ) | ✅ Implemented |
+| content_slug_history| content      Slug change history        | ✅ Implemented |
+| content_seo         | content      SEO metadata per content  | ✅ Implemented |
+| content_assets      | content      Media/assets per content  | ✅ Implemented |
+| sitemap_exclusions  | content      Sitemap URL exclusions    | ✅ Implemented |
+| users_bookmarks     | users        User bookmarks            | ✅ Implemented |
+| users_watch_history | users        Watch history            | ✅ Implemented |
+| users_watched_state | users        Per-episode watched state | ✅ Implemented |
+| users_bookmarks     | users        User bookmarks           | ✅ Implemented |
+| ratings             | reviews      User ratings (1–5)        | ✅ Implemented |
+| reviews             | reviews      User reviews            | ✅ Implemented |
+| review_reactions    | reviews      Review reactions (likes) | ✅ Implemented |
+| review_reports      | reviews      Review reports         | ✅ Implemented |
+| content_reports     | moderation   User content reports   | ✅ Implemented |
+| moderation_actions  | moderation   Admin moderation actions | ✅ Implemented |
+| notification_preferences | notifications | User notification preferences | ✅ Implemented |
+| notifications       | notifications   In-app notifications | ✅ Implemented |
+| push_subscriptions  | notifications   Push subscription endpoints | ✅ Implemented |
+| notification_deliveries | notifications   Delivery tracking records | ✅ Implemented |
+| announcements       | notifications   Site-wide announcements | ✅ Implemented |
+| admin_notifications | notifications   Admin-targeted notifications | ✅ Implemented |
+| users               | auth         Auth users (Better Auth) | ✅ Implemented |
+| accounts            | auth         OAuth/account linking   | ✅ Implemented |
+| sessions            | auth         Auth sessions           | ✅ Implemented |
+| verifications       | auth         Email/email OTP verifications | ✅ Implemented |
+| guest_sessions      | analytics    Anonymous guest sessions | ✅ Implemented |
+| content_view_events | analytics    Content view events        | ✅ Implemented |
+| playback_analytics_events | analytics   Playback analytics events | ✅ Implemented |
+| analytics_daily_aggregates | analytics   Daily aggregate metrics | ✅ Implemented |
+| search_events       | analytics    Search event logs        | ✅ Implemented |
+| users_playback_progress | playback   Playback progress tracking | ✅ Implemented |
+| users_subtitle_tracks | playback   Subtitle track assignments | ✅ Implemented |
+| admin_accounts      | administration   Admin user accounts  | ⏳ Pending migration |
+| admin_login_attempts| administration   Admin login attempts | ⏳ Pending migration |
+| admin_session_events| administration   Admin session events | ⏳ Pending migration |
+| system_settings     | administration   System configuration | ⏳ Pending migration |
+| system_setting_versions | administration   System setting versions | ⏳ Pending migration |
+| admin_dashboard_layouts | administration   Admin dashboard layouts | ⏳ Pending migration |
+| admin_audit_log     | administration   Admin audit log    | ⏳ Pending migration |
+| maintenance_task_runs | maintenance   Scheduled maintenance runs | ⏳ Pending migration |
+| backup_manifests    | maintenance   Backup file manifests | ⏳ Pending migration |
+| system_alerts       | maintenance   System alerts          | ⏳ Pending migration |
+| incidents           | maintenance   Incident reports       | ⏳ Pending migration |
+| incident_notes      | maintenance   Incident notes         | ⏳ Pending migration |
+| incident_attachments| maintenance   Incident attachments   | ⏳ Pending migration |
+| error_records       | maintenance   Error record log       | ⏳ Pending migration |
+| health_snapshots    | maintenance   Health check snapshots | ⏳ Pending migration |
+
+When a table is added, record:
+
+- owning module,
+- purpose,
+- primary key and key columns,
+- foreign keys and referential actions,
+- unique/check constraints,
+- indexes and the query each supports,
+- soft-delete behavior,
+- migration file,
+- related API/query functions.
 
 When a table is added, record:
 
@@ -198,3 +267,13 @@ When a table is added, record:
 8. Update `PROJECT_STATUS.md`.
 
 Do not modify another module's table. Do not add a cross-module write to avoid a workflow.
+
+
+## 8. Index and Search Strategy (Updated)
+
+- **Every foreign key** has an index on the referencing column (per CONVENTIONS.md §5.4).
+- **Partial unique indexes** WHERE deleted_at IS NULL enforce active-row uniqueness for slugs, names, and per-user/per-content constraints.
+- **Full-text indexes** (idx_*_search, GIN on 	svector) support title/description search on dramas, episodes, and movies.
+- **Trigram indexes** (idx_*_title_trgm, GIN on pg_trgm) support autocomplete and fuzzy matching on title columns.
+- **Composite indexes** support common query patterns: drama-level lookups, season/episode ordering, category/platform joins, and user-specific filtering.
+- **Case-insensitive uniqueness** on lower(name) is enforced via partial unique indexes where names must be unique among active rows.

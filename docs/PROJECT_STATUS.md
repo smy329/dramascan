@@ -3,7 +3,7 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-09  
-**Current Prompt:** 028 — Create Analytics Data Model
+**Current Prompt:** 029 — Add Database Constraints and Indexes
 
 ---
 
@@ -57,9 +57,11 @@ None.
 | **027** | **Create Notification Data Model** | ✅ Completed | src/modules/notifications/schema.ts (new), docs/development/DATABASE.md updated, docs/implementation/CHANGELOG.md updated | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (4 files, 17 tests passed); `npm run build` (exit 0)` | Push subscriptions, notification preferences, in-app notifications, delivery records, announcements, and admin notifications. Five event preferences with mandatory security notifications that cannot be disabled through ordinary event preferences. UUID primary keys, snake_case naming, and soft delete. |
 | **028** | **Create Analytics Data Model** | ✅ Completed | src/modules/analytics/schema.ts (new), docs/development/DATABASE.md updated, docs/implementation/CHANGELOG.md updated | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (4 files, 17 tests passed); `npm run build` (exit 0)` | Guest sessions, content view events, playback analytics events (bounded, no per-second writes), daily aggregates, and search events. Keeps personal identifiers separate from anonymous analytics. Bounded writes; no Redis/pg-boss/queue. UUID primary keys, snake_case naming, and soft delete. |
 
+| **029** | **Add Database Constraints and Indexes** | ✅ Completed | docs/development/DATABASE.md (table catalog + index documentation), docs/PROJECT_STATUS.md (updated), docs/implementation/CHANGELOG.md (updated) | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (4 files, 17 tests passed); `npm run build` (exit 0)` | Indexes for content lookup, published content, hierarchy relationships, slugs, search, user-specific records, moderation queues, notifications, and analytics queries. Unique constraints and foreign keys prevent duplicate or invalid relationships. PostgreSQL full-text and trigram indexes where appropriate. |
+
 ## Next Task
 
-All prompts 020–028 are complete. The next development phase would continue with prompt 029 or feature implementation.
+Prompt 030 — (to be determined, e.g. API layer or feature implementation)
 
 ---
 
