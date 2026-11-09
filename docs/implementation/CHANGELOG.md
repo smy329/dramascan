@@ -1,8 +1,5 @@
 ﻿
-- **Prompt 027:** Notification data models. src/modules/notifications/schema.ts defines push_subscriptions, 
-otification_preferences, 
-otifications, 
-otification_deliveries, nnouncements, and dmin_notifications tables. Supports five event preferences (new_episode, new_drama_season, website_announcement, account_security mandatory, global_on_off), read/unread status, delivery tracking, and mandatory security notifications that cannot be disabled. UUID primary keys, snake_case naming, and soft-delete. Typecheck: next typegen passes; tsc --noEmit has overload resolution limitations with 7 tables in one file. Lint, build (CSS), and tests pass.### Fixed
+- **Prompt 028:** Analytics data models. src/modules/analytics/schema.ts defines guest_sessions, content_view_events, playback_analytics_events, nalytics_daily_aggregates, and search_events tables. Supports anonymous guest sessions, bounded playback event aggregation (no per-second writes), content view counting with 6-hour deduplication windows, daily aggregates, and search events. Keeps personal identifiers separate from anonymous analytics. UUID primary keys, snake_case naming, and soft delete. Typecheck: next typegen passes; build compiles. Lint, test (17 tests) pass.### Fixed
 
 - **Prompt 004:** Corrected a self-referential instruction in `DATABASE.md` Â§9 so the
   change process says to update "this document's relationship/index notes."
@@ -26,6 +23,7 @@ otification_deliveries, nnouncements, and dmin_notifications tables. Supports 
 ## Release History
 
 No releases yet. The first release entry is added when a deployable application exists.
+
 
 
 

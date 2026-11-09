@@ -3,7 +3,7 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-09  
-**Current Prompt:** 027 — Create Notification Data Models
+**Current Prompt:** 028 — Create Analytics Data Model
 
 ---
 
@@ -55,10 +55,11 @@ None.
 | **025** | **Create User Bookmark and Viewing Data Models** | ✅ Completed | src/modules/users/schema.ts (new), docs/development/DATABASE.md updated, docs/implementation/CHANGELOG.md updated | `npm run typecheck` (exit 0); `npm run lint` (exit 0); `npm test` (4 files, 17 tests passed); `npm run build` (exit 0)` | Drama-level bookmarks, per-episode playback progress, watched/unwatched state with completion threshold, and watch history with timestamps. All checks passing. |
 | **026** | **Create Ratings and Reviews Data Model** | ✅ Completed | src/modules/reviews/schema.ts (new), docs/development/DATABASE.md updated, docs/implementation/CHANGELOG.md updated | `npm run typecheck` (exit 0); `npm run lint` (exit 0); `npm test` (4 files, 17 tests passed); `npm run build` (exit 0)` | Ratings, reviews, review reactions, and review reports. One active rating/review per user per drama with unique constraints. Review editing preserves creation timestamp and updates last-edited timestamp. Multiple reports from different users supported. |
 | **027** | **Create Notification Data Model** | ✅ Completed | src/modules/notifications/schema.ts (new), docs/development/DATABASE.md updated, docs/implementation/CHANGELOG.md updated | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (4 files, 17 tests passed); `npm run build` (exit 0)` | Push subscriptions, notification preferences, in-app notifications, delivery records, announcements, and admin notifications. Five event preferences with mandatory security notifications that cannot be disabled through ordinary event preferences. UUID primary keys, snake_case naming, and soft delete. |
+| **028** | **Create Analytics Data Model** | ✅ Completed | src/modules/analytics/schema.ts (new), docs/development/DATABASE.md updated, docs/implementation/CHANGELOG.md updated | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (4 files, 17 tests passed); `npm run build` (exit 0)` | Guest sessions, content view events, playback analytics events (bounded, no per-second writes), daily aggregates, and search events. Keeps personal identifiers separate from anonymous analytics. Bounded writes; no Redis/pg-boss/queue. UUID primary keys, snake_case naming, and soft delete. |
 
 ## Next Task
 
-All prompts 020–027 are complete. The next development phase would continue with prompt 028 or feature implementation.
+All prompts 020–028 are complete. The next development phase would continue with prompt 029 or feature implementation.
 
 ---
 
