@@ -603,7 +603,7 @@ Request parsing, status-code mapping, headers, cookies, and response envelopes l
 
 Cross-module foreign keys are permitted at the database level (for example, `bookmarks.content_id` referencing content). They do not grant write permission. Referential actions are chosen conservatively; destructive cleanup is performed explicitly by the owning module inside `workflows/permanently-delete-content`, not by `ON DELETE CASCADE` across ownership boundaries.
 
-A module's `schema.ts` must not import another module's `schema.ts`. Cross-module foreign-key constraints are declared in SQL migrations (and, where needed, assembled in `src/db/schema.ts`). The exact Drizzle mechanism is settled in Prompt 020; the boundary rule is fixed here.
+A module's `schema.ts` must not import another module's `schema.ts`. Cross-module foreign-key constraints are declared in SQL migrations, not in the Drizzle schema. `src/db/schema.ts` spreads each module's namespace into one registry; intra-module constraints use named Drizzle builders. The boundary rule is fixed here; the Prompt 020 composition is documented in `DATABASE.md` §2.4.
 
 ---
 

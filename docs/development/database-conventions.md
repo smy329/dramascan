@@ -86,7 +86,7 @@ Do not merge unrelated entities into one table. Do not create a single polymorph
 - For relationships spanning dramas and movies (ratings, reviews, bookmarks, view events), use one of:
   - typed FK columns plus a check constraint that exactly one target is set, or
   - separate typed relationship tables.
-    Do not use an unenforced polymorphic `content_id` without a documented integrity strategy. The choice is made in Prompt 020 and recorded here.
+    Prompt 020 chose typed FK columns plus a check constraint; see `DATABASE.md` §5 for the recorded model. Do not use an unenforced polymorphic `content_id` without a documented integrity strategy.
 - Deleting a season moves the season and its episodes to Trash together; permanent deletion cleanup is explicit and transactional.
 - Do not rely on `ON DELETE CASCADE` across module ownership boundaries. Destructive cleanup is performed by the owning module inside `workflows/permanently-delete-content`.
 - Stable IDs survive edits, reordering, moving, conversion, and source replacement.

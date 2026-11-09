@@ -70,6 +70,15 @@ this file records notable outcomes, not every edit.
   a hostname, database name, and no fragment. `drizzle-orm` and `pg` are runtime
   dependencies.
 
+- **Prompt 020:** Modular Drizzle schema structure. `src/db/schema.ts` is the only
+  composition root that imports module `schema.ts` namespaces and exports one registry;
+  `src/db/client.ts` passes it to Drizzle. Eleven module schema fragments establish the
+  authentication, authorization, content, users, playback, reviews, moderation,
+  notifications, analytics, administration, and maintenance boundaries. Shared helpers in
+  `src/platform/db/schema-helpers.ts` provide UUIDv7 primary keys, standard timestamps,
+  soft deletion, and documented constraint/index names. No tables or migrations were
+  created; those belong to Prompts 021–029.
+
 ### Changed
 
 - **Prompt 003:** `PROJECT_STATUS.md` updated to record the approved architecture and the
@@ -95,6 +104,10 @@ this file records notable outcomes, not every edit.
   configuration boundary and variable contract.
 - **Prompt 019:** `DATABASE.md` and `SECURITY.md` now record the implemented connection
   pool, timeout policy, validation rules, and local/private-only deployment requirement.
+- **Prompt 020:** `DATABASE.md` records the schema composition rules, the SQL-migration
+  boundary for cross-module foreign keys, and the approved typed-FK + CHECK model for
+  drama/movie relationships. The architecture and directory documents now point to the
+  settled Drizzle composition mechanism instead of deferring it.
 
 ### Fixed
 

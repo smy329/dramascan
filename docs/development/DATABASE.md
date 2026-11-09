@@ -4,11 +4,11 @@
 **Document:** Database schema, relationships, and migration notes
 **Version:** 1.0
 **Date:** 2026-11-08
-**Status:** Conventions established by Prompt 004. No tables exist yet; schema implementation begins in Prompt 020.
+**Status:** Conventions established by Prompt 004. Modular schema structure established by Prompt 020; no tables exist yet. Table models begin in Prompt 022.
 
 **Authority chain:** `AGENTS.md` → `REQUIREMENTS.md` → `DECISIONS.md` → `ARCHITECTURE.md` → `CONVENTIONS.md` → this document.
 
-This document is the source of truth for the implemented database. Until Prompt 020, the table catalog below is a plan, not an implemented schema.
+This document is the source of truth for the implemented database. Until the data-model prompts (022+) add tables, the table catalog below is a plan, not an implemented schema.
 
 ---
 
@@ -17,9 +17,9 @@ This document is the source of truth for the implemented database. Until Prompt 
 | Item                   | Status                                       |
 | ---------------------- | -------------------------------------------- |
 | PostgreSQL connection  | Configured (Prompt 019)                      |
-| Drizzle schema modules | Not implemented (Prompt 020)                 |
+| Drizzle schema modules | Structure established (Prompt 020)           |
 | Migrations             | Not configured (Prompt 021)                  |
-| Tables                 | None                                         |
+| Tables                 | None (data models begin in Prompt 022)       |
 | Seed data              | None                                         |
 | Test database          | Not configured locally (`TEST_DATABASE_URL`) |
 
@@ -67,6 +67,15 @@ Additional columns are table-specific and documented in the catalog.
 - `pg` reconnects lazily when a connection is checked out; there is no retry loop, background worker, or queue.
 - Idle-client errors are handled on the pool and logged through Pino with connection strings, passwords, and URL credentials redacted.
 - PostgreSQL must remain reachable only through the application server's local or private interface. Public exposure is forbidden; local-only access and database role separation are deployment prerequisites, not application features.
+
+### 2.4 Schema composition (Prompt 020)
+
+- Each domain module owns its Drizzle tables in `src/modules/<domain>/schema.ts`. A module's schema file must not import another module's schema file.
+- `src/db/schema.ts` is the only file allowed to import module schema files. It spreads each module namespace into one `schema` registry, and `src/db/client.ts` passes that registry to `drizzle(getPool(), { schema })`.
+- Shared schema primitives live in `src/platform/db/schema-helpers.ts`: UUIDv7 application primary keys, standard `created_at`/`updated_at`/`deleted_at` columns, and the `pk_`/`fk_`/`uq_`/`ck_`/`idx_` naming helpers from `CONVENTIONS.md` §5.4.
+- Application-owned IDs default to PostgreSQL `uuidv7()` on the server. This requires PostgreSQL 18 or newer; CI and local development use PostgreSQL 18. Better Auth-managed tables keep Better Auth's required ID type; foreign keys to the auth user table use that same type.
+- Intra-module foreign keys use named Drizzle constraints. Cross-module foreign keys are added as SQL constraints in migrations and are not declared in `schema.ts`; they do not grant write permission.
+- The registry is intentionally empty until the data-model prompts add tables. No module directory gains service, query, or repository files until that module's implementation prompt.
 
 ---
 
@@ -117,7 +126,7 @@ Do not merge unrelated entities into one table. Do not create a single polymorph
 - For relationships spanning dramas and movies (ratings, reviews, bookmarks, view events), use one of:
   - typed FK columns plus a check constraint that exactly one target is set, or
   - separate typed relationship tables.
-    Do not use an unenforced polymorphic `content_id` without a documented integrity strategy. The choice is made in Prompt 020 and recorded here.
+    **Chosen in Prompt 020:** typed FK columns plus a check constraint. Each relationship table has nullable `drama_id` and `movie_id` foreign keys and a `CHECK` constraint enforcing that exactly one is non-NULL. Uniqueness uses partial unique indexes for the active drama and movie cases. A generic polymorphic `content_type` + `content_id` pair is forbidden unless real referential integrity is enforced by another documented mechanism.
 - Deleting a season moves the season and its episodes to Trash together; permanent deletion cleanup is explicit and transactional.
 - Do not rely on `ON DELETE CASCADE` across module ownership boundaries. Destructive cleanup is performed by the owning module inside `workflows/permanently-delete-content`.
 - Stable IDs survive edits, reordering, moving, conversion, and source replacement.

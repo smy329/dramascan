@@ -461,6 +461,37 @@ that prefix. Errors list field names and messages, never values.
 
 ---
 
+## D-020 — Cross-content relationship model
+
+**Date:** 2026-11-09
+**Status:** Approved by user
+**Resolves:** Prompt 020
+
+**Context:** Ratings, reviews, bookmarks, and view events may target either a drama or a
+standalone movie. `DATABASE.md` requires Prompt 020 to choose between typed FK columns with a
+check constraint and separate per-type relationship tables, and forbids an unenforced
+polymorphic `content_id`.
+
+**Decision:** Use one relationship table per concept (`ratings`, `reviews`, `bookmarks`,
+`view_events`) with nullable `drama_id` and `movie_id` foreign keys. A PostgreSQL `CHECK`
+constraint enforces that exactly one of the two columns is non-NULL. Uniqueness uses partial
+unique indexes for the active drama and movie cases. Foreign keys and checks are enforced in
+both Drizzle schemas and SQL migrations; a generic `content_type` + `content_id` pair is not
+used.
+
+**Consequences:**
+
+- Per-user and per-content queries remain in one table per relationship, without duplicate
+  drama and movie tables.
+- Every relationship row must set exactly one target; database constraints, not only
+  application validation, enforce the invariant.
+- Cross-module foreign keys are declared in SQL migrations, consistent with D-013 and
+  `DATABASE.md` §2.4.
+- Future content types require a new typed column and a new check constraint, not a generic
+  polymorphic reference.
+
+---
+
 ## Decision log rules
 
 - A decision is added only after explicit user approval or when the specification
