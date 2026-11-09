@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 
 // Only administrators may access this endpoint.
 // This route handler should be protected by admin-only middleware
-// in a full implementation; for this prompt we delegate to the
+// in a full implementation; for now we delegate to the
 // workflow functions and let the caller handle authorization.
 
 export const dynamic = 'force-dynamic';
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
   // Dispatch to the appropriate workflow
   switch (action) {
     case 'deactivate': {
-      const result = await adminDeactivateUser(userId);
+      const result = await adminDeactivateUser();
       if (result.error) {
         return new Response(result.error.message, { status: 500 });
       }
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     }
 
     case 'reactivate': {
-      const result = await adminReactivateUser(userId);
+      const result = await adminReactivateUser();
       if (result.error) {
         return new Response(result.error.message, { status: 500 });
       }
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     }
 
     case 'toggle': {
-      const result = await adminToggleUserStatus(userId);
+      const result = await adminToggleUserStatus();
       if (result.error) {
         return new Response(result.error.message, { status: 500 });
       }
