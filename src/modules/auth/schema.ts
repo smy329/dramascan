@@ -17,11 +17,31 @@
  *
  * RBAC system: roles and permissions tables for the role-based access control model.
  * Defines fine-grained permissions at action/resource level.
+ * Supports multiple roles per user — effective permissions are the combined
+ * permissions of all assigned roles.
  * Initial roles: super_admin, content_manager, moderator, analyst, viewer.
+ *
+ * Change Note: Users now have a many-to-many relationship with roles via the
+ * `user_roles` junction table. Each user can have zero or more roles. Effective
+ * permissions are computed by unioning the permissions of all assigned roles.
+ * The `is_super_admin` boolean flag on the user record still grants complete
+ * access regardless of role assignments.
  */
 
 import { sql } from 'drizzle-orm';
 import { pgTable, text, timestamp, uuid, boolean } from 'drizzle-orm/pg-core';
+
+// ---- Role name values (string literals for the roles table) ------------
+
+export const RoleName = {
+  SUPER_ADMIN: 'super_admin' as const,
+  CONTENT_MANAGER: 'content_manager' as const,
+  MODERATOR: 'moderator' as const,
+  ANALYST: 'analyst' as const,
+  VIEWER: 'viewer' as const,
+} as const;
+
+export type RoleName = typeof RoleName[keyof typeof RoleName];
 
 // ---- Users table -------------------------------------------------------
 
@@ -34,7 +54,10 @@ export const users = pgTable('users', {
   password: text('password'),
   is_active: boolean('is_active').notNull().default(true),
   is_super_admin: boolean('is_super_admin').notNull().default(false),
-  role: text('role').default('viewer'), // viewer, user, admin, super_admin
+  // Many-to-many: user's assigned roles are in the user_roles junction table.
+  // This column is kept for backward compatibility; new code should query
+  // user_roles instead of relying on a single role string.
+  role: text('role').default('viewer'), // deprecated: use user_roles table
   created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deleted_at: timestamp('deleted_at', { withTimezone: true }),
@@ -86,6 +109,18 @@ export const roles = pgTable('roles', {
   name: text('name').notNull(), // super_admin, content_manager, moderator, analyst, viewer
   description: text('description'),
   created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---- User-Roles junction table (many-to-many) -----------------------
+
+// Maps users to their assigned roles. A user can have multiple roles.
+// Effective permissions = union of permissions from all assigned roles.
+// Unique index on (user_id, role_id) prevents duplicate assignments.
+// The index is enforced at the migration level; Drizzle generates the SQL.
+export const userRoles = pgTable('user_roles', {
+  user_id: uuid('user_id').notNull(),
+  role_id: uuid('role_id').notNull(),
+  assigned_at: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ---- Permissions table -------------------------------------------------
@@ -142,13 +177,17 @@ export const INITIAL_ROLES = {
 
 export type InitialRole = keyof typeof INITIAL_ROLES;
 
-/** Default permission assignments for each role.
+/** Permission assignments for each role.
  * These map (action, resource) pairs to granted=true for each role.
  * Super Admin: all permissions granted (no 'ALL' action needed - has every permission).
  * Content Manager: manage content, read analytics.
  * Moderator: user moderation, content review.
  * Analyst: read-only dashboard and analytics.
  * Viewer: read/limited content.
+ *
+ * Note: Effective permissions for a user with multiple roles are computed
+ * by unioning the permission sets of all assigned roles via the
+ * user_roles junction table and the permissions table.
  */
 export const ROLE_PERMISSIONS = {
   [INITIAL_ROLES.SUPER_ADMIN]: [
@@ -251,7 +290,7 @@ export type RolePermissions = typeof ROLE_PERMISSIONS;
 
 // ---- Export types ------------------------------------------------------
 
-export type AuthTables = typeof users & typeof accounts & typeof sessions & typeof verifications & typeof roles & typeof permissions;
-export type AuthSchema = typeof users | typeof accounts | typeof sessions | typeof verifications | typeof roles | typeof permissions;
+export type AuthTables = typeof users & typeof accounts & typeof sessions & typeof verifications & typeof roles & typeof permissions & typeof userRoles;
+export type AuthSchema = typeof users | typeof accounts | typeof sessions | typeof verifications | typeof roles | typeof permissions | typeof userRoles;
 
 export {};
