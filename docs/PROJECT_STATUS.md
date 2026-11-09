@@ -3,7 +3,7 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-09  
-**Current Prompt:** 035 — Create Admin Accounts
+**Current Prompt:** 036 — Implement the Role and Permission Model
 
 ---
 
@@ -69,9 +69,11 @@ None.
 
 | **035** | **Create Admin Accounts** | ✅ Completed | src/modules/auth/schema.ts (modified), src/workflows/admin/users.ts (new), src/app/admin/api/users/route.ts (new), package.json, package-lock.json | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack completes) | Super Admin can authorize existing Google-authenticated accounts as administrators. Super Admin can activate/deactivate admin accounts. Public users cannot register as administrators — only Super Admin can create or authorize administrator access. Role inspection workflows included. |
 
+| **036** | **Implement the Role and Permission Model** | ✅ Completed | src/modules/auth/schema.ts (modified), package.json, package-lock.json | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack completes) | RBAC system with explicit permissions at action/resource level. Four initial roles defined: Super Admin (complete access), Content Manager (content handling), Moderator (user moderation), Analyst (read-only dashboard/analytics). Permissions table stores (action, resource) pairs granted per role. next typegen passes; tsc errors are pre-existing pg-core compatibility issues. |
+
 ## Next Task
 
-All prompts 020–035 complete.
+All prompts 020–036 complete.
 
 ---
 
