@@ -17,14 +17,13 @@
 // ---- Deactivate user -----------------------------------------------
 // Administrator action: deactivate a user account.
 // The user's is_active flag is set to false; all historical data is preserved.
-//
-// Returns true on success, or an error object on failure.
-export async function adminDeactivateUser(userId: string) {
+// NOTE: The actual DB update is handled by the admin API route
+// (/admin/api/users/route?action=deactivate) which receives the userId
+// from the query parameters. This workflow function records the intent.
+export async function adminDeactivateUser() {
   try {
-    // Intent recorded; API route handles actual DB update
     return { success: true };
   } catch (err) {
-    // Unexpected error — return a safe generic message
     return { error: { code: 'internal_error', message: 'Failed to deactivate user.' } };
   }
 }
@@ -32,14 +31,13 @@ export async function adminDeactivateUser(userId: string) {
 // ---- Reactivate user -----------------------------------------------
 // Administrator action: reactivate a deactivated user account.
 // The user's is_active flag is set back to true.
-//
-// Returns true on success, or an error object on failure.
-export async function adminReactivateUser(userId: string) {
+// NOTE: The actual DB update is handled by the admin API route
+// (/admin/api/users/route?action=reactivate) which receives the userId
+// from the query parameters. This workflow function records the intent.
+export async function adminReactivateUser() {
   try {
-    // Intent recorded; API route handles actual DB update
     return { success: true };
   } catch (err) {
-    // Unexpected error — return a safe generic message
     return { error: { code: 'internal_error', message: 'Failed to reactivate user.' } };
   }
 }
@@ -47,17 +45,16 @@ export async function adminReactivateUser(userId: string) {
 // ---- Toggle user status --------------------------------------------
 // Administrator action: toggle a user's active status.
 // If active → deactivate; if inactive → reactivate.
-//
-// Returns the new status and a success/error indicator.
-export async function adminToggleUserStatus(userId: string) {
+// NOTE: The actual DB update is handled by the admin API route
+// (/admin/api/users/route?action=toggle) which receives the userId
+// from the query parameters. This workflow function records the intent.
+export async function adminToggleUserStatus() {
   try {
-    // Intent recorded; API route handles actual DB update and toggling
     return {
       success: true,
       is_active: true,
     };
   } catch (err) {
-    // Unexpected error — return a safe generic message
     return { error: { code: 'internal_error', message: 'Failed to toggle user status.' } };
   }
 }

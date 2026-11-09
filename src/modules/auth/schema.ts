@@ -26,6 +26,7 @@ export const users = pgTable('users', {
   image: text('image'),
   password: text('password'),
   is_active: boolean('is_active').notNull().default(true),
+  is_super_admin: boolean('is_super_admin').notNull().default(false),
   created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deleted_at: timestamp('deleted_at', { withTimezone: true }),
