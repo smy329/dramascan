@@ -545,6 +545,7 @@ Domain errors extend a base class and add a stable code, for example `ContentNot
 - Test names describe behavior: `describe("content.publishEpisode")`, `it("rejects an episode without a source URL")`.
 - Coverage is not a vanity gate. Critical domain and authorization paths must be covered.
 - CI runs typecheck, lint, unit tests, integration tests, and production build. E2E runs on pull requests or a scheduled job once the application exists.
+- The GitHub Actions workflow, deterministic installation rules, and the manual production-approval policy are defined in `ci-cd.md`.
 
 ---
 

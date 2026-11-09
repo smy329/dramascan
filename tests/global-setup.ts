@@ -1,66 +1,73 @@
 /**
  * Global test setup for Vitest integration tests.
  *
+ * - Ensures the isolated test database exists.
  * - Applies migrations to the test database before the suite runs.
- * - Ensures the test database exists and is isolated from production.
  * - Uses the TEST_DATABASE_URL environment variable.
  */
 import 'dotenv/config';
+import { execSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { Pool } from 'pg';
-import { execSync } from 'child_process';
+import globalTeardown from './global-teardown';
 
 async function globalSetup() {
   const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 
   if (!testDatabaseUrl) {
-    console.error('ERROR: TEST_DATABASE_URL is not set');
-    process.exit(1);
+    throw new Error(
+      'TEST_DATABASE_URL is not set. Integration tests require an isolated PostgreSQL database.'
+    );
   }
 
-  // Parse the test database URL to extract connection components
   const url = new URL(testDatabaseUrl);
   const databaseName = url.pathname.replace(/^\//, '');
-  const connectionStringWithoutDB = `${url.protocol}//${url.host}`;
 
-  // Ensure the test database exists
-  const pool = new Pool({
-    connectionString: connectionStringWithoutDB,
-  });
+  if (!databaseName.endsWith('_test')) {
+    throw new Error(`The test database name must end with "_test" (received "${databaseName}").`);
+  }
+
+  if (!/^[a-zA-Z0-9_]+$/.test(databaseName)) {
+    throw new Error(`The test database name contains unsupported characters: "${databaseName}".`);
+  }
+
+  // Keep the credentials from TEST_DATABASE_URL; only replace the database path.
+  const maintenanceUrl = new URL(testDatabaseUrl);
+  maintenanceUrl.pathname = '/postgres';
+
+  const pool = new Pool({ connectionString: maintenanceUrl.toString() });
 
   try {
-    // Check if the database exists
-    const { rows } = await pool.query(
-      `SELECT 1 FROM pg_database WHERE datname = '${databaseName}'`
-    );
+    const { rows } = await pool.query('SELECT 1 FROM pg_database WHERE datname = $1', [
+      databaseName,
+    ]);
 
     if (rows.length === 0) {
-      // Create the test database if it doesn't exist
       await pool.query(`CREATE DATABASE "${databaseName}"`);
       console.log(`Created test database: ${databaseName}`);
     } else {
       console.log(`Test database already exists: ${databaseName}`);
     }
-  } catch (error) {
-    console.error('Error checking/creating database:', error);
-    process.exit(1);
   } finally {
     await pool.end();
   }
 
-  // Apply migrations to the test database using drizzle-kit
-  try {
-    execSync(
-      `npx drizzle-kit push --database-url="${testDatabaseUrl}"`,
-      { stdio: 'inherit' }
-    );
-    console.log('Migrations applied successfully');
-  } catch (error) {
-    console.error('Error applying migrations:', error);
-    // Don't exit - migrations might already be applied
-    console.log('Continuing despite migration errors');
+  // Drizzle tooling and schema arrive with the database prompts. Until then,
+  // there are no migrations to apply to the test database.
+  if (!existsSync('drizzle.config.ts')) {
+    console.log('drizzle.config.ts not found; skipping test database migrations.');
+    return globalTeardown;
   }
 
-  console.log('Test database setup complete.');
+  execSync('npx drizzle-kit push', {
+    env: { ...process.env, DATABASE_URL: testDatabaseUrl },
+    stdio: 'inherit',
+  });
+
+  console.log('Test database migrations applied successfully.');
+
+  // Vitest 5 uses the function returned by globalSetup as the teardown hook.
+  return globalTeardown;
 }
 
 export default globalSetup;

@@ -18,8 +18,8 @@ import type { NextRequest } from 'next/server';
  * The handler may return a NextResponse or a Promise<NextResponse>.
  */
 export function withRequestId(
-  handler: (request: NextRequest) => NextResponse | Promise<NextResponse>
-): (request: NextRequest) => NextResponse | Promise<NextResponse> {
+  handler: (_request: NextRequest) => NextResponse | Promise<NextResponse>
+): (_request: NextRequest) => NextResponse | Promise<NextResponse> {
   return async (request: NextRequest) => {
     const requestId = generateRequestIdUnique();
 

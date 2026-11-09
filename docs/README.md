@@ -46,6 +46,7 @@ For the future upgrade backlog, see `future/`.
 - [Error Handling](development/error-handling.md)
 - [Logging Conventions](development/logging-conventions.md)
 - [Testing Conventions](development/testing-conventions.md)
+- [CI/CD Conventions](development/ci-cd.md)
 - [Migration Conventions](development/migration-conventions.md)
 - [Implementation Plan](implementation/implementation-plan.md)
 - [Progress Tracker](implementation/progress-tracker.md)

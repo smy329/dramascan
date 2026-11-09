@@ -5,7 +5,7 @@ import { AppError } from './index';
  * action on the target resource.
  */
 export class AuthorizationError extends AppError {
-  readonly code = 'forbidden'
+  override readonly code = 'forbidden'
 
   /** @override */
   constructor(message: string = 'Forbidden.', cause?: unknown) {

@@ -27,12 +27,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Set up `TEST_DATABASE_URL` in `.env.example` with `_test` database naming convention
   - Established test directory structure: `tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/fixtures/`
   - Installed Playwright browsers (Chrome, Firefox, WebKit)
+- **Prompt 018:** Establish CI Quality Checks
+  - Added `.github/workflows/ci.yml` with typecheck, lint, unit-test, integration-test,
+    and production-build jobs on pushes to `main`, pull requests, and manual dispatch
+  - Integration tests run against an isolated PostgreSQL 18 service using
+    `TEST_DATABASE_URL`; CI uses read-only repository permissions
+  - Added `docs/development/ci-cd.md` documenting the quality gate, deterministic
+    installation, local reproduction, and the manual production-approval policy
+  - Added `vitest.integration.config.ts` so integration tests own their database setup
+  - Added `dotenv` as an explicit dev dependency for test environment loading
 
 ### Changed
 - Updated `src/platform/config/schema.ts` to include optional `LOG_LEVEL` field
-
-### Changed
-- Updated `src/platform/config/schema.ts` to include optional `LOG_LEVEL` field
+- **Prompt 018:** `npm test` now runs unit tests only; `npm run test:integration` uses
+  `vitest.integration.config.ts` and reads `TEST_DATABASE_URL` from the environment
+- **Prompt 018:** `tests/global-setup.ts` preserves database credentials, rejects test
+  database names that do not end in `_test`, parameterizes the existence check, and
+  skips Drizzle migrations until `drizzle.config.ts` exists
+- **Prompt 018:** Aligned ESLint plugin versions with ESLint 9 and added `vite` (required
+  by Vitest 5), so a plain `npm ci` resolves and installs cleanly
 
 ### Deprecated
 - None
@@ -41,7 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - None
 
 ### Fixed
-- None
+- **Prompt 018:** Added `override` modifiers required by `noImplicitOverride` in the
+  platform error hierarchy, resolving pre-existing type-check failures
+- **Prompt 018:** Resolved pre-existing lint failures (missing final newlines,
+  unnecessary parentheses, unused parameter names)
+- **Prompt 018:** Replaced Tailwind v4-only spacing syntax in `card.tsx` with Tailwind v3
+  arbitrary values, resolving the pre-existing production-build CSS failure
 
 ### Security
 - None

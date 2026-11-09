@@ -3,7 +3,7 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-09  
-**Current Prompt:** 016 — Configure Pino Structured Logging
+**Current Prompt:** 018 — Establish CI Quality Checks
 
 ---
 
@@ -43,10 +43,11 @@ None.
 | 015 | — | — | — | — | — |
 | **016** | **Configure Pino Structured Logging** | **✅ Completed** | **.env.example, package.json, package-lock.json, src/platform/config/schema.ts, src/platform/logging.ts, src/platform/middleware/request-id.ts** | **N/A — logging infrastructure, verified with typecheck** | Pino configured with structured JSON, redaction, correlation IDs, log level via LOG_LEVEL env var |
 | | **017** | **Establish Testing Foundation** | **✅ Completed** | **vitest.config.ts, tests/global-setup.ts, tests/global-teardown.ts, package.json, CHANGELOG.md, docs/PROJECT_STATUS.md** | **N/A — test infrastructure configured, typecheck passes** | Vitest configured for unit/integration tests, Playwright for E2E, test database isolation with TEST_DATABASE_URL, fixture directory structure established |
+| **018** | **Establish CI Quality Checks** | **✅ Completed** | **.github/workflows/ci.yml, vitest.config.ts, vitest.integration.config.ts, tests/global-setup.ts, package.json, package-lock.json, src/platform/errors/*.ts, src/platform/middleware/request-id.ts, src/components/ui/card.tsx, docs/development/ci-cd.md, docs/development/CONVENTIONS.md, docs/README.md, docs/PROJECT_STATUS.md, CHANGELOG.md** | **`npm ci`; `npm run typecheck` (exit 0); `npm run lint` (exit 0); `npm test -- --passWithNoTests` (exit 0); `npm run build` (exit 0)** | GitHub Actions runs install, typecheck, lint, unit tests, integration tests against PostgreSQL 18, and production build. `npm ci` provides deterministic install and lockfile validation. No automatic deployment; production requires manual approval. Pre-existing typecheck, lint, and CSS build failures were fixed to make the gate green. `--passWithNoTests` is temporary until test suites exist. Dependency versions were aligned with ESLint 9 and Vitest 5 so plain `npm ci` succeeds. |
 
 ## Next Task
 
-Prompt 017 — (to be determined)
+Prompt 019 — (to be determined)
 
 ---
 
@@ -57,3 +58,6 @@ Prompt 017 — (to be determined)
 - Redaction covers: `req.headers.authorization`, `req.headers.cookie`, `password`, `token`, `secret`, `apiKey`, `clientSecret`, `set-cookie`.
 - Request ID format: `01J-<11 uppercase alphanumeric chars>`, added to `X-Request-Id` response header.
 - Services should use `createRequestLogger({ requestId, module })` for request-scoped logging via the `ServiceContext` type.
+- CI is defined in `.github/workflows/ci.yml`; see `docs/development/ci-cd.md` for jobs, local reproduction, and the manual production-approval policy.
+- `npm test` runs unit tests only; integration tests use `npm run test:integration` with `TEST_DATABASE_URL`.
+- CI currently passes `--passWithNoTests` because no test files exist yet. Remove the flag once stable suites are committed.

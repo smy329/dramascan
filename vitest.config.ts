@@ -1,37 +1,21 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 
+// Unit-test configuration. Unit tests must not touch the network or a database.
+// Integration tests use vitest.integration.config.ts, which adds database setup.
 // https://vitest.dev/config/
 export default defineConfig({
   test: {
-    // Run tests in project directory
     root: './',
-    // Extend the test include patterns
     testTimeout: 30000,
-    // Global setup/teardown for test database
-    globalSetup: './tests/global-setup.ts',
-    globalTeardown: './tests/global-teardown.ts',
-    // Coverage configuration
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
     },
-    // Include patterns
-    include: [
-      'tests/unit/**/*.test.ts',
-      'tests/integration/**/*.test.ts',
-      'tests/e2e/**/*.spec.ts',
-    ],
-    // Exclude patterns
-    exclude: [
-      'node_modules',
-      '.next',
-      'dist',
-    ],
-    // Environment configuration
+    include: ['tests/unit/**/*.test.ts'],
+    exclude: ['node_modules', '.next', 'dist'],
     environment: 'node',
   },
-  // Resolve aliases
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

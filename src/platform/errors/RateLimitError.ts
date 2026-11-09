@@ -4,7 +4,7 @@ import { AppError } from './index';
  * Raised when the client has exceeded a rate limit.
  */
 export class RateLimitError extends AppError {
-  readonly code = 'rate_limited'
+  override readonly code = 'rate_limited'
   readonly retryAfter?: number | Date
 
   /** @override */

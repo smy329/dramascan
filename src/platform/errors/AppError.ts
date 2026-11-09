@@ -11,12 +11,9 @@
  * them to HTTP responses or `ActionResult` once, using the `platform/http` mapping.
  */
 export class AppError extends Error {
-  /** @override */
   readonly code: string
-  /** @override */
   readonly fieldErrors?: Record<string, string[]>
-  /** @override */
-  readonly cause?: unknown
+  override readonly cause?: unknown
 
   /** @override */
   constructor(code: string, message: string, fieldErrors?: Record<string, string[]>, cause?: unknown) {
