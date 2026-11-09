@@ -20,11 +20,14 @@ export async function GET(request: Request) {
     return new Response('Missing action', { status: 400 });
   }
 
+  // Helper: get string param or empty string
+  const getParam = (key: string) => searchParams.get(key) || '';
+
   // Dispatch to the appropriate workflow
   switch (action) {
     case 'create-role': {
-      const name = searchParams.get('name') || '';
-      const description = searchParams.get('description') || '';
+      const name = getParam('name') || '';
+      const description = getParam('description') || '';
       const result = await createRole(name, description);
       if (result.error) {
         return new Response(result.error.message, { status: 500 });
@@ -33,9 +36,9 @@ export async function GET(request: Request) {
     }
 
     case 'edit-role': {
-      const roleId = searchParams.get('roleId') || '';
-      const name = searchParams.get('name');
-      const description = searchParams.get('description');
+      const roleId = getParam('roleId');
+      const name = getParam('name') || undefined;
+      const description = getParam('description') || undefined;
       const result = await editRole(roleId, name, description);
       if (result.error) {
         return new Response(result.error.message, { status: 500 });
@@ -44,9 +47,9 @@ export async function GET(request: Request) {
     }
 
     case 'assign-permission': {
-      const roleId = searchParams.get('roleId') || '';
-      const action = searchParams.get('action') || '';
-      const resource = searchParams.get('resource') || '';
+      const roleId = getParam('roleId');
+      const action = getParam('action') as 'create' | 'read' | 'update' | 'delete' | 'manage';
+      const resource = getParam('resource') as 'drama' | 'movie' | 'episode' | 'category' | 'platform' | 'user' | 'review' | 'rating' | 'analytics' | 'settings' | 'admin';
       const result = await assignPermission(roleId, action, resource);
       if (result.error) {
         return new Response(result.error.message, { status: 500 });
@@ -55,9 +58,9 @@ export async function GET(request: Request) {
     }
 
     case 'revoke-permission': {
-      const roleId = searchParams.get('roleId') || '';
-      const action = searchParams.get('action') || '';
-      const resource = searchParams.get('resource') || '';
+      const roleId = getParam('roleId');
+      const action = getParam('action') as 'create' | 'read' | 'update' | 'delete' | 'manage';
+      const resource = getParam('resource') as 'drama' | 'movie' | 'episode' | 'category' | 'platform' | 'user' | 'review' | 'rating' | 'analytics' | 'settings' | 'admin';
       const result = await revokePermission(roleId, action, resource);
       if (result.error) {
         return new Response(result.error.message, { status: 500 });
@@ -66,7 +69,7 @@ export async function GET(request: Request) {
     }
 
     case 'get-permissions': {
-      const roleId = searchParams.get('roleId') || '';
+      const roleId = getParam('roleId');
       const result = await getRolePermissions(roleId);
       if (result.error) {
         return new Response(result.error.message, { status: 500 });
@@ -78,9 +81,9 @@ export async function GET(request: Request) {
     }
 
     case 'validate-access': {
-      const roleId = searchParams.get('roleId');
-      const action = searchParams.get('action');
-      const resource = searchParams.get('resource');
+      const roleId = getParam('roleId') || undefined;
+      const action = getParam('action') as 'create' | 'read' | 'update' | 'delete' | 'manage' | undefined;
+      const resource = getParam('resource') as 'drama' | 'movie' | 'episode' | 'category' | 'platform' | 'user' | 'review' | 'rating' | 'analytics' | 'settings' | 'admin' | undefined;
       const result = await validateSuperAdminAccess(roleId, action, resource);
       if (result.error) {
         return new Response(result.error.message, { status: 500 });
