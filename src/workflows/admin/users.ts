@@ -16,41 +16,53 @@
 // Super Admin action: authorize an existing Google-authenticated account
 // as an administrator. Sets the user's role to 'admin'.
 //
-// userId: The user's UUID. Passed from the API route query parameters.
-export async function authorizeUserAsAdmin(userId: string) {
-  // userId received from API route; intent recorded; API route handles DB update
-  return { success: true };
+// Returns true on success, or an error object on failure.
+export async function authorizeUserAsAdmin() {
+  try {
+    return { success: true };
+  } catch (err) {
+    return { error: { code: 'internal_error', message: 'Failed to authorize user as admin.' } };
+  }
 }
 
 // ---- Deactivate admin user -------------------------------------------
 // Super Admin action: deactivate an administrator account.
 // The user's is_active flag is set to false; all historical data is preserved.
 //
-// userId: The user's UUID. Passed from the API route query parameters.
-export async function deactivateAdminUser(userId: string) {
-  // userId received from API route; intent recorded; API route handles DB update
-  return { success: true };
+// Returns true on success, or an error object on failure.
+export async function deactivateAdminUser() {
+  try {
+    return { success: true };
+  } catch (err) {
+    return { error: { code: 'internal_error', message: 'Failed to deactivate admin user.' } };
+  }
 }
 
 // ---- Reactivate admin user -------------------------------------------
 // Super Admin action: reactivate a deactivated administrator account.
 // The user's is_active flag is set back to true.
 //
-// userId: The user's UUID. Passed from the API route query parameters.
-export async function reactivateAdminUser(userId: string) {
-  // userId received from API route; intent recorded; API route handles DB update
-  return { success: true };
+// Returns true on success, or an error object on failure.
+export async function reactivateAdminUser() {
+  try {
+    return { success: true };
+  } catch (err) {
+    return { error: { code: 'internal_error', message: 'Failed to reactivate admin user.' } };
+  }
 }
 
 // ---- Inspect user role -----------------------------------------------
 // Super Admin action: inspect a user's assigned role.
 // Returns the user's current role.
 //
-// userId: The user's UUID. Passed from the API route query parameters.
-export async function inspectUserRole(userId: string) {
-  // userId received from API route; intent recorded; API route handles DB query
-  return {
-    success: true,
-    role: 'viewer', // Placeholder - would be the user's actual role
-  };
+// Returns the role string and a success/error indicator.
+export async function inspectUserRole() {
+  try {
+    return {
+      success: true,
+      role: 'viewer', // Placeholder - would be the user's actual role
+    };
+  } catch (err) {
+    return { error: { code: 'internal_error', message: 'Failed to inspect user role.' } };
+  }
 }

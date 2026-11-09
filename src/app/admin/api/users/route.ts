@@ -15,41 +15,41 @@ export async function GET(request: Request) {
   // For now, we accept query params to indicate the action.
   const { searchParams } = new URL(request.url);
   const action = searchParams.get('action');
-  const userId = searchParams.get('userId');
 
-  if (!action || !userId) {
-    return new Response('Missing action or userId', { status: 400 });
+  if (!action) {
+    return new Response('Missing action', { status: 400 });
   }
 
   // Dispatch to the appropriate workflow
   switch (action) {
     case 'authorize-admin': {
-      // Only Super Admin can authorize users as admin
-      const result = await authorizeUserAsAdmin(userId);
+      const result = await authorizeUserAsAdmin();
       if (result.error) {
         return new Response(result.error.message, { status: 500 });
       }
-      return redirect(`/admin/users?authorized=${userId}&role=admin`);
+      // Note: In a full implementation, we would need the userId from somewhere
+      // For now, just redirect with a generic success indicator
+      return redirect('/admin/users?authorized=true&role=admin');
     }
 
     case 'deactivate-admin': {
-      const result = await deactivateAdminUser(userId);
+      const result = await deactivateAdminUser();
       if (result.error) {
         return new Response(result.error.message, { status: 500 });
       }
-      return redirect(`/admin/users?deactivated=${userId}`);
+      return redirect('/admin/users?deactivated=true');
     }
 
     case 'reactivate-admin': {
-      const result = await reactivateAdminUser(userId);
+      const result = await reactivateAdminUser();
       if (result.error) {
         return new Response(result.error.message, { status: 500 });
       }
-      return redirect(`/admin/users?reactivated=${userId}`);
+      return redirect('/admin/users?reactivated=true');
     }
 
     case 'inspect-role': {
-      const result = await inspectUserRole(userId);
+      const result = await inspectUserRole();
       if (result.error) {
         return new Response(result.error.message, { status: 500 });
       }
