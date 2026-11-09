@@ -27,7 +27,40 @@ export class ConfigurationError extends Error {
 }
 
 const httpUrlSchema = z.url({ protocol: /^https?$/ });
-const postgresUrlSchema = z.url({ protocol: /^postgres(ql)?$/ });
+const postgresUrlSchema = z.url({ protocol: /^postgres(ql)?$/ }).superRefine((value, ctx) => {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(value);
+  } catch {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'PostgreSQL connection strings must be valid URLs.',
+    });
+    return;
+  }
+
+  if (parsed.hostname.length === 0) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'PostgreSQL connection strings must include a hostname.',
+    });
+  }
+
+  if (databaseNameFromConnectionString(parsed).length === 0) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'PostgreSQL connection strings must include a database name.',
+    });
+  }
+
+  if (parsed.hash !== '') {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'PostgreSQL connection strings must not include a fragment.',
+    });
+  }
+});
 const emailSchema = z.email().transform(value => value.toLowerCase());
 
 const rawServerConfigSchema = z
@@ -130,6 +163,14 @@ function toServerConfig(value: RawEnvironment): ServerConfig {
     googleClientSecret: value.GOOGLE_CLIENT_SECRET ?? null,
     superAdminEmail: value.SUPER_ADMIN_EMAIL ?? null,
   });
+}
+
+function databaseNameFromConnectionString(url: URL): string {
+  try {
+    return decodeURIComponent(url.pathname.replace(/^\//, ''));
+  } catch {
+    return '';
+  }
 }
 
 function normalizeInput(input: Record<string, string | undefined>): Record<string, string> {

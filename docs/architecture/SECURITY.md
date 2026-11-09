@@ -16,20 +16,21 @@
 
 ## 1. Status
 
-| Area                                               | Status          | Implemented in               |
-| -------------------------------------------------- | --------------- | ---------------------------- |
-| Authentication (Google OAuth via Better Auth)      | Not implemented | Auth phase (Prompt 030+)     |
-| Session and cookie security                        | Not implemented | Auth phase                   |
-| RBAC and server-side authorization                 | Not implemented | Authorization phase          |
-| Input validation with Zod                          | Not implemented | Per feature                  |
-| Environment configuration validation (server-only) | **Implemented** | Prompt 009                   |
-| Rate limiting (PostgreSQL-backed)                  | Not implemented | Auth/abuse-prone features    |
-| HTTP security headers and CSP                      | Not implemented | Foundation/security phase    |
-| Structured logging with redaction                  | Not implemented | Foundation phase             |
-| Database role separation and local-only access     | Not implemented | Database phase (Prompt 019+) |
-| Image upload validation                            | Not implemented | Media phase                  |
-| Backup integrity and restore validation            | Not implemented | Maintenance phase            |
-| Error monitoring records                           | Not implemented | Operations phase             |
+| Area                                                 | Status                                   | Implemented in             |
+| ---------------------------------------------------- | ---------------------------------------- | -------------------------- |
+| Authentication (Google OAuth via Better Auth)        | Not implemented                          | Auth phase (Prompt 030+)   |
+| Session and cookie security                          | Not implemented                          | Auth phase                 |
+| RBAC and server-side authorization                   | Not implemented                          | Authorization phase        |
+| Input validation with Zod                            | Not implemented                          | Per feature                |
+| Environment configuration validation (server-only)   | **Implemented**                          | Prompt 009                 |
+| Rate limiting (PostgreSQL-backed)                    | Not implemented                          | Auth/abuse-prone features  |
+| HTTP security headers and CSP                        | Not implemented                          | Foundation/security phase  |
+| Structured logging with redaction                    | **Implemented**                          | Prompt 016                 |
+| PostgreSQL connection pool, URL validation, timeouts | **Implemented**                          | Prompt 019                 |
+| Database role separation and local-only access       | Operator-managed deployment prerequisite | Server setup (Prompt 019+) |
+| Image upload validation                              | Not implemented                          | Media phase                |
+| Backup integrity and restore validation              | Not implemented                          | Maintenance phase          |
+| Error monitoring records                             | Not implemented                          | Operations phase           |
 
 Until a control is implemented and tested, treat the corresponding threat as unmitigated.
 
@@ -162,6 +163,7 @@ Replacing an episode or movie source is a consequential operation:
 - **Role separation:** a migration role holds DDL rights; the application role holds DML rights only. The application does not create or alter schema.
 - The application does not auto-run migrations at startup in production.
 - Connection strings and database passwords are server-only secrets.
+- **Implemented (Prompt 019):** the application uses one server-only `pg` pool created from a Zod-validated `DATABASE_URL`, with a 5-connection maximum, explicit connect/idle/lifetime/statement/transaction timeouts, lazy reconnection, and redacted pool-error logging. Missing configuration fails with a safe `ConfigurationError`.
 - Development database credentials are an operator-supplied prerequisite. They are never invented, documented as real values, or committed. Local values belong only in ignored environment files; `.env.example` contains safe placeholders only.
 - Backups are protected and access-controlled; see §11.
 - Queries use parameterization and least-privilege access. Reporting and read models do not gain write access.

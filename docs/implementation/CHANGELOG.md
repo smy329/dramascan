@@ -62,6 +62,13 @@ this file records notable outcomes, not every edit.
   provided value. `src/instrumentation.ts` validates configuration at server startup;
   `.env.example` documents every variable with placeholders only. Decision D-019 records
   the contract.
+- **Prompt 019:** Server-only PostgreSQL connection management in
+  `src/platform/db/pool.ts` and `src/platform/db/pool-config.ts`, plus the Drizzle client
+  in `src/db/client.ts`. The single pool uses a 5-connection maximum, explicit connect,
+  idle, lifetime, query, and idle-in-transaction timeouts, TCP keepalive, lazy
+  reconnection, and sanitized pool-error logging. `DATABASE_URL` validation now requires
+  a hostname, database name, and no fragment. `drizzle-orm` and `pg` are runtime
+  dependencies.
 
 ### Changed
 
@@ -86,6 +93,8 @@ this file records notable outcomes, not every edit.
 - **Prompt 009:** `README.md` now documents copying `.env.example` to `.env.local` and
   replacing placeholders. `CONVENTIONS.md` §3.4 and `SECURITY.md` record the implemented
   configuration boundary and variable contract.
+- **Prompt 019:** `DATABASE.md` and `SECURITY.md` now record the implemented connection
+  pool, timeout policy, validation rules, and local/private-only deployment requirement.
 
 ### Fixed
 
@@ -102,6 +111,9 @@ this file records notable outcomes, not every edit.
   authorization as the sole authority, deny-by-default behavior, no secret exposure in
   logs/exports/errors, no server-side fetching of arbitrary administrator media URLs, and
   fail-closed rate limiting for sensitive operations. No control is implemented yet.
+- **Prompt 019:** Database credentials remain server-only. Connection validation errors
+  never include passwords, and pool errors are logged with connection URLs, password
+  fragments, and URL credentials redacted.
 
 ---
 

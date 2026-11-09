@@ -785,16 +785,16 @@ CI runs install, type check, lint (including architecture rules), unit tests, in
 
 These do not block Prompt 003 and are recorded so later prompts do not guess:
 
-| Item                                                  | Status                                               | Owner prompt             |
-| ----------------------------------------------------- | ---------------------------------------------------- | ------------------------ |
-| Package manager (npm available; pnpm not installed)   | Resolved: npm, lockfile committed (D-018)            | Prompt 006               |
-| PostgreSQL development credentials                    | Pending from user                                    | Prompt 019               |
-| Git repository initialization                         | Resolved: initialized on `main` with GitHub `origin` | Prompt 006               |
-| Exact ESLint boundary configuration and plugin choice | Deferred, rules fixed here                           | Prompt 013               |
-| Path alias (`@/*` → `src/*`) and `src/` root          | Implemented in Prompt 006                            | Prompt 006               |
-| Browser push provider (FCM vs native Web Push)        | Deferred behind provider interface                   | Notification phase       |
-| Image delivery (Nginx static vs route handler)        | Deferred; metadata owned by `content`                | Image management prompt  |
-| OpenAPI generation approach                           | Deferred                                             | API documentation prompt |
+| Item                                                  | Status                                                          | Owner prompt             |
+| ----------------------------------------------------- | --------------------------------------------------------------- | ------------------------ |
+| Package manager (npm available; pnpm not installed)   | Resolved: npm, lockfile committed (D-018)                       | Prompt 006               |
+| PostgreSQL development credentials                    | Resolved: supplied in ignored `.env.local`; connection verified | Prompt 019               |
+| Git repository initialization                         | Resolved: initialized on `main` with GitHub `origin`            | Prompt 006               |
+| Exact ESLint boundary configuration and plugin choice | Deferred, rules fixed here                                      | Prompt 013               |
+| Path alias (`@/*` → `src/*`) and `src/` root          | Implemented in Prompt 006                                       | Prompt 006               |
+| Browser push provider (FCM vs native Web Push)        | Deferred behind provider interface                              | Notification phase       |
+| Image delivery (Nginx static vs route handler)        | Deferred; metadata owned by `content`                           | Image management prompt  |
+| OpenAPI generation approach                           | Deferred                                                        | API documentation prompt |
 
 ---
 

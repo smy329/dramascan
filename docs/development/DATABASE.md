@@ -14,14 +14,14 @@ This document is the source of truth for the implemented database. Until Prompt 
 
 ## 1. Status
 
-| Item                   | Status                          |
-| ---------------------- | ------------------------------- |
-| PostgreSQL connection  | Not configured (Prompt 019)     |
-| Drizzle schema modules | Not implemented (Prompt 020)    |
-| Migrations             | Not configured (Prompt 021)     |
-| Tables                 | None                            |
-| Seed data              | None                            |
-| Test database          | Not configured (Prompt 017/019) |
+| Item                   | Status                                       |
+| ---------------------- | -------------------------------------------- |
+| PostgreSQL connection  | Configured (Prompt 019)                      |
+| Drizzle schema modules | Not implemented (Prompt 020)                 |
+| Migrations             | Not configured (Prompt 021)                  |
+| Tables                 | None                                         |
+| Seed data              | None                                         |
+| Test database          | Not configured locally (`TEST_DATABASE_URL`) |
 
 Do not describe planned tables as existing. Update this document when each schema module is implemented.
 
@@ -57,6 +57,16 @@ Most application-owned tables include:
 | `deleted_at` | `timestamptz` | `null` unless soft-deleted                            |
 
 Additional columns are table-specific and documented in the catalog.
+
+### 2.3 Connection management (Prompt 019)
+
+- `src/platform/db/pool.ts` owns the single server-only `pg.Pool`. `src/db/client.ts` creates the Drizzle client from that pool.
+- `DATABASE_URL` is read from the server environment (Next.js loads `.env.local` in development) and validated by `src/platform/config` with Zod. The value must use `postgres` or `postgresql`, include a hostname and database name, and contain no fragment. It is never exposed through `NEXT_PUBLIC_*` variables.
+- Missing configuration throws a safe `ConfigurationError` when the pool is initialized. Error messages name the variable, never its value or password.
+- Pool limits are conservative and fixed: maximum 5 connections, minimum 0, 5-second connection timeout, 30-second idle timeout, 30-minute maximum connection lifetime, 5,000 maximum uses per connection, 15-second statement/query timeouts, 30-second idle-in-transaction timeout, and 10-second TCP keepalive.
+- `pg` reconnects lazily when a connection is checked out; there is no retry loop, background worker, or queue.
+- Idle-client errors are handled on the pool and logged through Pino with connection strings, passwords, and URL credentials redacted.
+- PostgreSQL must remain reachable only through the application server's local or private interface. Public exposure is forbidden; local-only access and database role separation are deployment prerequisites, not application features.
 
 ---
 
