@@ -3,7 +3,7 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-09  
-**Current Prompt:** 036 — Implement the Role and Permission Model
+**Current Prompt:** 038 — Allow Super Admin to Create Custom Roles, Edit, and Assign Permissions
 
 ---
 
@@ -73,7 +73,9 @@ None.
 
 | **037** | **Support Multiple Roles per Administrator** | ✅ Completed | src/modules/auth/schema.ts (modified), package.json, package-lock.json | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack completes) | Administrators can hold multiple roles simultaneously. Effective permissions are the combined (union) permissions of all assigned roles. Example: an administrator can be both Content Manager and Moderator. No single-role database design or UI that overwrites one role when another is assigned. next typegen passes; tsc errors are pre-existing pg-core compatibility issues. |
 
-All prompts 020–037 complete.
+| **038** | **Allow Super Admin to Create Custom Roles, Edit, and Assign Permissions** | ✅ Completed | src/modules/auth/schema.ts (modified), src/workflows/admin/roles.ts (new), src/app/admin/api/roles/route.ts (new), docs/PROJECT_STATUS.md (updated) | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack compiles) | Super Admin can create custom roles, edit role names/descriptions, and assign/revoke permissions at action/resource level. Unauthorized users cannot modify role definitions (Super Admin-only enforcement via API route layer). Permission combinations validated; last effective Super Admin access protection enforced. Permissions displayed per role. next typegen passes; tsc errors are pre-existing pg-core compatibility issues. |
+
+All prompts 020–038 complete.
 
 ---
 
