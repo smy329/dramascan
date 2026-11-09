@@ -71,9 +71,9 @@ None.
 
 | **036** | **Implement the Role and Permission Model** | ✅ Completed | src/modules/auth/schema.ts (modified), package.json, package-lock.json | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack completes) | RBAC system with explicit permissions at action/resource level. Four initial roles defined: Super Admin (complete access), Content Manager (content handling), Moderator (user moderation), Analyst (read-only dashboard/analytics). Permissions table stores (action, resource) pairs granted per role. next typegen passes; tsc errors are pre-existing pg-core compatibility issues. |
 
-## Next Task
+| **037** | **Support Multiple Roles per Administrator** | ✅ Completed | src/modules/auth/schema.ts (modified), package.json, package-lock.json | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack completes) | Administrators can hold multiple roles simultaneously. Effective permissions are the combined (union) permissions of all assigned roles. Example: an administrator can be both Content Manager and Moderator. No single-role database design or UI that overwrites one role when another is assigned. next typegen passes; tsc errors are pre-existing pg-core compatibility issues. |
 
-All prompts 020–036 complete.
+All prompts 020–037 complete.
 
 ---
 
