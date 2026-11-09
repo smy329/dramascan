@@ -19,11 +19,8 @@
  * Defines fine-grained permissions at action/resource level.
  * Supports multiple roles per user — effective permissions are the combined
  * permissions of all assigned roles.
- * Initial roles: super_admin, content_manager, moderator, analyst, viewer.
- *
- * Change Note: Users now have a many-to-many relationship with roles via the
- * `user_roles` junction table. Each user can have zero or more roles. Effective
- * permissions are computed by unioning the permissions of all assigned roles.
+ * Roles and permissions are stored in the database (not hardcoded), allowing
+ * Super Admin to create, edit, and customise roles without code changes.
  * The `is_super_admin` boolean flag on the user record still grants complete
  * access regardless of role assignments.
  */
@@ -106,7 +103,7 @@ export const verifications = pgTable('verifications', {
 
 export const roles = pgTable('roles', {
   id: uuid('id').notNull(),
-  name: text('name').notNull(), // super_admin, content_manager, moderator, analyst, viewer
+  name: text('name').notNull(), // e.g. super_admin, content_manager, moderator, analyst, viewer, or custom name
   description: text('description'),
   created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -126,7 +123,7 @@ export const userRoles = pgTable('user_roles', {
 // ---- Permissions table -------------------------------------------------
 
 // Permission action/resource constants
-// These define the RBAC fine-grained permissions
+// These define the RBAC fine-grained permissions that can be assigned to roles
 export const permissionAction = {
   CREATE: 'create' as const,
   READ: 'read' as const,
@@ -162,131 +159,6 @@ export const permissions = pgTable('permissions', {
   granted: boolean('granted').notNull().default(true),
   created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
-
-// ---- Initial role definitions (constant, not stored in code) ----------
-
-// These are the initial roles for the DramaScan RBAC system.
-// Permissions are assigned to roles via the permissions table.
-export const INITIAL_ROLES = {
-  SUPER_ADMIN: 'super_admin' as const,
-  CONTENT_MANAGER: 'content_manager' as const,
-  MODERATOR: 'moderator' as const,
-  ANALYST: 'analyst' as const,
-  VIEWER: 'viewer' as const,
-} as const;
-
-export type InitialRole = keyof typeof INITIAL_ROLES;
-
-/** Permission assignments for each role.
- * These map (action, resource) pairs to granted=true for each role.
- * Super Admin: all permissions granted (no 'ALL' action needed - has every permission).
- * Content Manager: manage content, read analytics.
- * Moderator: user moderation, content review.
- * Analyst: read-only dashboard and analytics.
- * Viewer: read/limited content.
- *
- * Note: Effective permissions for a user with multiple roles are computed
- * by unioning the permission sets of all assigned roles via the
- * user_roles junction table and the permissions table.
- */
-export const ROLE_PERMISSIONS = {
-  [INITIAL_ROLES.SUPER_ADMIN]: [
-    // Super Admin has all permissions - every (action, resource) pair is granted
-    { action: permissionAction.CREATE, resource: permissionResource.DRAMA },
-    { action: permissionAction.READ, resource: permissionResource.DRAMA },
-    { action: permissionAction.UPDATE, resource: permissionResource.DRAMA },
-    { action: permissionAction.DELETE, resource: permissionResource.DRAMA },
-    { action: permissionAction.MANAGE, resource: permissionResource.DRAMA },
-    { action: permissionAction.CREATE, resource: permissionResource.MOVIE },
-    { action: permissionAction.READ, resource: permissionResource.MOVIE },
-    { action: permissionAction.UPDATE, resource: permissionResource.MOVIE },
-    { action: permissionAction.DELETE, resource: permissionResource.MOVIE },
-    { action: permissionAction.MANAGE, resource: permissionResource.MOVIE },
-    { action: permissionAction.CREATE, resource: permissionResource.EPISODE },
-    { action: permissionAction.READ, resource: permissionResource.EPISODE },
-    { action: permissionAction.UPDATE, resource: permissionResource.EPISODE },
-    { action: permissionAction.DELETE, resource: permissionResource.EPISODE },
-    { action: permissionAction.MANAGE, resource: permissionResource.EPISODE },
-    { action: permissionAction.CREATE, resource: permissionResource.CATEGORY },
-    { action: permissionAction.READ, resource: permissionResource.CATEGORY },
-    { action: permissionAction.UPDATE, resource: permissionResource.CATEGORY },
-    { action: permissionAction.DELETE, resource: permissionResource.CATEGORY },
-    { action: permissionAction.MANAGE, resource: permissionResource.CATEGORY },
-    { action: permissionAction.CREATE, resource: permissionResource.PLATFORM },
-    { action: permissionAction.READ, resource: permissionResource.PLATFORM },
-    { action: permissionAction.UPDATE, resource: permissionResource.PLATFORM },
-    { action: permissionAction.DELETE, resource: permissionResource.PLATFORM },
-    { action: permissionAction.MANAGE, resource: permissionResource.PLATFORM },
-    { action: permissionAction.READ, resource: permissionResource.USER },
-    { action: permissionAction.MANAGE, resource: permissionResource.USER },
-    { action: permissionAction.READ, resource: permissionResource.REVIEW },
-    { action: permissionAction.MANAGE, resource: permissionResource.REVIEW },
-    { action: permissionAction.READ, resource: permissionResource.RATING },
-    { action: permissionAction.MANAGE, resource: permissionResource.RATING },
-    { action: permissionAction.READ, resource: permissionResource.ANALYTICS },
-    { action: permissionAction.MANAGE, resource: permissionResource.ANALYTICS },
-    { action: permissionAction.READ, resource: permissionResource.SETTINGS },
-    { action: permissionAction.MANAGE, resource: permissionResource.SETTINGS },
-  ],
-  [INITIAL_ROLES.CONTENT_MANAGER]: [
-    // Content Manager: manage content, read analytics
-    { action: permissionAction.CREATE, resource: permissionResource.DRAMA },
-    { action: permissionAction.READ, resource: permissionResource.DRAMA },
-    { action: permissionAction.UPDATE, resource: permissionResource.DRAMA },
-    { action: permissionAction.MANAGE, resource: permissionResource.DRAMA },
-    { action: permissionAction.CREATE, resource: permissionResource.MOVIE },
-    { action: permissionAction.READ, resource: permissionResource.MOVIE },
-    { action: permissionAction.UPDATE, resource: permissionResource.MOVIE },
-    { action: permissionAction.MANAGE, resource: permissionResource.MOVIE },
-    { action: permissionAction.CREATE, resource: permissionResource.EPISODE },
-    { action: permissionAction.READ, resource: permissionResource.EPISODE },
-    { action: permissionAction.UPDATE, resource: permissionResource.EPISODE },
-    { action: permissionAction.MANAGE, resource: permissionResource.EPISODE },
-    { action: permissionAction.READ, resource: permissionResource.CATEGORY },
-    { action: permissionAction.UPDATE, resource: permissionResource.CATEGORY },
-    { action: permissionAction.MANAGE, resource: permissionResource.CATEGORY },
-    { action: permissionAction.READ, resource: permissionResource.PLATFORM },
-    { action: permissionAction.MANAGE, resource: permissionResource.PLATFORM },
-    { action: permissionAction.READ, resource: permissionResource.ANALYTICS },
-  ],
-  [INITIAL_ROLES.MODERATOR]: [
-    // Moderator: user moderation, content review
-    { action: permissionAction.READ, resource: permissionResource.DRAMA },
-    { action: permissionAction.UPDATE, resource: permissionResource.DRAMA },
-    { action: permissionAction.DELETE, resource: permissionResource.DRAMA },
-    { action: permissionAction.READ, resource: permissionResource.EPISODE },
-    { action: permissionAction.UPDATE, resource: permissionResource.EPISODE },
-    { action: permissionAction.DELETE, resource: permissionResource.EPISODE },
-    { action: permissionAction.READ, resource: permissionResource.USER },
-    { action: permissionAction.CREATE, resource: permissionResource.REVIEW },
-    { action: permissionAction.READ, resource: permissionResource.REVIEW },
-    { action: permissionAction.DELETE, resource: permissionResource.REVIEW },
-    { action: permissionAction.READ, resource: permissionResource.RATING },
-    { action: permissionAction.MANAGE, resource: permissionResource.RATING },
-    { action: permissionAction.READ, resource: permissionResource.ANALYTICS },
-  ],
-  [INITIAL_ROLES.ANALYST]: [
-    // Analyst: read-only dashboard and analytics
-    { action: permissionAction.READ, resource: permissionResource.ANALYTICS },
-    { action: permissionAction.READ, resource: permissionResource.DRAMA },
-    { action: permissionAction.READ, resource: permissionResource.MOVIE },
-    { action: permissionAction.READ, resource: permissionResource.EPISODE },
-    { action: permissionAction.READ, resource: permissionResource.CATEGORY },
-    { action: permissionAction.READ, resource: permissionResource.PLATFORM },
-    { action: permissionAction.READ, resource: permissionResource.USER },
-    { action: permissionAction.READ, resource: permissionResource.REVIEW },
-    { action: permissionAction.READ, resource: permissionResource.RATING },
-    { action: permissionAction.READ, resource: permissionResource.SETTINGS },
-  ],
-  [INITIAL_ROLES.VIEWER]: [
-    // Viewer: limited content access
-    { action: permissionAction.READ, resource: permissionResource.DRAMA },
-    { action: permissionAction.READ, resource: permissionResource.MOVIE },
-    { action: permissionAction.READ, resource: permissionResource.EPISODE },
-  ],
-} as const;
-
-export type RolePermissions = typeof ROLE_PERMISSIONS;
 
 // ---- Export types ------------------------------------------------------
 
