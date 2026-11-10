@@ -101,6 +101,7 @@ export const sessions = pgTable(
     userId: uuid('user_id').notNull(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
+    lastActivityAt: timestamp('last_activity_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   table => [
     uniqueConstraint('sessions', table.token),

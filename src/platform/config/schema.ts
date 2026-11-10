@@ -14,17 +14,19 @@ export type ServerConfig = Readonly<{
   googleClientSecret: string | null;
   superAdminEmail: string | null;
   logLevel?: string | null;
+  adminSessionInactivityTimeout?: number;
+  adminSessionMaxLifetime?: number;
 }>;
 
 export class ConfigurationError extends Error {
   readonly issues: readonly string[];
 
   constructor(issues: readonly string[]) {
-    super(['Invalid environment configuration:', ...issues.map(issue => `- ${issue}`)].join('\n'));
+    super(issues.join('\n'));
     this.name = 'ConfigurationError';
     this.issues = issues;
   }
-}
+};
 
 const httpUrlSchema = z.url({ protocol: /^https?$/ });
 const postgresUrlSchema = z.url({ protocol: /^postgres(ql)?$/ }).superRefine((value, ctx) => {
@@ -45,6 +47,7 @@ const postgresUrlSchema = z.url({ protocol: /^postgres(ql)?$/ }).superRefine((va
       code: 'custom',
       message: 'PostgreSQL connection strings must include a hostname.',
     });
+    return;
   }
 
   if (databaseNameFromConnectionString(parsed).length === 0) {
@@ -52,6 +55,7 @@ const postgresUrlSchema = z.url({ protocol: /^postgres(ql)?$/ }).superRefine((va
       code: 'custom',
       message: 'PostgreSQL connection strings must include a database name.',
     });
+    return;
   }
 
   if (parsed.hash !== '') {
@@ -59,6 +63,7 @@ const postgresUrlSchema = z.url({ protocol: /^postgres(ql)?$/ }).superRefine((va
       code: 'custom',
       message: 'PostgreSQL connection strings must not include a fragment.',
     });
+    return;
   }
 });
 const emailSchema = z.email().transform(value => value.toLowerCase());
@@ -78,6 +83,8 @@ const rawServerConfigSchema = z
     GOOGLE_CLIENT_SECRET: z.string().min(10, 'GOOGLE_CLIENT_SECRET is too short.').optional(),
     SUPER_ADMIN_EMAIL: emailSchema.optional(),
     LOG_LEVEL: z.string().optional(),
+    adminSessionInactivityTimeout: z.string().optional(),
+    adminSessionMaxLifetime: z.string().optional(),
   })
   .superRefine((value, ctx) => {
     const isProduction = value.NODE_ENV === 'production';
@@ -144,6 +151,8 @@ type RawEnvironment = Readonly<{
   GOOGLE_CLIENT_ID?: string | undefined;
   GOOGLE_CLIENT_SECRET?: string | undefined;
   SUPER_ADMIN_EMAIL?: string | undefined;
+  adminSessionInactivityTimeout?: string;
+  adminSessionMaxLifetime?: string;
 }>;
 
 function toServerConfig(value: RawEnvironment): ServerConfig {
@@ -162,6 +171,12 @@ function toServerConfig(value: RawEnvironment): ServerConfig {
     googleClientId: value.GOOGLE_CLIENT_ID ?? null,
     googleClientSecret: value.GOOGLE_CLIENT_SECRET ?? null,
     superAdminEmail: value.SUPER_ADMIN_EMAIL ?? null,
+    adminSessionInactivityTimeout: value.adminSessionInactivityTimeout
+      ? Math.max(1, Number(value.adminSessionInactivityTimeout))
+      : undefined,
+    adminSessionMaxLifetime: value.adminSessionMaxLifetime
+      ? Math.max(1, Number(value.adminSessionMaxLifetime))
+      : undefined,
   });
 }
 

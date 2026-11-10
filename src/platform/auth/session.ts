@@ -5,8 +5,13 @@
  * status is owned by this application, so every protected entrypoint re-reads
  * it from the database. A deactivated or soft-deleted user therefore loses
  * access even while an existing session cookie is still valid.
+ *
+ * In addition, this enforces the configured inactivity timeout and maximum
+ * session lifetime from system settings. A session that has exceeded either
+ * limit is invalidated and `null` is returned.
  */
 
+/* eslint-disable @typescript-eslint/no-var-requires */
 import 'server-only';
 
 import { eq } from 'drizzle-orm';
@@ -15,6 +20,7 @@ import { db } from '@/db/client';
 import { users } from '@/modules/auth/schema';
 import { auth } from '@/platform/auth/better-auth';
 import { decideSessionCreation } from './auth-policy';
+import { enrichSession } from '@/modules/authorization';
 
 export type ActiveSession = Readonly<{
   userId: string;
@@ -41,9 +47,18 @@ export async function getActiveSession(): Promise<ActiveSession | null> {
     return null;
   }
 
+  // Enrich with application-owned metadata and enforce session timeout.
+  const config = await import('@/platform/config').then(m => m.serverConfig);
+  const enriched = await enrichSession(session, config);
+
+  if (!enriched) {
+    // Session exceeded inactivity timeout or max lifetime — invalidate.
+    return null;
+  }
+
   return {
-    userId,
-    userEmail: session.user.email,
+    userId: enriched.userId,
+    userEmail: enriched.userEmail,
     userName: session.user.name,
   };
 }
