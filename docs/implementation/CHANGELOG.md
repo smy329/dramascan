@@ -7,6 +7,10 @@
 
 - **Prompt 039:** Centralized authorization guards in `src/modules/authorization`. Canonical `resource.action` permission catalog (`permissions.ts`), server-side actor resolution (`actors.ts`), effective-permission union (`service.ts`), and reusable guards (`guards.ts`) for `requireUser`, `requireAdmin`, `requirePermission`, `requireAnyPermission`, and `assertResourceAccess`. Unit tests cover allowed/denied roles, anonymous actors, Super Admin, revoked permissions, and deactivated/soft-deleted accounts.
 
+### Changed
+
+- **Prompt 039(A):** Reconciled the RBAC schema with the canonical catalog. `roles`, `permissions`, and `user_roles` moved from `src/modules/auth/schema.ts` to `src/modules/authorization/schema.ts` to match documented module ownership. The physical `(resource, action)` pair remains, now with a catalog-derived exact-key CHECK constraint, a unique `(role_id, resource, action)` rule, a unique role name, a unique `(user_id, role_id)` assignment, role foreign keys, and an index on `user_roles.role_id`. No second catalog exists.
+
 ### Fixed
 
 - **Prompt 039:** `AppError` now preserves the concrete subclass prototype (`new.target.prototype`). Previously `AuthenticationError`/`AuthorizationError` failed `instanceof` checks and mapped to `500` instead of `401`/`403`.

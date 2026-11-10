@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ALL_PERMISSION_KEYS,
+  PERMISSION_ACTIONS,
+  PERMISSION_RESOURCES,
   PERMISSIONS,
   SUPER_ADMIN_PERMISSION_KEYS,
   isPermissionKey,
@@ -33,5 +35,15 @@ describe('permission catalog', () => {
   it('rejects resource/action combinations that are not in the catalog', () => {
     expect(() => toPermissionKey('drama', 'manage' as never)).not.toThrow();
     expect(() => toPermissionKey('admin', 'delete')).toThrow(/Unknown permission key/);
+  });
+
+  it('decomposes every catalog key into a valid resource and action', () => {
+    for (const key of ALL_PERMISSION_KEYS) {
+      const [resource, action, ...rest] = key.split('.');
+
+      expect(rest).toEqual([]);
+      expect(PERMISSION_RESOURCES).toContain(resource);
+      expect(PERMISSION_ACTIONS).toContain(action);
+    }
   });
 });

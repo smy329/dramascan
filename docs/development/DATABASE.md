@@ -86,7 +86,7 @@ Each module owns its schema file and tables. The planned ownership is:
 | Module           | Planned tables                                                                                                                                                                                                                                                           |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `auth`           | `users`, `accounts`, `sessions`, `verifications` (Better Auth schema plus account status)                                                                                                                                                                                |
-| `authorization`  | `roles`, `permissions`, `role_permissions`, `user_roles`                                                                                                                                                                                                                 |
+| `authorization`  | `roles`, `permissions`, `user_roles`                                                                                                                                                                                                                                     |
 | `content`        | `dramas`, `seasons`, `episodes`, `movies`, `categories`, `platforms`, `drama_categories`, `drama_platforms`, `movie_categories`, `movie_platforms`, `similar_dramas`, `information_pages`, `content_slug_history`, `content_seo`, `content_assets`, `sitemap_exclusions` |
 | `users`          | `bookmarks`                                                                                                                                                                                                                                                              |
 | `playback`       | `subtitle_tracks`, `playback_progress`, `watch_history`, `episode_watch_state`                                                                                                                                                                                           |
@@ -206,6 +206,9 @@ This catalog is filled in as tables are implemented. Each entry records the tabl
 | accounts            | auth         OAuth/account linking   | ✅ Implemented |
 | sessions            | auth         Auth sessions           | ✅ Implemented |
 | verifications       | auth         Email/email OTP verifications | ✅ Implemented |
+| roles               | authorization | Role definitions (built-in and custom) | ✅ Implemented |
+| permissions         | authorization | Per-role `(resource, action)` grants and revocations | ✅ Implemented |
+| user_roles          | authorization | User ↔ role assignments (many-to-many) | ✅ Implemented |
 | guest_sessions      | analytics    Anonymous guest sessions | ✅ Implemented |
 | content_view_events | analytics    Content view events        | ✅ Implemented |
 | playback_analytics_events | analytics   Playback analytics events | ✅ Implemented |
@@ -228,6 +231,49 @@ This catalog is filled in as tables are implemented. Each entry records the tabl
 | incident_attachments| maintenance   Incident attachments   | ⏳ Pending migration |
 | error_records       | maintenance   Error record log       | ⏳ Pending migration |
 | health_snapshots    | maintenance   Health check snapshots | ⏳ Pending migration |
+
+### 8.1 Authorization (RBAC) canonical model
+
+The canonical permission identifier is `resource.action`. `src/modules/authorization/permissions.ts` is the single source of truth; the database stores the pair split across `permissions.resource` and `permissions.action`.
+
+Constraints and indexes (generated DDL verified with `drizzle-kit generate`):
+
+- `permissions` unique `uq_permissions_role_id_resource_action` on `(role_id, resource, action)` — one grant/revocation row per role and canonical key.
+- `permissions` check `ck_permissions_permission_key` enforces the exact composed `resource || '.' || action` against the full canonical key list, generated from `ALL_PERMISSION_KEYS`. Invalid pairs and non-catalog combinations cannot be stored, even by out-of-band SQL. Changing the catalog requires regenerating this check in the same migration.
+- `permissions.role_id` FK `fk_permissions_role_id` → `roles.id` (NO ACTION).
+- `user_roles` unique `uq_user_roles_user_id_role_id`, FK `fk_user_roles_role_id` → `roles.id`, and index `idx_user_roles_role_id`. The unique constraint covers the leading `user_id` lookup; the index covers "users in a role".
+- `roles` unique `uq_roles_name`.
+- `user_roles.user_id` is a cross-module reference to `users.id`; per convention it is added in the SQL migration, not as a Drizzle-level reference.
+- `granted = false` is an explicit revocation; rows are not deleted. Effective permissions exclude revoked rows. Unknown/stale rows are ignored by the actor resolver (deny by default).
+
+#### Migration and reconciliation strategy
+
+No migration file exists yet (`drizzle/meta/_journal.json` has no entries) and no database is configured in this repository, so the reconciled tables will be part of the initial baseline migration when it is generated. Production must apply migrations, never `drizzle-kit push`.
+
+Before applying the new unique constraints and foreign keys to a database created outside migrations, run the checks below and reconcile manually with a backup. Do not discard data automatically.
+
+```sql
+-- 1. Pairs outside the canonical catalog (must return no rows).
+SELECT DISTINCT resource, action FROM permissions
+WHERE (resource || '.' || action) NOT IN ('drama.create', 'drama.read', 'drama.update', 'drama.delete', 'drama.manage', 'movie.create', 'movie.read', 'movie.update', 'movie.delete', 'movie.manage', 'episode.create', 'episode.read', 'episode.update', 'episode.delete', 'episode.manage', 'category.create', 'category.read', 'category.update', 'category.delete', 'category.manage', 'platform.create', 'platform.read', 'platform.update', 'platform.delete', 'platform.manage', 'user.read', 'user.manage', 'review.create', 'review.read', 'review.delete', 'review.manage', 'rating.read', 'rating.manage', 'analytics.read', 'analytics.manage', 'settings.read', 'settings.manage', 'admin.manage');
+
+-- 2. Duplicate grants per role and pair (must return no rows).
+SELECT role_id, resource, action, count(*) AS duplicates
+FROM permissions GROUP BY 1, 2, 3 HAVING count(*) > 1;
+
+-- 3. Duplicate role assignments (must return no rows).
+SELECT user_id, role_id, count(*) AS duplicates
+FROM user_roles GROUP BY 1, 2 HAVING count(*) > 1;
+
+-- 4. Duplicate role names (must return no rows).
+SELECT name, count(*) AS duplicates FROM roles GROUP BY 1 HAVING count(*) > 1;
+
+-- 5. Orphaned rows (must return no rows).
+SELECT p.id FROM permissions p LEFT JOIN roles r ON r.id = p.role_id WHERE r.id IS NULL;
+SELECT ur.user_id, ur.role_id FROM user_roles ur LEFT JOIN roles r ON r.id = ur.role_id WHERE r.id IS NULL;
+```
+
+For duplicate grants, keep the row with `granted = true` where any exists (revoked duplicates are redundant); review the affected rows and delete extras inside a transaction. For `user_roles`, keep the earliest `assigned_at`. Create missing roles instead of deleting assignments; never drop a role assignment silently.
 
 When a table is added, record:
 
