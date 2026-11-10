@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- **Schema cleanup:** Fixed the pre-existing `analytics` and `notifications` schema defects. `analytics/schema.ts` now calls the shared helpers (`createdAt()`, `updatedAt()`, `deletedAt()`) per table instead of passing helper functions as column builders, and imports `timestamp`; `notifications/schema.ts` now calls `.defaultNow()` instead of referencing the method. This restores `tsc`, the full 42-table `drizzle-kit generate`, and the schema-registry test. Also added the missing end-of-file newline in five files reported by `eol-last` and repaired a corrupted `### Fixed` heading in this changelog.
 - **Prompt 039:** `AppError` now preserves the concrete subclass prototype (`new.target.prototype`). Previously `AuthenticationError`/`AuthorizationError` failed `instanceof` checks and mapped to `500` instead of `401`/`403`.
 
 ### Security
@@ -24,7 +25,9 @@
 
 ## Earlier prompts
 
-- **Prompt 028:** Analytics data models. src/modules/analytics/schema.ts defines guest_sessions, content_view_events, playback_analytics_events, nalytics_daily_aggregates, and search_events tables. Supports anonymous guest sessions, bounded playback event aggregation (no per-second writes), content view counting with 6-hour deduplication windows, daily aggregates, and search events. Keeps personal identifiers separate from anonymous analytics. UUID primary keys, snake_case naming, and soft delete. Typecheck: next typegen passes; build compiles. Lint, test (17 tests) pass.### Fixed
+- **Prompt 028:** Analytics data models. src/modules/analytics/schema.ts defines guest_sessions, content_view_events, playback_analytics_events, nalytics_daily_aggregates, and search_events tables. Supports anonymous guest sessions, bounded playback event aggregation (no per-second writes), content view counting with 6-hour deduplication windows, daily aggregates, and search events. Keeps personal identifiers separate from anonymous analytics. UUID primary keys, snake_case naming, and soft delete. Typecheck: next typegen passes; build compiles. Lint, test (17 tests) pass.
+
+### Fixed
 
 - **Prompt 004:** Corrected a self-referential instruction in `DATABASE.md` Â§9 so the
   change process says to update "this document's relationship/index notes."

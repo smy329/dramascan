@@ -36,8 +36,8 @@ export const push_subscriptions = pgTable('push_subscriptions', {
   browser: text('browser'), // Browser identifier
   user_agent: text('user_agent'), // Cached user agent
   position: integer('position'),
-  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow,
-  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow,
+  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deleted_at: timestamp('deleted_at', { withTimezone: true }),
 });
 
@@ -51,8 +51,8 @@ export const notification_preferences = pgTable('notification_preferences', {
   account_security: boolean('account_security').default(true),
   global_in_app: boolean('global_in_app').default(true),
   global_push: boolean('global_push').default(true),
-  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow,
-  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow,
+  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deleted_at: timestamp('deleted_at', { withTimezone: true }),
 });
 
@@ -71,8 +71,8 @@ export const notifications = pgTable('notifications', {
   delivered: boolean('delivered').default(false),
   delivery_timestamp: timestamp('delivery_timestamp', { withTimezone: true }),
   priority: text('priority').default('normal'),
-  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow,
-  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow,
+  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deleted_at: timestamp('deleted_at', { withTimezone: true }),
 });
 
@@ -86,7 +86,7 @@ export const notification_deliveries = pgTable('notification_deliveries', {
   error_message: text('error_message'),
   delivered_at: timestamp('delivered_at', { withTimezone: true }),
   subscription_id: uuid('subscription_id'),
-  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow,
+  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ----- announcements -----
@@ -98,8 +98,8 @@ export const announcements = pgTable('announcements', {
   publication_status: text('publication_status').default('draft'), // draft | published
   expires_at: timestamp('expires_at', { withTimezone: true }),
   trigger_event_types: text('trigger_event_types').array(), // [new_episode, new_drama_season, website_announcement]
-  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow,
-  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow,
+  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deleted_at: timestamp('deleted_at', { withTimezone: true }),
 });
 
@@ -114,7 +114,7 @@ export const admin_notifications = pgTable('admin_notifications', {
   is_resolved: boolean('is_resolved').default(false),
   resolved_at: timestamp('resolved_at', { withTimezone: true }),
   resolved_by: uuid('resolved_by'),
-  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow,
-  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow,
+  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deleted_at: timestamp('deleted_at', { withTimezone: true }),
 });
