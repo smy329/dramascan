@@ -737,7 +737,7 @@ Modules may define domain errors that extend these classes (for example, `Conten
 
 - `scripts/maintenance/index.ts` dispatches a named task; each task is a short-lived process invoked by systemd.
 - Tasks use `maintenance.runTask(name, fn)` for structured logs, timing, success/failure, and exit codes.
-- A task receives a `SystemActor` with only the permissions it needs (`maintenance.run`, plus read permissions for the data it processes).
+- A task receives a `SystemActor` with only the permissions it needs (`admin.manage` for privileged maintenance operations, plus read permissions for the data it processes).
 - Cross-module cleanup (Trash expiry, analytics retention, permanent deletion) is orchestrated by the script through workflows; `maintenance` never writes another module's tables.
 - Task history is recorded in `maintenance_task_runs`. Successful routine runs are lightweight; failures retain safe error detail.
 - No task runs continuously, sleeps in a loop, or waits on a queue. No persistent worker exists.

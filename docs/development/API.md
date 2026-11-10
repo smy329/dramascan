@@ -164,7 +164,7 @@ Beacons are small, idempotent/deduplicated, and bounded. They never write on eve
 
 | Method | Path                     | Auth          | Permission                              | Purpose                                               | Status  |
 | ------ | ------------------------ | ------------- | --------------------------------------- | ----------------------------------------------------- | ------- |
-| `POST` | `/api/playback/progress` | Authenticated | `playback.progress.write` (own records) | Persist debounced playback progress and watched state | Planned |
+| `POST` | `/api/playback/progress` | Authenticated | Own progress | Persist debounced playback progress and watched state | Planned |
 
 Progress updates carry a client timestamp; the server rejects older updates that would overwrite newer progress.
 
@@ -190,7 +190,7 @@ Admin page reads use Server Components. Admin mutations use Server Actions.
 | Method | Path                  | Auth             | Permission    | Purpose                           | Status  |
 | ------ | --------------------- | ---------------- | ------------- | --------------------------------- | ------- |
 | `GET`  | `/api/health`         | Public (minimal) | —             | Application and dependency health | Planned |
-| `GET`  | `/api/health/details` | Admin            | `health.read` | Detailed diagnostics              | Planned |
+| `GET`  | `/api/health/details` | Admin            | `admin.manage` | Detailed diagnostics              | Planned |
 | `GET`  | `/api/openapi`        | Public           | —             | OpenAPI JSON document             | Planned |
 | `GET`  | `/api/docs`           | Public           | —             | Swagger UI                        | Planned |
 
@@ -218,7 +218,7 @@ Server Actions are application operations, not REST endpoints. They are document
 | User administration     | Deactivate/reactivate users                                                      | `user.manage`                                | Planned |
 | Admin administration    | Authorize/deactivate admins, assign roles, terminate sessions                    | `admin.*`                                        | Planned |
 | System configuration    | Update settings, restore a version, maintenance mode                             | `settings.manage`                             | Planned |
-| CSV import              | Dry run and apply metadata import                                                | `import.dataset`                                 | Planned |
+| CSV import              | Dry run and apply metadata import                                                | `drama.manage`, `movie.manage`                                                | Planned |
 
 Every action validates input with Zod, resolves a trusted actor, calls one service or workflow, and returns `ActionResult`.
 
