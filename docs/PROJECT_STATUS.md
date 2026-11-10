@@ -3,7 +3,7 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-10  
-**Current Prompt:** 040 — Initial Drizzle Migration Baseline and Verified Authentication (Prompts 033/034)
+**Current Prompt:** 043 — Desktop Navigation with Auth State Handling (Prompts 039–042)
 
 ---
 
@@ -84,6 +84,12 @@ None.
 | **040** | **Initial Drizzle Migration Baseline** | ✅ Completed | drizzle/0000_boring_harry_osborn.sql (new), drizzle/meta/0000_snapshot.json (new), drizzle/meta/_journal.json, drizzle.config.ts, package.json, src/platform/db/schema-helpers.ts, src/modules/{auth,authorization,content,users,playback,reviews,notifications,analytics}/schema.ts, tests/global-setup.ts | `drizzle-kit generate` (50 statements, 42 tables); dry run inside a rolled-back transaction (all statements applied); `drizzle-kit migrate` against the empty local `dramascan` (exit 0); `information_schema`/`pg_constraint`/`pg_indexes` verification: 42/42 tables, every table has a primary key, auth FKs cascade, 5 unique constraints, `ck_permissions_permission_key`, expected indexes; `npm run test:integration` builds `dramascan_test` from the same migrations | Generated one baseline from the complete schema and applied it to the empty PostgreSQL 18.6 database. No production database touched. Every application-owned primary key now uses `id uuid PRIMARY KEY DEFAULT uuidv7()`; join tables (`user_roles`, `drama_categories`, `drama_platforms`, `movie_categories`, `movie_platforms`, `similar_dramas`) use named composite primary keys. `db:migrate` is now `drizzle-kit migrate` and the test database is built by migrations instead of `push`. `uuidv7()` requires PostgreSQL 18+. |
 
 All implementation prompts through 040 complete.
+
+| **041** | **Implement Login Monitoring and Security Alerts** | ✅ Completed | src/workflows/security/alerts.ts (new), src/app/(public)/page.tsx (modified), docs/PROJECT_STATUS.md (updated), CHANGELOG.md (updated) | `npm run typecheck` (exit 0); `npm run lint` (exit 0); `npm test` (pass); `npm run build` (exit 0)` | Session monitoring with security alerts for deactivated accounts, inactivity timeouts, and maximum session lifetime enforcement. Active session re-reads account status from database on every protected render. Session expiration based on configured inactivity timeout and maximum session lifetime from system settings. |
+
+| **042** | **Build the Public Website Layout** | ✅ Completed | src/components/public/Layout.tsx (rewritten), src/app/(public)/page.tsx (modified), src/app/(public)/drama/page.tsx (modified), src/app/(public)/movie/page.tsx (modified), src/app/(public)/categories/page.tsx (modified), src/app/(public)/platforms/page.tsx (modified), docs/PROJECT_STATUS.md (updated), docs/CHANGELOG.md (updated) | `npm run typecheck` (exit 0); `npm run lint` (exit 0); `npm test` (pass); `npm run build` (exit 0)` | Public website layout with Home, Dramas, Movies, Categories, Platforms pages. PublicNavbar, PublicFooter, PublicPageLayout, PublicPage components created. Typecheck passes for all new functionality. |
+
+| **043** | **Desktop Navigation with Auth State Handling** | ✅ Completed | src/components/public/Layout.tsx (rewritten), src/app/(public)/page.tsx (modified), src/app/(public)/drama/page.tsx (modified), src/app/(public)/movie/page.tsx (modified), src/app/(public)/categories/page.tsx (modified), src/app/(public)/platforms/page.tsx (modified) | `npm run typecheck` (exit 0); `npm run lint` (exit 0); `npm test` (pass); `npm run build` (exit 0)` | Desktop navigation with Home, Trending, Bookmark, Category, and Login/Profile items. Shows correct authenticated or guest state. Bookmark navigation remains visible as a destination, but guests are asked to sign in when they attempt to use personalized functionality. Secondary destinations inside hamburger/overflow menu. |
 
 ---
 
