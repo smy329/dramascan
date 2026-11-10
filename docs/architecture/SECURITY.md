@@ -20,7 +20,7 @@
 | ---------------------------------------------------- | ---------------------------------------- | -------------------------- |
 | Authentication (Google OAuth via Better Auth)        | Not implemented                          | Auth phase (Prompt 030+)   |
 | Session and cookie security                          | Not implemented                          | Auth phase                 |
-| RBAC and server-side authorization                   | Not implemented                          | Authorization phase        |
+| RBAC and server-side authorization                   | **Implemented**                          | **Authorization phase (Prompt 039)** |
 | Input validation with Zod                            | Not implemented                          | Per feature                |
 | Environment configuration validation (server-only)   | **Implemented**                          | Prompt 009                 |
 | Rate limiting (PostgreSQL-backed)                    | Not implemented                          | Auth/abuse-prone features  |
@@ -71,10 +71,12 @@ Until a control is implemented and tested, treat the corresponding threat as unm
 
 ## 4. Authorization (RBAC)
 
-- Permissions are action/resource keys such as `episode.publish`, `review.moderate`, and `backup.download`.
-- An administrator may hold multiple roles; effective permissions are the union of assigned roles.
+- Permissions are canonical `resource.action` keys from the catalog in `src/modules/authorization/permissions.ts` (for example `episode.update`, `review.manage`, `user.manage`). Nothing outside the authorization module defines permission identifiers.
+- An administrator may hold multiple roles; effective permissions are the union of granted permissions across assigned roles. Revoked rows (`granted = false`) do not grant access.
+- The database is the authority for actor state. `resolveActor` loads `is_super_admin`, `is_active`, and `deleted_at`; deactivated or soft-deleted accounts resolve to an anonymous actor even if a session cookie is still valid. Super Admin resolves to the complete catalog without any role-name comparison.
 - Initial roles: Super Admin, Content Manager, Moderator, Analyst. Super Admin may create custom roles and assign permissions.
-- Permission checks happen in `authorization` and are re-applied by the domain service that performs the operation. A route handler or Server Action may not be the only check.
+- Permission checks happen in `authorization` and are re-applied by the domain service that performs the operation. A route handler or Server Action may not be the only check. Server Actions resolve the actor internally and never accept an actor or identity argument from the caller.
+- Guards throw typed errors: `AuthenticationError` maps to `401 authentication_required`, `AuthorizationError` maps to `403 forbidden` through `platform/http`. Both REST handlers and Server Actions use the same guard semantics.
 - Ownership checks are part of authorization. A user may read or change only their own bookmarks, progress, history, reviews, reactions, reports, and notification preferences unless an explicit permission grants broader access.
 - **Response semantics:**
   - Public unavailable content (draft, unpublished, trashed, or nonexistent) returns `404`, never `403`.

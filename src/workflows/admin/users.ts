@@ -6,11 +6,13 @@
  *
  * Safety / error handling:
  *   - All functions return typed errors safe for end users
- *   - Only Super Admin can call these functions (checked at API route level)
+ *   - Only permitted actors can call these functions (entrypoint + service guard)
  *   - No data deletion — only role/status flags are toggled
  */
 
 'use server';
+
+import { requirePermission, resolveActor, toPermissionKey } from '@/modules/authorization';
 
 // ---- Authorize user as admin ------------------------------------------
 // Super Admin action: authorize an existing Google-authenticated account
@@ -18,9 +20,13 @@
 //
 // Returns true on success, or an error object on failure.
 export async function authorizeUserAsAdmin() {
+  // Resolve the actor server-side and re-check authorization (defense in depth).
+  const actor = await resolveActor();
+  requirePermission(actor, toPermissionKey('admin', 'manage'));
+
   try {
     return { success: true };
-  } catch (err) {
+  } catch {
     return { error: { code: 'internal_error', message: 'Failed to authorize user as admin.' } };
   }
 }
@@ -31,9 +37,13 @@ export async function authorizeUserAsAdmin() {
 //
 // Returns true on success, or an error object on failure.
 export async function deactivateAdminUser() {
+  // Resolve the actor server-side and re-check authorization (defense in depth).
+  const actor = await resolveActor();
+  requirePermission(actor, toPermissionKey('admin', 'manage'));
+
   try {
     return { success: true };
-  } catch (err) {
+  } catch {
     return { error: { code: 'internal_error', message: 'Failed to deactivate admin user.' } };
   }
 }
@@ -44,9 +54,13 @@ export async function deactivateAdminUser() {
 //
 // Returns true on success, or an error object on failure.
 export async function reactivateAdminUser() {
+  // Resolve the actor server-side and re-check authorization (defense in depth).
+  const actor = await resolveActor();
+  requirePermission(actor, toPermissionKey('admin', 'manage'));
+
   try {
     return { success: true };
-  } catch (err) {
+  } catch {
     return { error: { code: 'internal_error', message: 'Failed to reactivate admin user.' } };
   }
 }
@@ -57,12 +71,16 @@ export async function reactivateAdminUser() {
 //
 // Returns the role string and a success/error indicator.
 export async function inspectUserRole() {
+  // Resolve the actor server-side and re-check authorization (defense in depth).
+  const actor = await resolveActor();
+  requirePermission(actor, toPermissionKey('admin', 'manage'));
+
   try {
     return {
       success: true,
       role: 'viewer', // Placeholder - would be the user's actual role
     };
-  } catch (err) {
+  } catch {
     return { error: { code: 'internal_error', message: 'Failed to inspect user role.' } };
   }
 }

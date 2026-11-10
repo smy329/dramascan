@@ -304,9 +304,10 @@ Actors are server-generated. A request body, header, cookie value, or client sta
 
 ### 9.2 Permission catalog
 
-- The catalog lives in `modules/authorization/permissions.ts` and is the **only** place permission keys are defined.
-- Keys use `resource.action` form: `drama.update`, `episode.publish`, `content.purge`, `review.moderate`, `user.deactivate`, `admin.role.assign`, `settings.update`, `analytics.view`, `export.dataset`, `maintenance.run`.
-- `PermissionKey` is a union type. Passing an arbitrary string to a guard is a type error.
+- The catalog lives in `modules/authorization/permissions.ts` and is the **only** place permission keys are defined. It is the single source of truth for authorization.
+- Keys use the canonical `resource.action` form: `drama.create`, `drama.read`, `drama.update`, `drama.delete`, `drama.manage`, the equivalent `movie.*`, `episode.*`, `category.*`, and `platform.*` families, plus `user.read`, `user.manage`, `review.*`, `rating.*`, `analytics.*`, `settings.*`, and `admin.manage` keys.
+- The catalog stores the `resource` and `action` segments and a description; `toPermissionKey(resource, action)` composes the canonical key and rejects unknown combinations. `PermissionKey` is a union type. Passing an arbitrary string to a guard is a type error.
+- The `permissions` table persists `resource` + `action` columns per role with a unique constraint on `(role_id, resource, action)`; the `granted` flag toggles the single canonical permission for that role. `user_roles` enforces a unique constraint on `(user_id, role_id)`.
 - Modules import keys from `authorization`; they never define local permission strings.
 - Super Admin resolves to the complete catalog centrally. No code special-cases the role name.
 

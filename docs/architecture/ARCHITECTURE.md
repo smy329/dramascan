@@ -286,7 +286,7 @@ Rules for the tree:
 5. **Validate at the boundary.** Every service validates its input with Zod, even when the caller already validated it. Validation lives in `validation.ts`; client form schemas live in `lib/contracts` and are composed, not trusted.
 6. **No HTTP knowledge.** Services throw typed application errors. They never import `Request`, `Response`, `NextResponse`, status codes, or route helpers.
 7. **Return DTOs, not rows.** Public functions return explicit result types. Sensitive columns (video source URLs outside watch queries, internal flags, admin metadata) are never included by default.
-8. **Explicit permission keys.** Guards use keys from the central catalog (`episode.publish`, `drama.update`, `review.moderate`, `user.deactivate`). No role-name comparisons and no generic `isAdmin` checks.
+8. **Explicit permission keys.** Guards use keys from the central catalog (`drama.create`, `episode.read`, `drama.update`, `review.moderate`, `user.manage`). No role-name comparisons and no generic `isAdmin` checks.
 9. **No cross-module side effects.** A module never imports another module to trigger a side effect. That is a workflow's job (§8).
 10. **Transactions are passed in.** Write services accept an optional `tx: DbExecutor` and use it for every statement. They never open a competing transaction or commit independently.
 11. **No hidden state.** Modules do not keep request-scoped mutable singletons. Any per-request context (actor, request ID, transaction) is passed explicitly.
@@ -337,11 +337,11 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 ### 6.2 `authorization` — RBAC and guards
 
 - **Purpose:** centralized permission catalog, roles, role-permission mappings, admin role assignment, effective permission resolution, access-control guards, last-Super-Admin invariant.
-- **Owns:** `roles`, `role_permissions`, `user_roles` (administrator role assignments), and the code-level permission catalog.
-- **Public API:** `PERMISSIONS` (typed catalog), `PermissionKey`, `ActorContext` and actor constructors, `resolveActor`, `requirePermission`, `requireAnyPermission`, `hasPermission`, `assertResourceAccess`, `assignRole`, `removeRole`, `assertSuperAdminInvariant`.
+- **Owns:** `roles`, `permissions` (action/resource → granted, composing the canonical `resource.action` key), `user_roles` (administrator role assignments), and the code-level permission catalog.
+- **Public API:** `PERMISSIONS`, `ALL_PERMISSION_KEYS`, `SUPER_ADMIN_PERMISSION_KEYS`, `PermissionKey`, `PermissionDefinition`, `isPermissionKey`, `toPermissionKey`, `PERMISSION_RESOURCES`, `PERMISSION_ACTIONS`, `ActorContext`, `anonymousActor`, `userActor`, `resolveActor`, `resolveEffectivePermissionsForUser`, `resolveEffectivePermissions`, `hasPermission`, `requirePermission`, `requireAnyPermission`, `requireUser`, `requireAdmin`, `assertResourceAccess`.
 - **Depends on:** `auth`, platform.
 - **Not responsible for:** sign-in, sessions, admin account lifecycle records, content rules, UI navigation filtering (navigation may read permissions but is not the boundary).
-- **Boundary notes:** effective permissions are the union of all assigned roles; Super Admin resolves to the full catalog centrally. The last-Super-Admin check is enforced inside this module, not in the UI.
+- **Boundary notes:** effective permissions are the union of all granted permissions across all assigned roles; Super Admin resolves to the full catalog centrally. The last-Super-Admin check is enforced inside this module, not in the UI.
 
 ### 6.3 `content` — Content management
 
@@ -699,6 +699,7 @@ Modules may define domain errors that extend these classes (for example, `Conten
 
 - Services throw typed errors. They never return HTTP objects or status codes.
 - `platform/http` maps errors to responses; `app` Server Actions map errors to action results. Mapping logic exists once.
+- Authorization failures are typed: `AuthenticationError` maps to `401` (`authentication_required`) and `AuthorizationError` maps to `403` (`forbidden`) through `platform/http` (`mapErrorToRest`); REST entrypoints return the JSON error envelope with the `X-Request-Id` header.
 - Internal details (SQL, stack traces, credentials, URLs with tokens) never reach the client.
 - Unknown errors are wrapped as `InternalError`, logged with full context, and returned as a generic message.
 

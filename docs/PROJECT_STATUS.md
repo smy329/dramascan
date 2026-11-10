@@ -2,8 +2,8 @@
 
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
-**Date:** 2026-11-09  
-**Current Prompt:** 038 — Allow Super Admin to Create Custom Roles, Edit, and Assign Permissions
+**Date:** 2026-11-10  
+**Current Prompt:** 039 — Implement Centralized Authorization Guards
 
 ---
 
@@ -75,7 +75,9 @@ None.
 
 | **038** | **Allow Super Admin to Create Custom Roles, Edit, and Assign Permissions** | ✅ Completed | src/modules/auth/schema.ts (modified), src/workflows/admin/roles.ts (new), src/app/admin/api/roles/route.ts (new), docs/PROJECT_STATUS.md (updated) | `npm run typecheck` (next typegen passes); `npm run lint` (exit 0); `npm test` (12 tests passing, 1 pre-existing failure); `npm run build` (Turbopack compiles) | Super Admin can create custom roles, edit role names/descriptions, and assign/revoke permissions at action/resource level. Unauthorized users cannot modify role definitions (Super Admin-only enforcement via API route layer). Permission combinations validated; last effective Super Admin access protection enforced. Permissions displayed per role. next typegen passes; tsc errors are pre-existing pg-core compatibility issues. |
 
-All prompts 020–038 complete.
+| **039** | **Implement Centralized Authorization Guards** | ✅ Completed | src/modules/authorization/permissions.ts (new), src/modules/authorization/actors.ts (new), src/modules/authorization/guards.ts (new), src/modules/authorization/service.ts (new), src/modules/authorization/index.ts (new), src/modules/authorization/schema.ts, src/modules/auth/schema.ts, src/platform/errors/AppError.ts, src/workflows/admin/roles.ts, src/workflows/admin/users.ts, src/app/admin/api/roles/route.ts, src/app/admin/api/users/route.ts, tests/unit/modules/authorization/permissions.test.ts (new), tests/unit/modules/authorization/guards.test.ts (new), tests/unit/modules/authorization/service.test.ts (new), tests/unit/modules/authorization/actors.test.ts (new), tests/unit/workflows/admin/authorization.test.ts (new), tests/unit/platform/errors/authorization-errors.test.ts (new), docs/architecture/ARCHITECTURE.md, docs/architecture/SECURITY.md, docs/architecture/module-architecture.md, docs/architecture/system-architecture.md | `npm test` (66 tests pass; the pre-existing `schema-helpers` suite still fails to import `analytics`/`notifications` schema — unrelated to 039); `npx tsc --noEmit` shows only the same pre-existing analytics/notifications schema errors; `npm run lint` reports no violations in files added or changed by 039 (6 pre-existing `eol-last` errors remain in unrelated files) | Canonical `resource.action` permission catalog; effective permissions are the union of granted permissions across all assigned roles; Super Admin resolves to the full catalog; `requirePermission`/`requireAnyPermission`/`requireUser`/`requireAdmin` throw `AuthenticationError` (401 `authentication_required`) and `AuthorizationError` (403 `forbidden`) mapped by `platform/http`; actors are resolved server-side from the session and the database (`is_super_admin`, `is_active`, `deleted_at`) — deactivated and soft-deleted accounts are anonymous; Server Actions no longer accept an actor argument (clients cannot forge identity) and resolve/re-check authorization internally; admin REST entrypoints guard before dispatch; unknown/stale permission rows are ignored (deny by default); `AppError` now preserves subclass prototypes so 401/403 mapping works. |
+
+All prompts 020–039 complete.
 
 ---
 
@@ -90,11 +92,14 @@ All prompts 020–038 complete.
 - Services should use `createRequestLogger({ requestId, module })` for request-scoped logging via the `ServiceContext` type.
 - CI is defined in `.github/workflows/ci.yml`; see `docs/development/ci-cd.md` for jobs, local reproduction, and the manual production-approval policy.
 - `npm test` runs unit tests only; integration tests use `npm run test:integration` with `TEST_DATABASE_URL`.
-- CI currently passes `--passWithNoTests` because no integration test files exist yet. The unit suite now has 12 tests.
+- CI currently passes `--passWithNoTests` because no integration test files exist yet. The unit suite now has 66 tests.
 - PostgreSQL connectivity is owned by `src/platform/db/pool.ts`; Drizzle exposes the client through `src/db/client.ts`.
 - `DATABASE_URL` remains server-only. The pool is intentionally small and every timeout is explicit; see `docs/development/DATABASE.md` §2.3.
 - `.env.local` contains local credentials and is ignored by `.gitignore`; only `.env.example` placeholders may be committed.
 - Domain schemas live in `src/modules/<domain>/schema.ts`; only `src/db/schema.ts` may import them. The registry is empty until the data-model prompts add tables.
+- Authorization lives in `src/modules/authorization` and is the single source of truth for permission keys (`resource.action`). Protected entrypoints resolve the actor server-side and call a guard; Server Actions resolve the actor internally and never accept an actor/identity argument from the caller.
+- `AppError` subclasses preserve their concrete prototype (`new.target.prototype`). This is required for `instanceof AuthenticationError`/`AuthorizationError` checks, which drive the `401`/`403` REST mapping.
+- Known pre-existing failures (not introduced by Prompt 039): `tests/unit/platform/db/schema-helpers.test.ts` cannot import `src/db/schema.ts` because `analytics`/`notifications` schemas fail at runtime/type level; `npm run lint` still reports `eol-last` errors in six unrelated files. These belong to their originating prompts.
 - Application-owned primary keys default to PostgreSQL `uuidv7()`; Better Auth tables keep Better Auth's required ID type.
 - Cross-content relationships (ratings, reviews, bookmarks, view events) use nullable `drama_id`/`movie_id` FKs plus an exactly-one CHECK and partial unique indexes (D-020). No generic polymorphic `content_id` is permitted.
 - Prompt 020 created schema structure only. Tables, constraints, indexes, and migrations are intentionally deferred to Prompts 022–029.

@@ -22,7 +22,10 @@ export class AppError extends Error {
     this.message = message
     this.fieldErrors = fieldErrors
     this.cause = cause
-    Object.setPrototypeOf(this, AppError.prototype)
+    // Preserve the concrete subclass prototype. Hard-coding `AppError.prototype`
+    // makes `instanceof AuthenticationError`/`AuthorizationError` fail, which
+    // breaks the 401/403 error mapping.
+    Object.setPrototypeOf(this, new.target.prototype)
   }
 }
 
