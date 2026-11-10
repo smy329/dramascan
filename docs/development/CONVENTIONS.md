@@ -104,7 +104,7 @@ Do not create barrel `index.ts` files for convenience. The only `index.ts` files
 | Database row types                     | `<Entity>Row` (internal only)                       | `DramaRow`                                    |
 | Service inputs                         | `<Action>Input`                                     | `PublishEpisodeInput`                         |
 | Errors                                 | `<Domain><Condition>Error`                          | `ContentNotPlayableError`                     |
-| Permission keys                        | `resource.action`                                   | `episode.publish`, `review.moderate`          |
+| Permission keys                        | `resource.action`                                   | `drama.create`, `episode.read`, `review.moderate`          |
 | Workflows                              | verb-first, kebab-case directory                    | `replace-video-source`                        |
 
 ### 3.2 Function naming

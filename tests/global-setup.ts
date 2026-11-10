@@ -52,14 +52,15 @@ async function globalSetup() {
     await pool.end();
   }
 
-  // Drizzle tooling and schema arrive with the database prompts. Until then,
-  // there are no migrations to apply to the test database.
+  // The test database is built from the same ordered SQL migrations that
+  // production applies, so a migration defect fails integration tests instead
+  // of hiding behind a schema push.
   if (!existsSync('drizzle.config.ts')) {
     console.log('drizzle.config.ts not found; skipping test database migrations.');
     return globalTeardown;
   }
 
-  execSync('npx drizzle-kit push', {
+  execSync('npx drizzle-kit migrate', {
     env: { ...process.env, DATABASE_URL: testDatabaseUrl },
     stdio: 'inherit',
   });

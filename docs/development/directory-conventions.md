@@ -77,7 +77,7 @@ src/
       repository.ts
     authorization/
       index.ts
-      schema.ts             # roles, role_permissions, user_roles
+      schema.ts             # roles, permissions, user_roles
       permissions.ts        # THE permission catalog (single source)
       actors.ts             # Anonymous/User/Admin/System actor types
       guards.ts             # requirePermission, resource checks

@@ -19,16 +19,16 @@
  * keys. Partial unique indexes `WHERE deleted_at IS NULL` for active-row uniqueness.
  */
 import { pgTable, text, timestamp, uuid, integer, boolean } from 'drizzle-orm/pg-core';
+import { primaryKeyConstraint, uuidPrimaryKey } from '@/platform/db/schema-helpers';
 
 // Helper: standard columns for mutable entities
-const pk = uuid('id').notNull();
 const created = timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 const updated = timestamp('updated_at', { withTimezone: true }).notNull().defaultNow();
 const deleted = timestamp('deleted_at', { withTimezone: true });
 
 // ----- dramas -----
 export const dramas = pgTable('dramas', {
-  id: pk,
+  id: uuidPrimaryKey(),
   title: text('title').notNull(),
   slug: text('slug').notNull(),
   description: text('description'),
@@ -43,7 +43,7 @@ export const dramas = pgTable('dramas', {
 
 // ----- seasons -----
 export const seasons = pgTable('seasons', {
-  id: pk,
+  id: uuidPrimaryKey(),
   drama_id: uuid('drama_id').notNull(),
   title: text('title').notNull(),
   position: integer('position'),
@@ -55,7 +55,7 @@ export const seasons = pgTable('seasons', {
 
 // ----- episodes -----
 export const episodes = pgTable('episodes', {
-  id: pk,
+  id: uuidPrimaryKey(),
   drama_id: uuid('drama_id').notNull(),
   season_id: uuid('season_id'),
   title: text('title').notNull(),
@@ -71,7 +71,7 @@ export const episodes = pgTable('episodes', {
 
 // ----- movies -----
 export const movies = pgTable('movies', {
-  id: pk,
+  id: uuidPrimaryKey(),
   title: text('title').notNull(),
   slug: text('slug').notNull(),
   description: text('description'),
@@ -85,7 +85,7 @@ export const movies = pgTable('movies', {
 
 // ----- categories -----
 export const categories = pgTable('categories', {
-  id: pk,
+  id: uuidPrimaryKey(),
   name: text('name').notNull(),
   slug: text('slug').notNull(),
   visibility: text('visibility'),
@@ -97,7 +97,7 @@ export const categories = pgTable('categories', {
 
 // ----- platforms -----
 export const platforms = pgTable('platforms', {
-  id: pk,
+  id: uuidPrimaryKey(),
   name: text('name').notNull(),
   slug: text('slug').notNull(),
   position: integer('position'),
@@ -107,39 +107,61 @@ export const platforms = pgTable('platforms', {
 });
 
 // ----- drama_categories (join) -----
-export const drama_categories = pgTable('drama_categories', {
-  drama_id: uuid('drama_id').notNull(),
-  category_id: uuid('category_id').notNull(),
-});
+export const drama_categories = pgTable(
+  'drama_categories',
+  {
+    drama_id: uuid('drama_id').notNull(),
+    category_id: uuid('category_id').notNull(),
+  },
+  table => [primaryKeyConstraint('drama_categories', [table.drama_id, table.category_id])]
+);
 
 // ----- drama_platforms (join) -----
-export const drama_platforms = pgTable('drama_platforms', {
-  drama_id: uuid('drama_id').notNull(),
-  platform_id: uuid('platform_id').notNull(),
-});
+export const drama_platforms = pgTable(
+  'drama_platforms',
+  {
+    drama_id: uuid('drama_id').notNull(),
+    platform_id: uuid('platform_id').notNull(),
+  },
+  table => [primaryKeyConstraint('drama_platforms', [table.drama_id, table.platform_id])]
+);
 
 // ----- movie_categories (join) -----
-export const movie_categories = pgTable('movie_categories', {
-  movie_id: uuid('movie_id').notNull(),
-  category_id: uuid('category_id').notNull(),
-});
+export const movie_categories = pgTable(
+  'movie_categories',
+  {
+    movie_id: uuid('movie_id').notNull(),
+    category_id: uuid('category_id').notNull(),
+  },
+  table => [primaryKeyConstraint('movie_categories', [table.movie_id, table.category_id])]
+);
 
 // ----- movie_platforms (join) -----
-export const movie_platforms = pgTable('movie_platforms', {
-  movie_id: uuid('movie_id').notNull(),
-  platform_id: uuid('platform_id').notNull(),
-});
+export const movie_platforms = pgTable(
+  'movie_platforms',
+  {
+    movie_id: uuid('movie_id').notNull(),
+    platform_id: uuid('platform_id').notNull(),
+  },
+  table => [primaryKeyConstraint('movie_platforms', [table.movie_id, table.platform_id])]
+);
 
 // ----- similar_dramas -----
-export const similar_dramas = pgTable('similar_dramas', {
-  drama_id: uuid('drama_id').notNull(),
-  similar_drama_id: uuid('similar_drama_id').notNull(),
-  position: integer('position'),
-});
+export const similar_dramas = pgTable(
+  'similar_dramas',
+  {
+    drama_id: uuid('drama_id').notNull(),
+    similar_drama_id: uuid('similar_drama_id').notNull(),
+    position: integer('position'),
+  },
+  table => [
+    primaryKeyConstraint('similar_dramas', [table.drama_id, table.similar_drama_id]),
+  ]
+);
 
 // ----- information_pages -----
 export const information_pages = pgTable('information_pages', {
-  id: pk,
+  id: uuidPrimaryKey(),
   title: text('title').notNull(),
   slug: text('slug').notNull(),
   content: text('content').notNull(),
@@ -153,7 +175,7 @@ export const information_pages = pgTable('information_pages', {
 
 // ----- content_slug_history -----
 export const content_slug_history = pgTable('content_slug_history', {
-  id: pk,
+  id: uuidPrimaryKey(),
   content_type: text('content_type'),
   content_id: uuid('content_id').notNull(),
   old_slug: text('old_slug').notNull(),
@@ -163,7 +185,7 @@ export const content_slug_history = pgTable('content_slug_history', {
 
 // ----- content_seo -----
 export const content_seo = pgTable('content_seo', {
-  id: pk,
+  id: uuidPrimaryKey(),
   content_type: text('content_type'),
   content_id: uuid('content_id').notNull(),
   seo_title: text('seo_title'),
@@ -175,7 +197,7 @@ export const content_seo = pgTable('content_seo', {
 
 // ----- content_assets -----
 export const content_assets = pgTable('content_assets', {
-  id: pk,
+  id: uuidPrimaryKey(),
   content_type: text('content_type'),
   content_id: uuid('content_id').notNull(),
   asset_type: text('asset_type'),
@@ -187,7 +209,7 @@ export const content_assets = pgTable('content_assets', {
 
 // ----- sitemap_exclusions -----
 export const sitemap_exclusions = pgTable('sitemap_exclusions', {
-  id: pk,
+  id: uuidPrimaryKey(),
   path: text('path').notNull(),
   reason: text('reason'),
   created_at: created,

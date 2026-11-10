@@ -18,8 +18,8 @@
 
 | Area                                                 | Status                                   | Implemented in             |
 | ---------------------------------------------------- | ---------------------------------------- | -------------------------- |
-| Authentication (Google OAuth via Better Auth)        | Not implemented                          | Auth phase (Prompt 030+)   |
-| Session and cookie security                          | Not implemented                          | Auth phase                 |
+| Authentication (Google OAuth via Better Auth)        | **Implemented**                          | **Prompts 033/034**        |
+| Session and cookie security                          | **Implemented** (session gate; header/CSP hardening pending) | **Prompts 033/034** |
 | RBAC and server-side authorization                   | **Implemented**                          | **Authorization phase (Prompt 039)** |
 | Input validation with Zod                            | Not implemented                          | Per feature                |
 | Environment configuration validation (server-only)   | **Implemented**                          | Prompt 009                 |
@@ -58,7 +58,25 @@ Until a control is implemented and tested, treat the corresponding threat as unm
 - **Administrator separation:** public users cannot register as administrators. Administrator status is granted only by an authorized Super Admin.
 - **Last Super Admin:** the system must prevent removal or deactivation of the last effective Super Admin. This invariant is enforced server-side inside a transaction, not only in the UI.
 
-### 3.1 Administrator session policy
+### 3.1 First-sign-in Super Admin bootstrap
+
+Bootstrap is implemented by `src/platform/auth/auth-hooks.ts` through the Better Auth `databaseHooks.session.create.before` hook and the pure decisions in `src/platform/auth/auth-policy.ts`.
+
+- Only the email in `SUPER_ADMIN_EMAIL`, compared case-insensitively after trimming and lower-casing, is eligible. A non-matching user is never promoted, even if the account is otherwise valid.
+- Promotion happens only while no Super Admin exists. Existing Super Admin status always wins; a second eligible user is not promoted.
+- The check and the promotion run inside one Drizzle transaction that first takes `pg_advisory_xact_lock(4627001033)`. Concurrent sign-ins therefore serialize: at most one promotion succeeds, the others observe the Super Admin that now exists. This is verified by a real-database race test.
+- Promotion sets `users.is_super_admin = true`; it does not grant roles or write `user_roles`. Super Admin authorization is resolved from the column, and no role name is trusted.
+- There is no self-service promotion endpoint, no promotion Server Action, and no API parameter that accepts a target user or role.
+- If `SUPER_ADMIN_EMAIL` is unset, bootstrap is skipped entirely (`not-configured`); it never falls back to a default address.
+
+### 3.2 Session creation gate and existing-session re-check
+
+- `databaseHooks.session.create.before` calls `assertUserCanCreateSession` before Better Auth writes a session. A missing user, `is_active = false`, or non-NULL `deleted_at` fails with `403 ACCOUNT_NOT_ACTIVE`, so a new sign-in cannot create a session for a disabled account.
+- Better Auth's own `/api/auth/get-session` validates the cookie and expiry but does not consult application account status. Protected pages therefore use `getActiveSession` (`src/platform/auth/session.ts`), which loads the session and then re-reads the user row.
+- `getActiveSession` returns `null` when the user is missing, inactive, soft-deleted, or the session has expired. `/dashboard` redirects to `/auth/signin` in that case, and `/auth/signin` redirects to `/dashboard` only for an active session.
+- Deactivating a user therefore invalidates an existing session cookie on the next protected request. The cookie and the `sessions` row may still exist; the database status is the authority.
+
+### 3.3 Administrator session policy
 
 - Configurable inactivity timeout and maximum session lifetime, enforced server-side.
 - Super Admin can inspect administrator sessions, terminate one or more sessions, and force reauthentication.
@@ -71,7 +89,7 @@ Until a control is implemented and tested, treat the corresponding threat as unm
 
 ## 4. Authorization (RBAC)
 
-- Permissions are canonical `resource.action` keys from the catalog in `src/modules/authorization/permissions.ts` (for example `episode.update`, `review.manage`, `user.manage`). Nothing outside the authorization module defines permission identifiers.
+- Permissions are canonical `resource.action` keys from the catalog in `src/modules/authorization/permissions.ts` (for example `drama.update`, `episode.read`, `review.moderate`, `admin.manage`). Nothing outside the authorization module defines permission identifiers.
 - An administrator may hold multiple roles; effective permissions are the union of granted permissions across assigned roles. Revoked rows (`granted = false`) do not grant access.
 - The database is the authority for actor state. `resolveActor` loads `is_super_admin`, `is_active`, and `deleted_at`; deactivated or soft-deleted accounts resolve to an anonymous actor even if a session cookie is still valid. Super Admin resolves to the complete catalog without any role-name comparison.
 - The database enforces the canonical pair: `permissions` stores `resource` + `action` with a CHECK constraint generated from the full catalog key list, a unique `(role_id, resource, action)` constraint, and a role foreign key. Duplicate grants and non-catalog pairs are impossible; `granted = false` records an explicit revocation without deleting history.

@@ -148,7 +148,7 @@ src/
       repository.ts
     authorization/
       index.ts
-      schema.ts                   # roles, role_permissions, user_roles
+      schema.ts                   # roles, permissions, user_roles
       permissions.ts              # THE permission catalog (single source)
       actors.ts                   # Anonymous/User/Admin/System actor types
       guards.ts                   # requirePermission, resource checks
@@ -623,7 +623,7 @@ Actors are server-generated. A request body, header, cookie value, or client sta
 ### 11.2 Permission catalog
 
 - The catalog lives in `modules/authorization/permissions.ts` and is the **only** place permission keys are defined.
-- Keys use `resource.action` form: `drama.update`, `episode.publish`, `content.purge`, `review.moderate`, `user.deactivate`, `admin.role.assign`, `settings.update`, `analytics.view`, `export.dataset`, `maintenance.run`.
+- Keys use the canonical `resource.action` form: `drama.create`, `drama.read`, `drama.update`, `drama.delete`, `drama.manage`, the equivalent `movie.*`, `episode.*`, `category.*`, and `platform.*` families, plus `user.read`, `user.manage`, `review.*`, `rating.*`, `analytics.*`, `settings.*`, and `admin.manage` keys.
 - `PermissionKey` is a union type. Passing an arbitrary string to a guard is a type error.
 - Modules import keys from `authorization`; they never define local permission strings.
 - Super Admin resolves to the complete catalog centrally. No code special-cases the role name.

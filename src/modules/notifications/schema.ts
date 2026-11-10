@@ -25,10 +25,11 @@
  * event preferences AND the global on/off switch.
  */
 import { pgTable, text, timestamp, uuid, integer, boolean } from 'drizzle-orm/pg-core';
+import { uuidPrimaryKey } from '@/platform/db/schema-helpers';
 
 // ----- push_subscriptions -----
 export const push_subscriptions = pgTable('push_subscriptions', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   user_id: uuid('user_id').notNull(),
   endpoint: text('endpoint').notNull(), // VAPI endpoint URL
   p256dh: text('p256dh'), // Public key
@@ -43,7 +44,7 @@ export const push_subscriptions = pgTable('push_subscriptions', {
 
 // ----- notification_preferences -----
 export const notification_preferences = pgTable('notification_preferences', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   user_id: uuid('user_id').notNull(),
   new_episode: boolean('new_episode').default(true),
   new_drama_season: boolean('new_drama_season').default(true),
@@ -58,7 +59,7 @@ export const notification_preferences = pgTable('notification_preferences', {
 
 // ----- notifications -----
 export const notifications = pgTable('notifications', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   user_id: uuid('user_id').notNull(),
   title: text('title').notNull(),
   content: text('content').notNull(),
@@ -78,7 +79,7 @@ export const notifications = pgTable('notifications', {
 
 // ----- notification_deliveries -----
 export const notification_deliveries = pgTable('notification_deliveries', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   notification_id: uuid('notification_id').notNull(),
   user_id: uuid('user_id').notNull(),
   channel: text('channel').notNull(), // in_app | push
@@ -91,7 +92,7 @@ export const notification_deliveries = pgTable('notification_deliveries', {
 
 // ----- announcements -----
 export const announcements = pgTable('announcements', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   title: text('title').notNull(),
   content: text('content').notNull(),
   author_id: uuid('author_id').notNull(),
@@ -105,7 +106,7 @@ export const announcements = pgTable('announcements', {
 
 // ----- admin_notifications -----
 export const admin_notifications = pgTable('admin_notifications', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   title: text('title').notNull(),
   content: text('content').notNull(),
   audience: text('audience').default('all'), // all | super_admin | roles

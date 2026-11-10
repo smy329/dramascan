@@ -26,9 +26,9 @@ import {
  */
 export const uuidV7Default = sql`uuidv7()`;
 
-/** Application-owned primary key: `uuid` with a server-side UUIDv7 default. */
+/** Application-owned primary key: `uuid` primary key with a UUIDv7 default. */
 export function uuidPrimaryKey(name = 'id') {
-  return uuid(name).notNull().default(uuidV7Default);
+  return uuid(name).notNull().default(uuidV7Default).primaryKey();
 }
 
 /** `created_at timestamptz not null default now()`. */

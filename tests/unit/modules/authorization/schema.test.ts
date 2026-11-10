@@ -61,14 +61,18 @@ describe('authorization schema reconciliation', () => {
 
   it('prevents duplicate role assignments and indexes reverse lookups', () => {
     const config = getTableConfig(userRoles);
-    const assignmentUnique = config.uniqueConstraints.find(
-      (constraint) => constraint.columns.length === 2
-    );
+    const assignmentPrimaryKey = config.primaryKeys[0];
     const roleIndex = config.indexes.find((index) =>
       index.config.columns.some((column) => 'name' in column && column.name === 'role_id')
     );
 
-    expect(assignmentUnique?.name).toBe('uq_user_roles_user_id_role_id');
+    // The composite primary key is the assignment identity, so a duplicate
+    // user/role pair cannot be stored.
+    expect(assignmentPrimaryKey?.getName()).toBe('pk_user_roles');
+    expect(assignmentPrimaryKey?.columns.map((column) => column.name)).toEqual([
+      'user_id',
+      'role_id',
+    ]);
     expect(roleIndex?.config.name).toBe('idx_user_roles_role_id');
   });
 });

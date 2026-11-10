@@ -53,11 +53,11 @@ Modules are assigned to fixed layers. See `ARCHITECTURE.md` §3 for the layer ma
 ### 6.2 `authorization` — RBAC and guards
 
 - **Purpose:** centralized permission catalog, roles, role-permission mappings, admin role assignment, effective permission resolution, access-control guards, last-Super-Admin invariant.
-- **Owns:** `roles`, `role_permissions`, `user_roles` (administrator role assignments), and the code-level permission catalog.
-- **Public API:** `PERMISSIONS` (typed catalog), `PermissionKey`, `ActorContext` and actor constructors, `resolveActor`, `requirePermission`, `requireAnyPermission`, `hasPermission`, `assertResourceAccess`, `assignRole`, `removeRole`, `assertSuperAdminInvariant`.
+- **Owns:** `roles`, `permissions` (action/resource → granted, composing the canonical `resource.action` key), `user_roles` (administrator role assignments), and the code-level permission catalog.
+- **Public API:** `PERMISSIONS`, `ALL_PERMISSION_KEYS`, `SUPER_ADMIN_PERMISSION_KEYS`, `PermissionKey`, `PermissionDefinition`, `isPermissionKey`, `toPermissionKey`, `PERMISSION_RESOURCES`, `PERMISSION_ACTIONS`, `ActorContext`, `anonymousActor`, `userActor`, `resolveActor`, `resolveEffectivePermissionsForUser`, `resolveEffectivePermissions`, `hasPermission`, `requirePermission`, `requireAnyPermission`, `requireUser`, `requireAdmin`, `assertResourceAccess`.
 - **Depends on:** `auth`, platform.
 - **Not responsible for:** sign-in, sessions, admin account lifecycle records, content rules, UI navigation filtering (navigation may read permissions but is not the boundary).
-- **Boundary notes:** effective permissions are the union of all assigned roles; Super Admin resolves to the full catalog centrally. The last-Super-Admin check is enforced inside this module, not in the UI.
+- **Boundary notes:** effective permissions are the union of all granted permissions across all assigned roles; Super Admin resolves to the full catalog centrally. The last-Super-Admin check is enforced inside this module, not in the UI.
 
 ### 6.3 `content` — Content management
 

@@ -24,10 +24,11 @@
  * separate from authenticated user's personal watch history.
  */
 import { pgTable, text, timestamp, uuid, integer, boolean } from 'drizzle-orm/pg-core';
+import { uuidPrimaryKey } from '@/platform/db/schema-helpers';
 
 // ----- bookmarks -----
 export const bookmarks = pgTable('bookmarks', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   user_id: uuid('user_id').notNull(),
   content_type: text('content_type').notNull().default('drama'), // drama | movie
   content_id: uuid('content_id').notNull(),
@@ -35,7 +36,7 @@ export const bookmarks = pgTable('bookmarks', {
 
 // ----- playback_progress -----
 export const playback_progress = pgTable('playback_progress', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   user_id: uuid('user_id').notNull(),
   content_type: text('content_type').notNull().default('drama'), // drama | movie
   content_id: uuid('content_id').notNull(), // drama_id or movie_id
@@ -48,7 +49,7 @@ export const playback_progress = pgTable('playback_progress', {
 
 // ----- watched_state -----
 export const watched_state = pgTable('watched_state', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   user_id: uuid('user_id').notNull(),
   content_type: text('content_type').notNull().default('drama'), // drama | movie
   content_id: uuid('content_id').notNull(), // drama_id or movie_id
@@ -62,7 +63,7 @@ export const watched_state = pgTable('watched_state', {
 
 // ----- watch_history -----
 export const watch_history = pgTable('watch_history', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   user_id: uuid('user_id').notNull(),
   content_type: text('content_type').notNull().default('drama'), // drama | movie
   content_id: uuid('content_id').notNull(), // drama_id or movie_id

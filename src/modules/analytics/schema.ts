@@ -19,11 +19,11 @@
  * event-level event data in the same table.
  */
 import { boolean, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { createdAt, deletedAt, updatedAt } from '@/platform/db/schema-helpers';
+import { createdAt, deletedAt, updatedAt, uuidPrimaryKey } from '@/platform/db/schema-helpers';
 
 // ----- guest_sessions -----
 export const guest_sessions = pgTable('guest_sessions', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   session_id: text('session_id').notNull(), // anonymous session identifier
   user_id: uuid('user_id'), // nullable: NULL for unauthenticated guests
   ip_hash: text('ip_hash'), // hashed IP for duplicate detection
@@ -36,7 +36,7 @@ export const guest_sessions = pgTable('guest_sessions', {
 
 // ----- content_view_events -----
 export const content_view_events = pgTable('content_view_events', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   guest_session_id: uuid('guest_session_id'), // FK to guest_sessions, nullable
   content_id: uuid('content_id').notNull(),
   content_type: text('content_type').notNull(), // drama | movie
@@ -48,7 +48,7 @@ export const content_view_events = pgTable('content_view_events', {
 
 // ----- playback_analytics_events -----
 export const playback_analytics_events = pgTable('playback_analytics_events', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   guest_session_id: uuid('guest_session_id'), // FK to guest_sessions, nullable
   content_id: uuid('content_id').notNull(),
   content_type: text('content_type').notNull(), // drama | movie
@@ -63,7 +63,7 @@ export const playback_analytics_events = pgTable('playback_analytics_events', {
 
 // ----- analytics_daily_aggregates -----
 export const analytics_daily_aggregates = pgTable('analytics_daily_aggregates', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   date: text('date').notNull(), // YYYY-MM-DD format
   content_id: uuid('content_id'), // nullable: NULL for site-wide aggregates
   content_type: text('content_type'), // drama | movie | NULL
@@ -81,7 +81,7 @@ export const analytics_daily_aggregates = pgTable('analytics_daily_aggregates', 
 
 // ----- search_events -----
 export const search_events = pgTable('search_events', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   guest_session_id: uuid('guest_session_id'), // FK to guest_sessions, nullable
   user_id: uuid('user_id'), // nullable: NULL for anonymous searches
   query_text: text('query_text').notNull(),

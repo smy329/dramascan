@@ -1,38 +1,82 @@
-/** Better Auth configuration (server-only).
+/**
+ * Better Auth configuration (server-only).
  *
- * This module sets up Better Auth with PostgreSQL storage.
- * Password authentication is not implemented — Google OAuth is the only provider.
- * Better Auth manages its own ID type (UUID) per D-013.
- * Secure cookie settings are applied for production use.
- * Only imported on the server (via `server-only`).
+ * Google OAuth is the only sign-in provider. Email/password authentication is
+ * disabled. Better Auth owns the `users`, `accounts`, `sessions`, and
+ * `verifications` tables through the Drizzle adapter; the physical columns are
+ * snake_case while the TypeScript keys match Better Auth's camelCase field
+ * names.
  *
- * Google OAuth configuration is read from environment variables:
- * - GOOGLE_CLIENT_ID
- * - GOOGLE_CLIENT_SECRET
+ * `generateId: 'uuid'` selects UUID primary keys. The Drizzle adapter reports
+ * UUID support for PostgreSQL, so Better Auth relies on the database defaults
+ * (`uuidv7()`) defined by `uuidPrimaryKey()`.
  *
- * Session cookie settings (HttpOnly, Secure, SameSite) are
- * managed by the Drizzle adapter and browser.
+ * The session-creation hook has two responsibilities:
+ * - reject deactivated or soft-deleted accounts before a session exists, and
+ * - promote the configured first Super Admin (see `auth-hooks.ts`).
  *
- * Better Auth handles user creation and account linking automatically
- * when using the Drizzle adapter with Google OAuth. On first sign-in,
- * a user record is created. On subsequent logins, the account is linked
- * if the Google email matches an existing user. The Google profile
- * (name & image) is stored in the users table via the adapter.
  * Only imported on the server (via `server-only`).
  */
+
 import 'server-only';
+
+import { drizzleAdapter } from '@better-auth/drizzle-adapter';
 import { betterAuth } from 'better-auth';
+import { nextCookies } from 'better-auth/next-js';
+import { db } from '@/db/client';
+import { accounts, sessions, users, verifications } from '@/modules/auth/schema';
+import { serverConfig } from '@/platform/config';
+import { assertUserCanCreateSession, bootstrapSuperAdminForUser } from './auth-hooks';
 
-// Minimal Better Auth configuration.
-// Google OAuth client credentials are read from environment variables
-// (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET) by better-auth core.
-// The core reads these and configures the Google provider automatically.
-// Session cookie settings are handled by the adapter and browser.
-// User creation and account linking are handled by Better Auth core.
-export const auth = betterAuth({});
+const googleProvider =
+  serverConfig.googleClientId && serverConfig.googleClientSecret
+    ? {
+        google: {
+          clientId: serverConfig.googleClientId,
+          clientSecret: serverConfig.googleClientSecret,
+        },
+      }
+    : {};
 
-// Export type for use in server components and actions
+export const auth = betterAuth({
+  appName: 'DramaScan',
+  baseURL: serverConfig.appUrl,
+  secret: serverConfig.betterAuthSecret ?? undefined,
+  trustedOrigins: [...serverConfig.trustedOrigins],
+  database: drizzleAdapter(db, {
+    provider: 'pg',
+    usePlural: true,
+    schema: { users, sessions, accounts, verifications },
+  }),
+  socialProviders: googleProvider,
+  emailAndPassword: {
+    enabled: false,
+  },
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ['google'],
+    },
+  },
+  advanced: {
+    database: {
+      generateId: 'uuid',
+    },
+  },
+  databaseHooks: {
+    session: {
+      create: {
+        before: async session => {
+          const userId = session.userId;
+          await assertUserCanCreateSession(userId);
+          await bootstrapSuperAdminForUser(userId);
+        },
+      },
+    },
+  },
+  plugins: [nextCookies()],
+});
+
 export type AuthClient = typeof auth;
 
-// Export the configured instance (default export for convenience)
 export default auth;

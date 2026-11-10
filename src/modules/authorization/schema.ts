@@ -39,7 +39,9 @@ import {
   checkConstraint,
   foreignKeyConstraint,
   indexOn,
+  primaryKeyConstraint,
   uniqueConstraint,
+  uuidPrimaryKey,
 } from '@/platform/db/schema-helpers';
 import { ALL_PERMISSION_KEYS } from './permissions';
 
@@ -60,7 +62,7 @@ export type RoleName = (typeof RoleName)[keyof typeof RoleName];
 export const roles = pgTable(
   'roles',
   {
-    id: uuid('id').notNull(),
+    id: uuidPrimaryKey(),
     name: text('name').notNull(), // e.g. super_admin, content_manager, or a custom role name
     description: text('description'),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -82,7 +84,7 @@ const allowedPermissionKeys = sql.raw(
 export const permissions = pgTable(
   'permissions',
   {
-    id: uuid('id').notNull(),
+    id: uuidPrimaryKey(),
     action: text('action').notNull(),
     resource: text('resource').notNull(),
     role_id: uuid('role_id').notNull(),
@@ -113,8 +115,8 @@ export const userRoles = pgTable(
     assigned_at: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    // Prevents duplicate assignments and supports "roles for a user" lookups.
-    uniqueConstraint('user_roles', table.user_id, table.role_id),
+    // One assignment per user/role pair; the composite key is the identity.
+    primaryKeyConstraint('user_roles', [table.user_id, table.role_id]),
     // Every foreign key column is indexed; this supports "users in a role".
     indexOn('user_roles', table.role_id),
     foreignKeyConstraint('user_roles', table.role_id, roles.id),

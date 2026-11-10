@@ -180,8 +180,8 @@ Push subscription management is a Server Action, not REST.
 
 | Method | Path                           | Auth        | Permission        | Purpose                          | Status  |
 | ------ | ------------------------------ | ----------- | ----------------- | -------------------------------- | ------- |
-| `GET`  | `/api/admin/exports/[dataset]` | Super Admin | `export.dataset`  | Download an approved CSV dataset | Planned |
-| `GET`  | `/api/admin/backups/[id]`      | Super Admin | `backup.download` | Download an authorized backup    | Planned |
+| `GET`  | `/api/admin/exports/[dataset]` | Super Admin | `admin.manage` | Download an approved CSV dataset | Planned |
+| `GET`  | `/api/admin/backups/[id]`      | Super Admin | `admin.manage` | Download an authorized backup    | Planned |
 
 Admin page reads use Server Components. Admin mutations use Server Actions.
 

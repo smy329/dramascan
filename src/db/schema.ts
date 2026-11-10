@@ -37,3 +37,23 @@ export const schema = {
 };
 
 export type Schema = typeof schema;
+
+/**
+ * Direct table exports for migration tooling.
+ *
+ * `drizzle-kit` discovers tables from the schema file's direct exports; it does
+ * not traverse the nested `schema` registry above. Re-exporting every domain
+ * schema keeps a single composition root for both the runtime client and
+ * migration generation.
+ */
+export * from '@/modules/administration/schema';
+export * from '@/modules/analytics/schema';
+export * from '@/modules/auth/schema';
+export * from '@/modules/authorization/schema';
+export * from '@/modules/content/schema';
+export * from '@/modules/maintenance/schema';
+export * from '@/modules/moderation/schema';
+export * from '@/modules/notifications/schema';
+export * from '@/modules/playback/schema';
+export * from '@/modules/reviews/schema';
+export * from '@/modules/users/schema';

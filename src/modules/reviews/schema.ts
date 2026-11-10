@@ -7,10 +7,11 @@
  * assembles this namespace.
  */
 import { pgTable, text, uuid, integer, timestamp } from 'drizzle-orm/pg-core';
+import { uuidPrimaryKey } from '@/platform/db/schema-helpers';
 
 // ----- ratings -----
 export const ratings = pgTable('ratings', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   user_id: uuid('user_id').notNull(),
   drama_id: uuid('drama_id').notNull(),
   value: integer('value').notNull(),
@@ -21,7 +22,7 @@ export const ratings = pgTable('ratings', {
 
 // ----- reviews -----
 export const reviews = pgTable('reviews', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   user_id: uuid('user_id').notNull(),
   drama_id: uuid('drama_id').notNull(),
   title: text('title'),
@@ -32,14 +33,14 @@ export const reviews = pgTable('reviews', {
 
 // ----- review_reactions -----
 export const review_reactions = pgTable('review_reactions', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   user_id: uuid('user_id').notNull(),
   review_id: uuid('review_id').notNull(),
 });
 
 // ----- review_reports -----
 export const review_reports = pgTable('review_reports', {
-  id: uuid('id').notNull(),
+  id: uuidPrimaryKey(),
   user_id: uuid('user_id').notNull(),
   review_id: uuid('review_id').notNull(),
   reason: text('reason').notNull(),

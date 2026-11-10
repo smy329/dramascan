@@ -20,8 +20,8 @@
     "test:e2e": "playwright test",
     "test:e2e:setup": "playwright install",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit push",
-    "db:push": "npm run db:generate && npm run db:migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "npm run db:generate && drizzle-kit push"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

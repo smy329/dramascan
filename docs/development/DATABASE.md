@@ -4,24 +4,24 @@
 **Document:** Database schema, relationships, and migration notes
 **Version:** 1.0
 **Date:** 2026-11-08
-**Status:** Conventions established by Prompt 004. Modular schema structure established by Prompt 020; no tables exist yet. Table models begin in Prompt 022.
+**Status:** Applied. The modular schema structure, all 42 tables, and the initial Drizzle baseline migration are implemented. `drizzle/0000_boring_harry_osborn.sql` has been applied to the local `dramascan` database and is the baseline for every environment.
 
 **Authority chain:** `AGENTS.md` → `REQUIREMENTS.md` → `DECISIONS.md` → `ARCHITECTURE.md` → `CONVENTIONS.md` → this document.
 
-This document is the source of truth for the implemented database. Until the data-model prompts (022+) add tables, the table catalog below is a plan, not an implemented schema.
+This document is the source of truth for the implemented database. The table catalog below records the implemented schema.
 
 ---
 
 ## 1. Status
 
-| Item                   | Status                                       |
-| ---------------------- | -------------------------------------------- |
-| PostgreSQL connection  | Configured (Prompt 019)                      |
-| Drizzle schema modules | Structure established (Prompt 020)           |
-| Migrations             | Not configured (Prompt 021)                  |
-| Tables                 | None (data models begin in Prompt 022)       |
-| Seed data              | None                                         |
-| Test database          | Not configured locally (`TEST_DATABASE_URL`) |
+| Item                   | Status                                             |
+| ---------------------- | -------------------------------------------------- |
+| PostgreSQL connection  | Configured (Prompt 019)                            |
+| Drizzle schema modules | Implemented, 42 tables (Prompts 020–029)           |
+| Migrations             | Configured and applied (Prompt 040)                |
+| Tables                 | 42 implemented (see §8)                           |
+| Seed data              | Reference data only; no seed command yet           |
+| Test database          | Builds from migrations (`TEST_DATABASE_URL`)       |
 
 Do not describe planned tables as existing. Update this document when each schema module is implemented.
 
@@ -73,9 +73,9 @@ Additional columns are table-specific and documented in the catalog.
 - Each domain module owns its Drizzle tables in `src/modules/<domain>/schema.ts`. A module's schema file must not import another module's schema file.
 - `src/db/schema.ts` is the only file allowed to import module schema files. It spreads each module namespace into one `schema` registry, and `src/db/client.ts` passes that registry to `drizzle(getPool(), { schema })`.
 - Shared schema primitives live in `src/platform/db/schema-helpers.ts`: UUIDv7 application primary keys, standard `created_at`/`updated_at`/`deleted_at` columns, and the `pk_`/`fk_`/`uq_`/`ck_`/`idx_` naming helpers from `CONVENTIONS.md` §5.4.
-- Application-owned IDs default to PostgreSQL `uuidv7()` on the server. This requires PostgreSQL 18 or newer; CI and local development use PostgreSQL 18. Better Auth-managed tables keep Better Auth's required ID type; foreign keys to the auth user table use that same type.
+- Application-owned IDs default to PostgreSQL `uuidv7()` on the server through `id uuid PRIMARY KEY DEFAULT uuidv7()`. This requires PostgreSQL 18 or newer; CI and local development use PostgreSQL 18. Better Auth-managed tables use the same `uuidv7()` default: the Drizzle pg adapter reports `supportsUUIDs: true`, so Better Auth relies on the database default instead of generating UUIDs itself. Foreign keys to the auth user table use `uuid`.
 - Intra-module foreign keys use named Drizzle constraints. Cross-module foreign keys are added as SQL constraints in migrations and are not declared in `schema.ts`; they do not grant write permission.
-- The registry is intentionally empty until the data-model prompts add tables. No module directory gains service, query, or repository files until that module's implementation prompt.
+- The registry assembles all 11 module schema namespaces and backs the applied baseline migration. No module directory gains service, query, or repository files until that module's implementation prompt.
 
 ---
 
@@ -154,6 +154,9 @@ The exact search schema is implemented with the search feature and documented he
 Migration tooling and practices are defined in `CONVENTIONS.md` §10. Database-specific rules:
 
 - Migrations live in `drizzle/` and are numbered sequentially.
+- The applied baseline is `drizzle/0000_boring_harry_osborn.sql` (50 statements, 42 tables), generated from the complete schema with `drizzle-kit generate` and applied with `drizzle-kit migrate`. Its snapshot is `drizzle/meta/0000_snapshot.json` and its journal entry is `drizzle/meta/_journal.json`.
+- `npm run db:generate` creates the next numbered migration from schema changes; `npm run db:migrate` applies pending migrations. `npm run db:push` is local-only and must never be used against production.
+- Integration tests build the isolated `_test` database from this same migration chain in `tests/global-setup.ts`, so a broken migration fails CI.
 - Applied migrations are never edited.
 - Use expand-contract for breaking changes.
 - Every migration documents whether it is reversible or forward-fix-only.
@@ -241,16 +244,16 @@ Constraints and indexes (generated DDL verified with `drizzle-kit generate`):
 - `permissions` unique `uq_permissions_role_id_resource_action` on `(role_id, resource, action)` — one grant/revocation row per role and canonical key.
 - `permissions` check `ck_permissions_permission_key` enforces the exact composed `resource || '.' || action` against the full canonical key list, generated from `ALL_PERMISSION_KEYS`. Invalid pairs and non-catalog combinations cannot be stored, even by out-of-band SQL. Changing the catalog requires regenerating this check in the same migration.
 - `permissions.role_id` FK `fk_permissions_role_id` → `roles.id` (NO ACTION).
-- `user_roles` unique `uq_user_roles_user_id_role_id`, FK `fk_user_roles_role_id` → `roles.id`, and index `idx_user_roles_role_id`. The unique constraint covers the leading `user_id` lookup; the index covers "users in a role".
+- `user_roles` uses the composite primary key `pk_user_roles (user_id, role_id)`, which is also the duplicate-assignment guard, plus FK `fk_user_roles_role_id` → `roles.id` and index `idx_user_roles_role_id`. The primary key covers the leading `user_id` lookup; the index covers "users in a role". Content join tables (`drama_categories`, `drama_platforms`, `movie_categories`, `movie_platforms`, `similar_dramas`) follow the same composite-primary-key pattern.
 - `roles` unique `uq_roles_name`.
-- `user_roles.user_id` is a cross-module reference to `users.id`; per convention it is added in the SQL migration, not as a Drizzle-level reference.
+- `user_roles.user_id` is a cross-module reference to `users.id`; the generated baseline creates `fk_user_roles_user_id` with `ON DELETE CASCADE` because the auth user row is the owner of the assignment.
 - `granted = false` is an explicit revocation; rows are not deleted. Effective permissions exclude revoked rows. Unknown/stale rows are ignored by the actor resolver (deny by default).
 
 #### Migration and reconciliation strategy
 
-No migration file exists yet (`drizzle/meta/_journal.json` has no entries) and no database is configured in this repository, so the reconciled tables will be part of the initial baseline migration when it is generated. Production must apply migrations, never `drizzle-kit push`.
+The reconciled tables are part of the initial baseline migration `drizzle/0000_boring_harry_osborn.sql`, generated from the complete schema and applied with `drizzle-kit migrate`. The applied migration is recorded in `drizzle.__drizzle_migrations`. Production must apply migrations, never `drizzle-kit push`.
 
-Before applying the new unique constraints and foreign keys to a database created outside migrations, run the checks below and reconcile manually with a backup. Do not discard data automatically.
+For a database created outside migrations, run the checks below before applying the constraints and reconcile manually with a backup. Do not discard data automatically.
 
 ```sql
 -- 1. Pairs outside the canonical catalog (must return no rows).

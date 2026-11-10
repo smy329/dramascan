@@ -86,9 +86,9 @@ export async function resolveActor(): Promise<ActorContext> {
 
   const [account] = await db
     .select({
-      isSuperAdmin: users.is_super_admin,
-      isActive: users.is_active,
-      deletedAt: users.deleted_at,
+      isSuperAdmin: users.isSuperAdmin,
+      isActive: users.isActive,
+      deletedAt: users.deletedAt,
     })
     .from(users)
     .where(eq(users.id, sessionUserId))

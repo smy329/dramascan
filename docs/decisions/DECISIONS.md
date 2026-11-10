@@ -2,7 +2,7 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform
 **Status:** Active decision log
-**Last updated:** 2026-11-08
+**Last updated:** 2026-11-10
 
 This file records finalized product and architecture decisions. Requirements live in
 `REQUIREMENTS.md`; implementation progress lives in `PROJECT_STATUS.md`.
@@ -489,6 +489,92 @@ used.
   `DATABASE.md` §2.4.
 - Future content types require a new typed column and a new check constraint, not a generic
   polymorphic reference.
+
+---
+
+## D-021 — Canonical permission catalog and RBAC schema reconciliation
+
+**Date:** 2026-11-10
+**Status:** Approved by user
+**Resolves:** Prompt 039 (authorization reconciliation and guards)
+
+**Context:** The documented canonical permission model used `resource.action` keys, while the
+Drizzle RBAC tables stored action/resource columns without a single enforced canonical key, and
+the authorization module had no guard implementation. Reusable guards could not be trusted until
+the catalog and schema were reconciled (Prompt 039, user-selected Option 2).
+
+**Decision:** Adopt the canonical permission catalog in `src/modules/authorization/permissions.ts`
+as the single source of truth (`resource.action` keys such as `drama.update`; `toPermissionKey`
+composes keys and `PermissionKey` is a union type). The `permissions` table persists `resource` +
+`action` columns with a unique constraint on `(role_id, resource, action)` and a check constraint
+enforcing composed catalog keys; `user_roles` enforces a unique constraint on `(user_id, role_id)`.
+Guards (`hasPermission`, `requirePermission`, `requireAnyPermission`, `requireUser`, `requireAdmin`,
+`assertResourceAccess`) throw typed `AuthenticationError` (401) / `AuthorizationError` (403).
+
+**Consequences:**
+
+- One canonical permission identifier exists; no competing catalogs or ad-hoc permission
+  literals exist outside the authorization module.
+- Super Admin resolves to the complete catalog; effective permissions are the union of granted
+  permissions across assigned roles, with `granted = false` as explicit revocation.
+- Unauthenticated access fails with `401 authentication_required`; authenticated-but-unauthorized
+  access fails with `403 forbidden` through the shared error mapping.
+- Existing rows that satisfy the unique invariants required no data migration; only constraint
+  additions were needed for the reconciled schema.
+
+---
+
+## D-022 — Super Admin bootstrap, session-creation gate, and initial migration baseline
+
+**Date:** 2026-11-10
+**Status:** Approved by user
+**Resolves:** Prompts 033/034 (authentication) and Prompt 040 (migration baseline)
+**Supersedes:** D-021's `user_roles` unique-constraint clause (replaced by the composite primary key below)
+
+**Context:** Better Auth 1.7's canonical model and the application's session rules had to be
+reconciled before the first migration. The database was empty, so there was no data to preserve.
+Two decisions were required: how the first Super Admin is established without a public elevation
+path, and how deactivated or soft-deleted users are prevented from continuing to use sessions.
+The schema also had to be materialized as an ordered migration rather than an ad-hoc `push`.
+
+**Decision:**
+
+1. **Auth schema:** Use Better Auth 1.7's canonical `users`, `sessions`, `accounts`, and
+   `verifications` model. TypeScript property names are Better Auth's camelCase field names;
+   physical PostgreSQL columns are snake_case. The Drizzle adapter is configured with
+   `provider: 'pg'`, `usePlural: true`, and the four auth tables. Because the pg adapter reports
+   `supportsUUIDs: true`, Better Auth relies on the database default, so auth `id` columns use
+   `uuid PRIMARY KEY DEFAULT uuidv7()`.
+2. **Super Admin bootstrap:** Only the normalized `SUPER_ADMIN_EMAIL` may be promoted, only when
+   no Super Admin exists, only in `databaseHooks.session.create.before`, and only inside a
+   transaction holding `pg_advisory_xact_lock(4627001033)`. Promotion sets
+   `users.is_super_admin = true`; it does not write roles. No self-service or user-targeted
+   promotion endpoint exists.
+3. **Session gate:** `databaseHooks.session.create.before` rejects session creation for missing,
+   inactive (`is_active = false`), or soft-deleted (`deleted_at IS NOT NULL`) users. Because
+   Better Auth's own `get-session` does not consult application status, every protected entrypoint
+   uses `getActiveSession`, which re-reads the user row and returns `null` for a disabled account.
+4. **Migration baseline:** Generate one baseline from the complete schema with
+   `drizzle-kit generate` and apply it with `drizzle-kit migrate`. Application-owned primary keys
+   emit `id uuid PRIMARY KEY DEFAULT uuidv7()`; `uuidPrimaryKey()` includes `.primaryKey()`.
+   Join tables (`user_roles`, `drama_categories`, `drama_platforms`, `movie_categories`,
+   `movie_platforms`, `similar_dramas`) use named composite primary keys instead of a separate
+   unique constraint. `uuidv7()` requires PostgreSQL 18+.
+
+**Consequences:**
+
+- Deactivating a user blocks new sign-ins immediately and invalidates an existing cookie on the
+  next protected request, even though Better Auth's `/api/auth/get-session` still returns it.
+- A concurrent first sign-in cannot create two Super Admins; the advisory lock serializes the
+  read-then-update. Promotion is idempotent.
+- The Super Admin flag is not derived from a role name, so renaming or deleting roles cannot
+  elevate or demote a user.
+- The baseline is the single source of truth for schema creation. Integration tests build the
+  `_test` database from the same migrations, so migration defects fail CI instead of hiding
+  behind `drizzle-kit push`.
+- PostgreSQL 18+ is a hard requirement; older servers cannot apply the baseline.
+- If a future deployment already has an auth schema created outside migrations, it must be
+  reconciled with a backup before the baseline is applied; the baseline is not idempotent.
 
 ---
 
