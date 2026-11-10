@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 
 export default function CategoriesPage() {
   return (
-    <PublicPageLayout title="Categories" description="Browse by genre and category">
+    <PublicPageLayout title="Categories">
       <div className="space-y-12">
         <h1 className="text-4xl font-bold text-white dark:text-gray-900">
           Browse by Category

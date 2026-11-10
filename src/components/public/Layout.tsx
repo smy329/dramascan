@@ -11,8 +11,6 @@
  * avoiding admin-dashboard aesthetics.
  */
 
-import 'server-only';
-
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
@@ -37,29 +35,9 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/movie', label: 'Movies' },
   { href: '/categories', label: 'Categories' },
   { href: '/platforms', label: 'Platforms' },
+  { href: '/trending', label: 'Trending' },
+  { href: '/bookmark', label: 'Bookmark' },
 ];
-
-/**
- * Desktop navigation links.
- *
- * Renders top-level navigation links for desktop view.
- * Uses button links for simplicity without requiring Menu component.
- */
-const desktopNavLinks = (
-  <nav className="hidden sm:block space-x-8">
-    {NAV_ITEMS.map((item) => {
-      return (
-        <a
-          key={item.href}
-          href={item.href}
-          className="underline underline-offset-4 hover:text-primary dark:hover:text-primary/60"
-        >
-          {item.label}
-        </a>
-      );
-    })}
-  </nav>
-);
 
 /** Mobile navigation toggle button. */
 const mobileNavToggle = (
@@ -84,30 +62,118 @@ const mobileNavToggle = (
   </Button>
 );
 
-/** Mobile navigation links (shown in drawer). */
-const mobileNavLinks = (
-  <nav className="fixed inset-0 z-50 py-8 bg-white dark:bg-gray-900 overflow-hidden">
-    <ul className="flex flex-col w-full max-w-none space-y-4 px-8 pb-8">
-      {NAV_ITEMS.map((item) => (
-        <a
-          key={item.href}
-          href={item.href}
-          className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
-        >
-          {item.label}
-        </a>
-      ))}
-    </ul>
-  </nav>
-);
+/** Public website main navigation component. */
+export function PublicNavbar() {
+  return (
+    <>
+      <header
+        className="border-b border-gray-900/20 dark:border-gray-900/20 bg-black dark:bg-gray-950/50 sticky top-0 z-50 backdrop-blur-sm"
+      >
+        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between sm:py-4">
+          {/* Brand/logo */}
+          <Button
+            variant="link"
+            className="self-center underline underline-offset-4 hover:text-primary dark:hover:text-primary/60"
+          >
+            DramaScan
+          </Button>
 
-/** Mobile navigation drawer overlay. */
-const mobileNavDrawerOverlay = (
-  <div className="fixed inset-0 z-40 bg-black/50 dark:bg-black/50 opacity-0 transition-visibility duration-300 pointer-events-none" aria-hidden="true" />
-);
+          {/* Desktop navigation */}
+          <nav className="hidden sm:block space-x-8">
+            {NAV_ITEMS.map((item) => {
+              return (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className="underline underline-offset-4 hover:text-primary dark:hover:text-primary/60"
+                >
+                  {item.label}
+                </a>
+              );
+            })}
+          </nav>
+
+          {/* Mobile toggle */}
+          {mobileNavToggle}
+
+          {/* Mobile navigation (hidden on desktop by default) */}
+          <Button
+            variant="link"
+            aria-label="Open navigation"
+            className="sm:hidden hidden block"
+          >
+            Menu
+          </Button>
+        </div>
+      </header>
+
+      {/* Mobile navigation drawer (shown on menu click) */}
+      <nav className="fixed inset-0 z-50 py-8 bg-white dark:bg-gray-900 overflow-hidden">
+        <ul className="flex flex-col w-full max-w-none space-y-4 px-8 pb-8">
+          <li>
+            <a
+              href="/"
+              className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
+            >
+              Home
+            </a>
+          </li>
+          <li>
+            <a
+              href="/drama"
+              className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
+            >
+              Dramas
+            </a>
+          </li>
+          <li>
+            <a
+              href="/movie"
+              className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
+            >
+              Movies
+            </a>
+          </li>
+          <li>
+            <a
+              href="/categories"
+              className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
+            >
+              Categories
+            </a>
+          </li>
+          <li>
+            <a
+              href="/platforms"
+              className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
+            >
+              Platforms
+            </a>
+          </li>
+          <li>
+            <a
+              href="/trending"
+              className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
+            >
+              Trending
+            </a>
+          </li>
+          <li>
+            <a
+              href="/bookmark"
+              className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
+            >
+              Bookmark
+            </a>
+          </li>
+        </ul>
+      </nav>
+    </>
+  );
+}
 
 /** Hero section for the homepage. */
-export function HeroSection(): JSX.Element {
+export function HeroSection() {
   return (
     <section className="bg-gradient-to-b from-black/90 via-black/80 to-black/70 min-h-screen relative">
       <div className="absolute inset-0"></div>
@@ -115,7 +181,9 @@ export function HeroSection(): JSX.Element {
       <div className="relative max-w-7xl mx-auto px-6 py-24 sm:py-32">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div>
-            <p className="text-primary/60 text-sm uppercase tracking-wider mb-6">Stream Dramas & Movies</p>
+            <p className="text-primary/60 text-sm uppercase tracking-wider mb-6">
+              Stream Dramas & Movies
+            </p>
             <h1 className="text-5xl sm:text-6xl font-bold text-white dark:text-gray-100 leading-none mb-6">
               Watch International Drama & Movies
             </h1>
@@ -154,7 +222,7 @@ export function HeroSection(): JSX.Element {
 }
 
 /** Feature highlights section. */
-export function FeaturesSection(): JSX.Element {
+export function FeaturesSection() {
   return (
     <section className="py-20 sm:py-32 bg-gray-900 dark:bg-gray-900">
       <div className="max-w-7xl mx-auto px-6">
@@ -174,7 +242,7 @@ type FeatureCardProps = {
   description: string;
 };
 
-export function FeatureCard({ title, description }: FeatureCardProps): JSX.Element {
+export function FeatureCard({ title, description }: FeatureCardProps) {
   return (
     <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
       <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">{title}</h3>
@@ -184,7 +252,7 @@ export function FeatureCard({ title, description }: FeatureCardProps): JSX.Eleme
 }
 
 /** How it works section. */
-export function HowItWorksSection(): JSX.Element {
+export function HowItWorksSection() {
   return (
     <section className="py-20 sm:py-32 bg-gray-900 dark:bg-gray-900">
       <div className="max-w-7xl mx-auto px-6">
@@ -218,20 +286,14 @@ export function HowItWorksSection(): JSX.Element {
   );
 }
 
-/**
- * Public page base layout.
- *
- * Wraps page content with consistent padding and background.
- */
+/** Public page base layout. */
 export function PublicPageLayout({
   title,
-  description,
   children,
 }: {
   title: string;
-  description?: string;
-  children: JSX.Element;
-}): JSX.Element {
+  children: any;
+}) {
   return (
     <main className="min-h-screen bg-gray-900 dark:bg-gray-950">
       {/* Hero section on home page */}
@@ -256,34 +318,23 @@ export function PublicPageLayout({
   );
 }
 
-/**
- * Public page component with shared layout.
- *
- * Usage:
- * <PublicPageLayout title="Home">
- *   <p>Welcome to DramaScan</p>
- * </PublicPageLayout>
- */
+/** Public page component with shared layout. */
 export function PublicPage({
   title,
-  description,
   children,
 }: {
   title: string;
-  description?: string;
-  children: JSX.Element;
-}): JSX.Element {
+  children: any;
+}) {
   return (
-    <PublicPageLayout title={title} description={description}>
+    <PublicPageLayout title={title}>
       {children}
     </PublicPageLayout>
   );
 }
 
-/**
- * Public website footer component.
- */
-export function PublicFooter(): JSX.Element {
+/** Public website footer component. */
+export function PublicFooter() {
   return (
     <footer className="border-t border-gray-900/20 dark:border-gray-900/20 my-12">
       <div className="max-w-7xl mx-auto px-6 py-12">
@@ -292,13 +343,15 @@ export function PublicFooter(): JSX.Element {
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">DramaScan</h3>
             <ul className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm text-muted-foreground dark:text-muted-foreground/60">
-              {NAV_ITEMS.map((item) => (
-                <li key={item.href}>
-                  <a href={item.href} className="hover:text-primary dark:hover:text-primary/60">
-                    {item.label}
-                  </a>
-                </li>
-              ))}
+              {NAV_ITEMS.map((item) => {
+                return (
+                  <li key={item.href}>
+                    <a href={item.href} className="hover:text-primary dark:hover:text-primary/60">
+                      {item.label}
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
           </div>
 

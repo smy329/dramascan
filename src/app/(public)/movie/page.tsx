@@ -5,7 +5,7 @@ import { Tab } from '@/components/ui/tab';
 
 export default function MoviesPage() {
   return (
-    <PublicPageLayout title="Movies" description="Watch international feature films">
+    <PublicPageLayout title="Movies">
       <div className="space-y-12">
         <h1 className="text-4xl font-bold text-white dark:text-gray-900">
           Feature Film Collection

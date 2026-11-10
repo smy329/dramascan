@@ -5,7 +5,7 @@ import { Tab } from '@/components/ui/tab';
 
 export default function DramasPage() {
   return (
-    <PublicPageLayout title="Dramas" description="Watch international drama series">
+    <PublicPageLayout title="Dramas">
       <div className="space-y-12">
         <h1 className="text-4xl font-bold text-white dark:text-gray-900">
           Drama Series Collection

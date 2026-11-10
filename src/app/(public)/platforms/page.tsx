@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 
 export default function PlatformsPage() {
   return (
-    <PublicPageLayout title="Platforms" description="Available streaming platforms">
+    <PublicPageLayout title="Platforms">
       <div className="space-y-12">
         <h1 className="text-4xl font-bold text-white dark:text-gray-900">
           Streaming Platforms

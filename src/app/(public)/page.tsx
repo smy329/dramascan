@@ -3,7 +3,7 @@ import { PublicPageLayout } from '@/components/public/Layout';
 
 export default function HomePage() {
   return (
-    <PublicPageLayout title="Home" description="International drama and movies, in one place">
+    <PublicPageLayout title="Home">
       <SiteIntro
         eyebrow="DramaScan"
         title="International drama and movies, in one place."
