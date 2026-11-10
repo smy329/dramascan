@@ -13,6 +13,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Menu, MenuItem, MenuList } from '@/components/ui/menu';
 
 /**
  * Navigation link item.
@@ -62,8 +63,114 @@ const mobileNavToggle = (
   </Button>
 );
 
+/** Bottom navigation bar for mobile devices. */
+const mobileBottomNav = (
+  <nav className="fixed bottom-0 left-0 right-0 z-50 bg-black dark:bg-gray-950/50 border-t border-gray-900/20 px-6 py-1">
+    <div className="flex flex-1 sm:flex-1 justify-around">
+      <a
+        href="/"
+        className="flex flex-col items-center text-sm text-gray-400 dark:text-gray-500 hover:text-primary dark:hover:text-primary/60 transition-colors"
+        aria-label="Home"
+      >
+        <svg
+          className="h-4 w-4 mb-1 stroke-current"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <line x1="3" y1="3" x2="21" y2="3"></line>
+          <line x1="3" y1="16" x2="21" y2="16"></line>
+          <line x1="12" y1="10" x2="12" y2="14"></line>
+        </svg>
+        Home
+      </a>
+      <a
+        href="/trending"
+        className="flex flex-col items-center text-sm text-gray-400 dark:text-gray-500 hover:text-primary dark:hover:text-primary/60 transition-colors"
+        aria-label="Trending"
+      >
+        <svg
+          className="h-4 w-4 mb-1 stroke-current"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <line x1="3" y1="3" x2="21" y2="3"></line>
+          <line x1="3" y1="16" x2="21" y2="16"></line>
+          <line x1="12" y1="10" x2="12" y2="14"></line>
+          <circle cx="12" cy="12" r="10"></circle>
+        </svg>
+        Trending
+      </a>
+      <a
+        href="/bookmark"
+        className="flex flex-col items-center text-sm text-gray-400 dark:text-gray-500 hover:text-primary dark:hover:text-primary/60 transition-colors"
+        aria-label="Bookmark"
+      >
+        <svg
+          className="h-4 w-4 mb-1 stroke-current"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M19 21l-7-5-7 5H5"></path>
+        </svg>
+        Bookmark
+      </a>
+    </div>
+    <Button
+      variant="link"
+      aria-label="Open navigation"
+      className="sm:hidden block text-gray-400 dark:text-gray-500 hover:text-primary dark:hover:text-primary/60 p-2"
+    >
+      Profile
+    </Button>
+  </nav>
+);
+
+/** Hamburger menu items (secondary destinations). */
+const hamburgerMenuItems = (
+  <Menu className="fixed inset-0 z-50 py-8 bg-white dark:bg-gray-900 shadow-lg">
+    <MenuList className="flex flex-col w-full max-w-none space-y-1 px-8 pb-8">
+      <MenuItem>
+        <a
+          href="/categories"
+          className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
+        >
+          Categories
+        </a>
+      </MenuItem>
+      <MenuItem>
+        <a
+          href="/platforms"
+          className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
+        >
+          Platforms
+        </a>
+      </MenuItem>
+      <MenuItem>
+        <a
+          href="/help"
+          className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
+        >
+          Help
+        </a>
+      </MenuItem>
+    </MenuList>
+  </Menu>
+);
+
 /** Public website main navigation component. */
-export function PublicNavbar() {
+export function PublicNavbar(): JSX.Element {
   return (
     <>
       <header
@@ -92,88 +199,23 @@ export function PublicNavbar() {
               );
             })}
           </nav>
-
-          {/* Mobile toggle */}
-          {mobileNavToggle}
-
-          {/* Mobile navigation (hidden on desktop by default) */}
-          <Button
-            variant="link"
-            aria-label="Open navigation"
-            className="sm:hidden hidden block"
-          >
-            Menu
-          </Button>
         </div>
       </header>
 
-      {/* Mobile navigation drawer (shown on menu click) */}
-      <nav className="fixed inset-0 z-50 py-8 bg-white dark:bg-gray-900 overflow-hidden">
-        <ul className="flex flex-col w-full max-w-none space-y-4 px-8 pb-8">
-          <li>
-            <a
-              href="/"
-              className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
-            >
-              Home
-            </a>
-          </li>
-          <li>
-            <a
-              href="/drama"
-              className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
-            >
-              Dramas
-            </a>
-          </li>
-          <li>
-            <a
-              href="/movie"
-              className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
-            >
-              Movies
-            </a>
-          </li>
-          <li>
-            <a
-              href="/categories"
-              className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
-            >
-              Categories
-            </a>
-          </li>
-          <li>
-            <a
-              href="/platforms"
-              className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
-            >
-              Platforms
-            </a>
-          </li>
-          <li>
-            <a
-              href="/trending"
-              className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
-            >
-              Trending
-            </a>
-          </li>
-          <li>
-            <a
-              href="/bookmark"
-              className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
-            >
-              Bookmark
-            </a>
-          </li>
-        </ul>
-      </nav>
+      {/* Mobile bottom navigation bar */}
+      {mobileBottomNav}
+
+      {/* Hamburger menu button */}
+      {mobileNavToggle}
+
+      {/* Hamburger menu with secondary destinations */}
+      {hamburgerMenuItems}
     </>
   );
 }
 
 /** Hero section for the homepage. */
-export function HeroSection() {
+export function HeroSection(): JSX.Element {
   return (
     <section className="bg-gradient-to-b from-black/90 via-black/80 to-black/70 min-h-screen relative">
       <div className="absolute inset-0"></div>
@@ -222,7 +264,7 @@ export function HeroSection() {
 }
 
 /** Feature highlights section. */
-export function FeaturesSection() {
+export function FeaturesSection(): JSX.Element {
   return (
     <section className="py-20 sm:py-32 bg-gray-900 dark:bg-gray-900">
       <div className="max-w-7xl mx-auto px-6">
@@ -242,7 +284,7 @@ type FeatureCardProps = {
   description: string;
 };
 
-export function FeatureCard({ title, description }: FeatureCardProps) {
+export function FeatureCard({ title, description }: FeatureCardProps): JSX.Element {
   return (
     <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
       <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">{title}</h3>
@@ -252,7 +294,7 @@ export function FeatureCard({ title, description }: FeatureCardProps) {
 }
 
 /** How it works section. */
-export function HowItWorksSection() {
+export function HowItWorksSection(): JSX.Element {
   return (
     <section className="py-20 sm:py-32 bg-gray-900 dark:bg-gray-900">
       <div className="max-w-7xl mx-auto px-6">
@@ -293,7 +335,7 @@ export function PublicPageLayout({
 }: {
   title: string;
   children: any;
-}) {
+}): JSX.Element {
   return (
     <main className="min-h-screen bg-gray-900 dark:bg-gray-950">
       {/* Hero section on home page */}
@@ -325,7 +367,7 @@ export function PublicPage({
 }: {
   title: string;
   children: any;
-}) {
+}): JSX.Element {
   return (
     <PublicPageLayout title={title}>
       {children}
@@ -334,7 +376,7 @@ export function PublicPage({
 }
 
 /** Public website footer component. */
-export function PublicFooter() {
+export function PublicFooter(): JSX.Element {
   return (
     <footer className="border-t border-gray-900/20 dark:border-gray-900/20 my-12">
       <div className="max-w-7xl mx-auto px-6 py-12">
