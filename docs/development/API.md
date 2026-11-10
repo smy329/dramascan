@@ -212,12 +212,12 @@ Server Actions are application operations, not REST endpoints. They are document
 | Content reports         | Submit a content report                                                          | Authenticated, rate-limited                      | Planned |
 | Notifications           | Update preferences, mark read/unread, manage push subscription                   | Own notifications                                | Planned |
 | Content administration  | Create/update/publish/unpublish/trash/restore content, seasons, episodes, movies | `drama.*`, `episode.*`, `movie.*`                | Planned |
-| Source replacement      | Replace an episode or movie source after preview and confirmation                | `episode.replace_source`, `movie.replace_source` | Planned |
+| Source replacement      | Replace an episode or movie source after preview and confirmation                | `episode.manage`, `movie.manage`                                                | Planned |
 | Taxonomy administration | Create/update/delete categories and platforms                                    | `category.*`, `platform.*`                       | Planned |
-| Moderation              | Resolve content reports, remove reviews                                          | `report.resolve`, `review.moderate`              | Planned |
-| User administration     | Deactivate/reactivate users                                                      | `user.deactivate`                                | Planned |
+| Moderation              | Resolve content reports, remove reviews                                          | `review.manage`              | Planned |
+| User administration     | Deactivate/reactivate users                                                      | `user.manage`                                | Planned |
 | Admin administration    | Authorize/deactivate admins, assign roles, terminate sessions                    | `admin.*`                                        | Planned |
-| System configuration    | Update settings, restore a version, maintenance mode                             | `settings.update`, `maintenance_mode.update`     | Planned |
+| System configuration    | Update settings, restore a version, maintenance mode                             | `settings.manage`                             | Planned |
 | CSV import              | Dry run and apply metadata import                                                | `import.dataset`                                 | Planned |
 
 Every action validates input with Zod, resolves a trusted actor, calls one service or workflow, and returns `ActionResult`.
