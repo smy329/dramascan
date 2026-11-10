@@ -125,6 +125,24 @@ export const verifications = pgTable(
   table => [indexOn('verifications', table.identifier)]
 );
 
+// ---- Login attempts -------------------------------------------------------
+
+export const loginAttempts = pgTable(
+  'login_attempts',
+  {
+    id: uuidPrimaryKey(),
+    userId: uuid('user_id'),
+    ipAddress: text('ip_address'),
+    userAgent: text('user_agent'),
+    success: boolean('success').notNull(),
+    createdAt: createdAt(),
+  },
+  table => [
+    indexOn('login_attempts', table.userId),
+    indexOn('login_attempts', table.createdAt),
+  ]
+);
+
 // ---- Export types ------------------------------------------------------
 
 export type AuthTables = typeof users & typeof accounts & typeof sessions & typeof verifications;

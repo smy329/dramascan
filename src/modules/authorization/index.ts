@@ -13,4 +13,5 @@ export { resolveEffectivePermissions } from './service';
 export type { EffectivePermissions, EffectivePermissionsInput, RolePermissionAssignment } from './service';
 export { hasPermission, requirePermission, requireAnyPermission, requireUser, requireAdmin, assertResourceAccess } from './guards';
 export { refreshSessionActivity, listUserSessions, invalidateUserSessions, forceReauthenticateUser, enrichSession } from './session-management';
+export { recordLoginAttempt, countFailedAttempts, isUserLockedOut, resetFailedAttempts, getUserLoginAttempts, getAllLoginAttempts, getLoginStatistics, checkGoogleSecurityChange } from './login-monitoring';
 export type { SessionInfo } from './session-management';

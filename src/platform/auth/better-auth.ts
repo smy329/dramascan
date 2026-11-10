@@ -24,7 +24,7 @@ import { drizzleAdapter } from '@better-auth/drizzle-adapter';
 import { betterAuth } from 'better-auth';
 import { nextCookies } from 'better-auth/next-js';
 import { db } from '@/db/client';
-import { accounts, sessions, users, verifications } from '@/modules/auth/schema';
+import { accounts, sessions, users, verifications, loginAttempts } from '@/modules/auth/schema';
 import { serverConfig } from '@/platform/config';
 import { assertUserCanCreateSession, bootstrapSuperAdminForUser } from './auth-hooks';
 
@@ -46,7 +46,7 @@ export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: 'pg',
     usePlural: true,
-    schema: { users, sessions, accounts, verifications },
+    schema: { users, sessions, accounts, verifications, loginAttempts },
   }),
   socialProviders: googleProvider,
   emailAndPassword: {
