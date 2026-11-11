@@ -47,6 +47,7 @@ For the future upgrade backlog, see `future/`.
 - [Logging Conventions](development/logging-conventions.md)
 - [Testing Conventions](development/testing-conventions.md)
 - [State Components](development/state-components.md)
+- [Confirmation Dialogs](development/confirmation-dialogs.md)
 - [CI/CD Conventions](development/ci-cd.md)
 - [Migration Conventions](development/migration-conventions.md)
 - [Implementation Plan](implementation/implementation-plan.md)

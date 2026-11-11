@@ -2,6 +2,59 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [0.4.8] - 2026-11-11
+
+### feat: Shared confirmation dialogs (Prompt 048)
+
+Added two reusable confirmation primitives for consequential administrator
+operations. This prompt delivers the components and their documentation only:
+no admin shell, no page wiring, and no operation-specific presets.
+
+- Added `ConfirmationDialog`, a client component with a fully controlled
+  `open`/`onOpenChange` lifecycle and an optional Base UI trigger.
+  `defaultOpen` exists for tests and stories only.
+- `onConfirm` is synchronous and caller-owned. The dialog calls it once, never
+  awaits a return value, never derives state from a Promise, and only requests
+  closure through `onOpenChange`; the caller decides whether to close.
+- Cancel is focused on open; Base UI's default `finalFocus` returns focus to the
+  trigger. Confirm and Cancel both request closure through Base UI `Close`.
+- While `isPending`: Confirm and Cancel are disabled, Confirm is `aria-busy`
+  with a `motion-reduce:animate-none` spinner and pending label, duplicate
+  confirmation is blocked in the handler as well as by `disabled`, and Escape
+  does not close the dialog.
+- Configurable title, description, affected-content section, consequences
+  section, eyebrow labels, confirm/cancel labels, pending label, and
+  `variant="default" | "destructive"`. Sections render only when content is
+  supplied and use `h3` inside labelled `section` elements under the dialog
+  `h2`.
+- Added `ConsequenceList`, a server-compatible neutral `<ul>` that renders
+  nothing for an empty list and accepts an accessible label and `className`.
+- No new dependencies, no schema changes, and no modifications to
+  `src/components/ui/**`.
+
+### Changed Files
+
+- `src/components/dialogs/confirmation-dialog.tsx` — controlled dialog
+- `src/components/dialogs/consequence-list.tsx` — neutral consequence list
+- `tests/unit/components/confirmation-dialog.test.tsx` — 16 lifecycle tests
+- `tests/unit/components/consequence-list.test.tsx` — 4 list tests
+- `tests/unit/components/dialog-boundary.test.ts` — client/server boundary guard
+- `docs/development/confirmation-dialogs.md` — API and usage guide
+- `docs/README.md`, `docs/PROJECT_STATUS.md` — documentation index and status
+
+### Verification
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass
+- Unit tests — 230 passed (22 new)
+- Integration tests — 40 passed
+- Playwright E2E — 9 passed (regression; no route was added)
+- `npm run build` — pass (pre-existing main-database `information_pages.position`
+  warnings persist and degrade gracefully)
+- Two initial E2E navigation failures were cold dev-compile timeouts after the
+  production build invalidated the dev cache; the affected spec passed on rerun
+  and the full suite then passed 9/9. No Prompt 048 code is involved.
+
 ## [0.4.7] - 2026-11-11
 
 ### feat: Shared loading and empty states (Prompt 047)
