@@ -24,7 +24,6 @@
 - Component tests: `// @vitest-environment jsdom`, RTL, `cleanup` in `afterEach`, `fireEvent` (no `user-event`).
 - `no-extra-parens` lint rule: use render helpers or early returns, not parenthesised conditional JSX.
 - Project convention: one commit for the whole micro-prompt; do not commit after each task.
-- Do not push until the user approves.
 
 ## File Structure
 
