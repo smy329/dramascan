@@ -104,6 +104,31 @@ npm ci
 npm run typecheck
 npm run lint
 npm test
+```
+
+A production build evaluates the production server configuration, so it
+requires production-shaped values. Non-secret placeholders are sufficient;
+they are not used at runtime.
+
+```powershell
+# PowerShell
+$env:APP_URL = 'https://dramascan.example.com'
+$env:DATABASE_URL = 'postgresql://USER:PASSWORD@localhost:5432/dramascan'
+$env:BETTER_AUTH_SECRET = 'local-build-only-secret-32-characters'
+$env:GOOGLE_CLIENT_ID = 'local-build-only-google-client-id'
+$env:GOOGLE_CLIENT_SECRET = 'local-build-only-google-client-secret'
+$env:SUPER_ADMIN_EMAIL = 'local-build@example.com'
+npm run build
+```
+
+```bash
+# POSIX shells
+APP_URL='https://dramascan.example.com' \
+DATABASE_URL='postgresql://USER:PASSWORD@localhost:5432/dramascan' \
+BETTER_AUTH_SECRET='local-build-only-secret-32-characters' \
+GOOGLE_CLIENT_ID='local-build-only-google-client-id' \
+GOOGLE_CLIENT_SECRET='local-build-only-google-client-secret' \
+SUPER_ADMIN_EMAIL='local-build@example.com' \
 npm run build
 ```
 

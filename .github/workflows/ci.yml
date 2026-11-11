@@ -24,6 +24,17 @@ jobs:
     name: Typecheck, lint, unit tests, build
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # `next build` evaluates the server configuration in production mode, so the
+    # build requires production-shaped values. These are non-secret build-time
+    # placeholders: CI never deploys them, and runtime configuration comes from
+    # the deployment environment.
+    env:
+      APP_URL: https://dramascan.example.com
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/dramascan
+      BETTER_AUTH_SECRET: ci-build-only-secret-with-at-least-32-characters
+      GOOGLE_CLIENT_ID: ci-build-only-google-client-id
+      GOOGLE_CLIENT_SECRET: ci-build-only-google-client-secret
+      SUPER_ADMIN_EMAIL: ci-build@example.com
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
