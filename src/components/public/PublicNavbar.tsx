@@ -188,8 +188,7 @@ export function PublicNavbar({ signedIn, userName }: PublicNavbarProps) {
       </nav>
 
       {/* Mobile slide-over menu */}
-      {open ? (
-        <div className="fixed inset-0 z-50 md:hidden">
+      {open && <div className="fixed inset-0 z-50 md:hidden">
           <button
             type="button"
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
@@ -251,7 +250,7 @@ export function PublicNavbar({ signedIn, userName }: PublicNavbarProps) {
             </div>
           </div>
         </div>
-      ) : null}
+      }
     </>
   );
 }

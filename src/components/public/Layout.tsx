@@ -20,6 +20,8 @@ import type { LucideIcon } from 'lucide-react';
 import { PublicNavbar } from '@/components/public/PublicNavbar';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { listFooterInformationLinks, type FooterInformationLink } from '@/modules/content';
+import { createRequestLogger } from '@/platform/logging';
 
 /** Primary public destinations. */
 export type NavItem = {
@@ -158,7 +160,7 @@ export function BrowseSection(): JSX.Element {
       </div>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
-        {BROWSE_LINKS.map(({ href, label, description, Icon }) => (
+        {BROWSE_LINKS.map(({ href, label, description, Icon }) =>
           <Link
             key={href}
             href={href}
@@ -175,7 +177,7 @@ export function BrowseSection(): JSX.Element {
               Browse {label.toLowerCase()}
             </span>
           </Link>
-        ))}
+        )}
       </div>
     </section>
   );
@@ -214,7 +216,7 @@ export function HowItWorksSection(): JSX.Element {
         </p>
 
         <ol className="mt-8 grid gap-4 sm:grid-cols-3">
-          {steps.map((step, index) => (
+          {steps.map((step, index) =>
             <li key={step.title} className="rounded-xl border border-border bg-card p-6">
               <span className="text-xs font-medium tabular-nums text-primary">
                 {String(index + 1).padStart(2, '0')}
@@ -224,7 +226,7 @@ export function HowItWorksSection(): JSX.Element {
                 {step.description}
               </p>
             </li>
-          ))}
+          )}
         </ol>
       </div>
     </section>
@@ -281,7 +283,7 @@ function FooterColumn({
     <div>
       <h2 className="text-sm font-medium text-foreground">{heading}</h2>
       <ul className="mt-4 space-y-3 text-sm">
-        {links.map(link => (
+        {links.map(link =>
           <li key={`${heading}-${link.href}-${link.label}`}>
             <Link
               href={link.href}
@@ -290,14 +292,28 @@ function FooterColumn({
               {link.label}
             </Link>
           </li>
-        ))}
+        )}
       </ul>
     </div>
   );
 }
 
 /** Public website footer. */
-export function PublicFooter(): JSX.Element {
+export async function PublicFooter(): Promise<JSX.Element> {
+  // The footer must never take down a page because the information-page
+  // configuration is missing, incomplete, or temporarily unavailable.
+  let informationLinks: FooterInformationLink[] = [];
+
+  try {
+    informationLinks = await listFooterInformationLinks();
+  } catch (error) {
+    const { logger } = createRequestLogger({ module: 'content' });
+    logger.warn(
+      { err: error, event: 'footer_information_links_unavailable' },
+      'Footer information links could not be loaded'
+    );
+  }
+
   return (
     <footer className="border-t border-border/60 bg-background">
       <div className="mx-auto w-full max-w-6xl px-6 py-14">
@@ -341,6 +357,26 @@ export function PublicFooter(): JSX.Element {
           />
         </div>
 
+        {informationLinks.length > 0 &&
+          <nav aria-label="Legal and information" className="mt-12">
+            <h2 className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Legal &amp; information
+            </h2>
+            <ul className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+              {informationLinks.map(link =>
+                <li key={link.id}>
+                  <Link
+                    href={link.href}
+                    className="text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              )}
+            </ul>
+          </nav>
+        }
+
         <div className="mt-12 flex flex-col gap-3 border-t border-border/60 pt-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <p>© {new Date().getFullYear()} DramaScan. All rights reserved.</p>
           <p>Made for people who stay for the last episode.</p>
@@ -363,17 +399,17 @@ export async function PublicPageLayout({
       <PublicNavbar signedIn={signedIn} userName={userName} />
 
       <main id="main-content" className="flex-1 pb-24 md:pb-0">
-        {isHome ? (
+        {isHome &&
           <>
             <HeroSection />
             <BrowseSection />
             <HowItWorksSection />
           </>
-        ) : null}
+        }
 
-        {children ? (
+        {children &&
           <div className="mx-auto w-full max-w-6xl px-6 py-12 sm:py-16">{children}</div>
-        ) : null}
+        }
       </main>
 
       <PublicFooter />

@@ -196,6 +196,32 @@ Admin page reads use Server Components. Admin mutations use Server Actions.
 
 Public health responses expose only minimal status. Detailed diagnostics are admin-only.
 
+### 3.8 Information-page administration (implemented, Prompt 045)
+
+These endpoints are implemented under `/admin/api/...` and back the configurable
+public footer. Every endpoint requires `settings.manage`; authorization is
+enforced at the route entrypoint and re-checked inside the content service.
+Mutations additionally reject cross-origin requests.
+
+| Method | Path                                  | Auth                   | Permission        | Purpose                                                       | Status     |
+| ------ | ------------------------------------- | ---------------------- | ----------------- | ------------------------------------------------------------- | ---------- |
+| `GET`  | `/admin/api/information-pages`        | Authenticated admin    | `settings.manage` | Paginated list of non-deleted pages, including drafts          | Implemented |
+| `PATCH`| `/admin/api/information-pages/[id]`   | Authenticated admin    | `settings.manage` | Update title, content, publication status, visibility, position | Implemented |
+| `PUT`  | `/admin/api/information-pages/reorder`| Authenticated admin    | `settings.manage` | Set display order from an ordered, unique UUID array           | Implemented |
+
+- `GET` accepts `page` (1-based) and `pageSize` (1–100) and returns
+  `{ data, meta }` using the standard collection envelope.
+- `PATCH` accepts at least one of `title`, `content`, `publicationStatus`
+  (`draft` | `published` | `unpublished`), `footerVisible`, or `position`.
+  Unknown fields are rejected.
+- `PUT` accepts `{ "ids": ["<uuid>", ...] }`. Reordering runs in one transaction;
+  if any id is missing or deleted, nothing changes.
+- Errors use the standard `{ error: { code, message, fieldErrors?, requestId } }`
+  envelope. Unauthenticated requests return `401`; insufficient permissions
+  return `403`.
+- No admin UI is implemented in Prompt 045. These endpoints are the control
+  surface for a future settings screen.
+
 ---
 
 ## 4. Server Action Catalog

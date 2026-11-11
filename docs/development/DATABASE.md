@@ -155,6 +155,8 @@ Migration tooling and practices are defined in `CONVENTIONS.md` §10. Database-s
 
 - Migrations live in `drizzle/` and are numbered sequentially.
 - The applied baseline is `drizzle/0000_boring_harry_osborn.sql` (50 statements, 42 tables), generated from the complete schema with `drizzle-kit generate` and applied with `drizzle-kit migrate`. Its snapshot is `drizzle/meta/0000_snapshot.json` and its journal entry is `drizzle/meta/_journal.json`.
+- `drizzle/0001_pale_earthquake.sql` adds login monitoring (`login_attempts`) and session activity.
+- `drizzle/0002_information_page_footer_links.sql` adds `information_pages.position`, the active-row slug uniqueness index, the partial footer index, and the six-row information-page seed (forward-only; the seed is idempotent and preserves administrator edits).
 - `npm run db:generate` creates the next numbered migration from schema changes; `npm run db:migrate` applies pending migrations. `npm run db:push` is local-only and must never be used against production.
 - Integration tests build the isolated `_test` database from this same migration chain in `tests/global-setup.ts`, so a broken migration fails CI.
 - Applied migrations are never edited.
@@ -184,7 +186,7 @@ This catalog is filled in as tables are implemented. Each entry records the tabl
 | movie_categories    | content      Movie–category many-to-many | ✅ Implemented |
 | movie_platforms     | content      Movie–platform many-to-many | ✅ Implemented |
 | similar_dramas      | content      Similarity recommendations | ✅ Implemented |
-| information_pages   | content      Static pages ( About, FAQ ) | ✅ Implemented |
+| information_pages   | content      Legal/information pages and footer configuration | ✅ Implemented |
 | content_slug_history| content      Slug change history        | ✅ Implemented |
 | content_seo         | content      SEO metadata per content  | ✅ Implemented |
 | content_assets      | content      Media/assets per content  | ✅ Implemented |
@@ -301,6 +303,31 @@ When a table is added, record:
 - soft-delete behavior,
 - migration file,
 - related API/query functions.
+
+### 8.2 Information pages and footer links (Prompt 045)
+
+`information_pages` is owned by the `content` module and is the single source
+for the public footer's legal/information links and the `/information/[slug]`
+pages.
+
+| Item | Detail |
+| ---- | ------ |
+| Purpose | Administrator-managed legal and information pages (Terms, Privacy, Community Guidelines, Copyright/DMCA, About, Contact). |
+| Primary key | `id uuid` (`uuidv7()` default). |
+| Key columns | `title`, `slug`, `content`, `publication_status` (`draft`/`published`/`unpublished`), `preview`, `footer_visible`, `position`. |
+| Timestamps / soft delete | `created_at`, `updated_at`, `deleted_at` (`timestamptz`). Trash is `deleted_at IS NOT NULL`. |
+| Constraints | `uq_information_pages_slug_active` — partial unique index on `slug WHERE deleted_at IS NULL`, so a slug may be reused after soft delete. |
+| Indexes | `idx_information_pages_footer` — partial index on `position WHERE deleted_at IS NULL AND publication_status = 'published' AND footer_visible = true`, supporting the public footer query. |
+| Ordering | `position` ascending; null positions sort last, then title and id for determinism. Reordering is transactional. |
+| Migration | `drizzle/0002_information_page_footer_links.sql` (schema + idempotent six-row seed). |
+| Query/service API | `src/modules/content/information-pages.ts` (`listFooterInformationLinks`, `getPublishedInformationPage`, `listInformationPages`, `updateInformationPage`, `reorderInformationPages`). |
+| Admin API | `GET /admin/api/information-pages`, `PATCH /admin/api/information-pages/[id]`, `PUT /admin/api/information-pages/reorder`; requires `settings.manage`. |
+| Public visibility | Published, footer-visible, non-deleted rows with a valid single-segment slug only. Drafts are never rendered publicly. |
+
+The seed inserts exactly six published, footer-visible rows with body
+`This page is being prepared.` and positions 1–6. It uses
+`ON CONFLICT ("slug") WHERE "deleted_at" IS NULL DO NOTHING`, so re-running the
+statement is harmless and administrator-edited content is never overwritten.
 
 ---
 

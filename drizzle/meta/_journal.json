@@ -15,6 +15,13 @@
       "when": 1794393519254,
       "tag": "0001_pale_earthquake",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794398402062,
+      "tag": "0002_information_page_footer_links",
+      "breakpoints": true
     }
   ]
 }

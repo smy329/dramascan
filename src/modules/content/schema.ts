@@ -18,7 +18,17 @@
  * timestamptz timestamps, `deleted_at` for soft delete. UUID application primary
  * keys. Partial unique indexes `WHERE deleted_at IS NULL` for active-row uniqueness.
  */
-import { pgTable, text, timestamp, uuid, integer, boolean } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { primaryKeyConstraint, uuidPrimaryKey } from '@/platform/db/schema-helpers';
 
 // Helper: standard columns for mutable entities
@@ -160,18 +170,34 @@ export const similar_dramas = pgTable(
 );
 
 // ----- information_pages -----
-export const information_pages = pgTable('information_pages', {
-  id: uuidPrimaryKey(),
-  title: text('title').notNull(),
-  slug: text('slug').notNull(),
-  content: text('content').notNull(),
-  publication_status: text('publication_status'),
-  preview: text('preview'),
-  footer_visible: boolean('footer_visible'),
-  created_at: created,
-  updated_at: updated,
-  deleted_at: deleted,
-});
+// `position` is the administrator-controlled order used by the public footer.
+// Lower values appear first; null positions sort last.
+export const information_pages = pgTable(
+  'information_pages',
+  {
+    id: uuidPrimaryKey(),
+    title: text('title').notNull(),
+    slug: text('slug').notNull(),
+    content: text('content').notNull(),
+    publication_status: text('publication_status'),
+    preview: text('preview'),
+    footer_visible: boolean('footer_visible'),
+    position: integer('position'),
+    created_at: created,
+    updated_at: updated,
+    deleted_at: deleted,
+  },
+  table => [
+    uniqueIndex('uq_information_pages_slug_active')
+      .on(table.slug)
+      .where(sql`${table.deleted_at} is null`),
+    index('idx_information_pages_footer')
+      .on(table.position)
+      .where(
+        sql`${table.deleted_at} is null and ${table.publication_status} = 'published' and ${table.footer_visible} = true`
+      ),
+  ]
+);
 
 // ----- content_slug_history -----
 export const content_slug_history = pgTable('content_slug_history', {

@@ -2,6 +2,54 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [0.4.5] - 2026-11-11
+
+### feat: Public footer links and information pages (Prompt 045)
+
+The public footer now renders a configurable "Legal & information" row from the
+database instead of hard-coded URLs. Six canonical pages are seeded as published
+placeholders so every footer destination resolves; administrators can edit,
+unpublish, hide, and reorder them later through a permission-protected API.
+
+- Added `position` to `information_pages`, a partial unique slug index for
+  active rows, and a partial footer index for the public query.
+- Added migration `0002_information_page_footer_links.sql` with an idempotent
+  seed (`ON CONFLICT … DO NOTHING`) for `terms`, `privacy`,
+  `community-guidelines`, `copyright-dmca`, `about`, and `contact`. The seed
+  never overwrites administrator-edited content.
+- Added the `content` module's public API and service layer: footer query,
+  published-page lookup, admin list/update/reorder, Zod validation, and
+  `settings.manage` authorization at both the entrypoint and service level.
+- Added `/information/[slug]` rendering published rows only; missing,
+  unpublished, deleted, and malformed slugs return 404.
+- `PublicFooter` keeps the Browse/Discover/Support columns, adds a wrapping
+  legal row above the copyright line, and degrades to no legal links if the
+  configuration cannot be loaded.
+- Added admin REST endpoints for listing, updating, and transactionally
+  reordering pages. No admin UI was added in this prompt.
+
+### Changed Files
+
+- `src/modules/content/schema.ts` — `position`, partial unique slug index, partial footer index
+- `src/modules/content/information-pages.shared.ts` — canonical definitions, slug rules, validation
+- `src/modules/content/information-pages.ts` — public queries and admin services
+- `src/modules/content/index.ts` — module public API
+- `src/app/admin/api/information-pages/` — protected list/update/reorder REST
+- `src/app/(public)/information/[slug]/page.tsx` — published-only public page
+- `src/components/public/Layout.tsx` — async footer with ordered legal row and fallback
+- `drizzle/0002_information_page_footer_links.sql` — schema changes and idempotent seed
+- `tests/unit/modules/content/information-pages.test.ts`, `tests/integration/content/information-pages.integration.test.ts`, `tests/e2e/information-pages.spec.ts` — coverage
+- `docs/development/DATABASE.md`, `docs/development/API.md`, `docs/decisions/DECISIONS.md` — schema/API/decision records
+
+### Verification
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass
+- Unit tests — 33 passed
+- Integration tests — 40 passed
+- Playwright E2E — 9 passed (responsive footer, navigation, 404, unauthenticated API)
+- `npm run build` — pass with production-shaped environment
+
 ## [0.4.4] - 2026-11-11
 
 ### fix: Public site shell, navigation, and missing design tokens

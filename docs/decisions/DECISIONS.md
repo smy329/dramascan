@@ -623,6 +623,55 @@ declared CSS variables did not cover the component library's contract.
 
 ---
 
+## D-024 - Footer links are database-backed information pages
+
+**Date:** 2026-11-11
+**Status:** Approved by user
+**Resolves:** Prompt 045
+
+**Context:** The public footer needs Terms, Privacy, Community Guidelines,
+Copyright/DMCA, About, and Contact destinations. Hard-coding those URLs in a
+component would scatter legal destinations across the codebase and give
+administrators no way to edit, hide, reorder, or unpublish a page.
+
+**Decision:**
+
+1. **Single source:** `information_pages` in the `content` module owns the
+   canonical slugs, titles, body content, publication status, footer visibility,
+   and display order. Components never hard-code legal URLs.
+2. **Canonical slugs:** `terms`, `privacy`, `community-guidelines`,
+   `copyright-dmca`, `about`, `contact`. Only single-segment lowercase
+   `a-z0-9-` slugs are valid public routes.
+3. **Public route:** `/information/[slug]` renders published, non-deleted rows
+   only. Missing, unpublished, deleted, and malformed slugs return `404`; draft
+   content is never exposed through a guessed URL.
+4. **Ordering:** `position integer` follows the existing ordering convention.
+   Lower values render first and null positions sort last. Reordering runs in a
+   single transaction.
+5. **Footer layout:** Keep the existing Browse/Discover/Support columns and add
+   a separate wrapping "Legal & information" row above the copyright line.
+   The footer degrades to no legal links if the configuration cannot be loaded;
+   it must not take down the page.
+6. **Authorization:** Administration requires `settings.manage`, enforced at the
+   REST entrypoint and re-checked in the content service. No admin UI is added
+   by Prompt 045; the permission-protected API is ready for a future settings UI.
+7. **Seed behavior:** Migration `0002_information_page_footer_links.sql` seeds
+   exactly the six canonical pages as published, footer-visible placeholders
+   with body `This page is being prepared.`. The seed is idempotent
+   (`ON CONFLICT … DO NOTHING`) and never overwrites administrator edits.
+
+**Consequences:**
+
+- The placeholder body is explicit and is not legal advice. Administrators must
+  replace it with real policy text before launch.
+- Footer links only appear for rows that are simultaneously published,
+  footer-visible, non-deleted, and validly slugged.
+- Deleting or unpublishing a page removes its footer link without deleting the
+  row, preserving history for administrators.
+- The API is the control surface until an admin settings UI is approved.
+
+---
+
 ## Decision log rules
 
 - A decision is added only after explicit user approval or when the specification
