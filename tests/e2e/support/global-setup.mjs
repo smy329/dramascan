@@ -10,14 +10,21 @@
 //   3. The dedicated test database is reachable and actually resolves to the
 //      expected `_test` database. No migration, seed, or write is performed.
 
+import { createRequire } from 'node:module';
 import pg from 'pg';
-import {
+
+// Playwright loads the global setup as an ES module but transforms project
+// modules to CommonJS, which makes named ES imports of those modules fail.
+// Requiring the shared helpers keeps this file working both under the
+// Playwright runner and when it is executed directly with Node.js.
+const require = createRequire(import.meta.url);
+const {
   describeDatabaseTarget,
   E2EConfigurationError,
   resolveTestDatabase,
-} from './database-target.mjs';
-import { loadLocalEnv } from './load-local-env.mjs';
-import { readRunMarker } from './run-marker.mjs';
+} = require('./database-target.mjs');
+const { loadLocalEnv } = require('./load-local-env.mjs');
+const { readRunMarker } = require('./run-marker.mjs');
 
 loadLocalEnv();
 

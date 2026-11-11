@@ -11,9 +11,10 @@
  * avoiding admin-dashboard aesthetics.
  */
 
+import type { JSX } from 'react';
+
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Menu, MenuItem, MenuList } from '@/components/ui/menu';
 
 /**
  * Navigation link item.
@@ -139,34 +140,34 @@ const mobileBottomNav = (
 
 /** Hamburger menu items (secondary destinations). */
 const hamburgerMenuItems = (
-  <Menu className="fixed inset-0 z-50 py-8 bg-white dark:bg-gray-900 shadow-lg">
-    <MenuList className="flex flex-col w-full max-w-none space-y-1 px-8 pb-8">
-      <MenuItem>
+  <nav className="fixed inset-0 z-50 py-8 bg-white dark:bg-gray-900 shadow-lg">
+    <ul className="flex flex-col w-full max-w-none space-y-1 px-8 pb-8">
+      <li>
         <a
           href="/categories"
           className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
         >
           Categories
         </a>
-      </MenuItem>
-      <MenuItem>
+      </li>
+      <li>
         <a
           href="/platforms"
           className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
         >
           Platforms
         </a>
-      </MenuItem>
-      <MenuItem>
+      </li>
+      <li>
         <a
           href="/help"
           className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
         >
           Help
         </a>
-      </MenuItem>
-    </MenuList>
-  </Menu>
+      </li>
+    </ul>
+  </nav>
 );
 
 /** Public website main navigation component. */
