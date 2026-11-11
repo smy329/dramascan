@@ -11,14 +11,27 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { auth } from '@/platform/auth/better-auth';
+import { DEFAULT_CALLBACK_URL, sanitizeCallbackUrl } from '@/lib/redirects';
 
-/** Start Google sign-in and follow Better Auth's authorization URL. */
-export async function googleSignIn(): Promise<void> {
+/**
+ * Start Google sign-in and follow Better Auth's authorization URL.
+ *
+ * The destination arrives from a form field, so it is sanitized again here
+ * before it reaches Better Auth. This is the only place the post-sign-in
+ * callback is trusted.
+ */
+export async function googleSignIn(formData: FormData): Promise<void> {
+  const callbackUrl = sanitizeCallbackUrl(formData.get('callbackUrl'));
+  const errorCallbackURL =
+    callbackUrl === DEFAULT_CALLBACK_URL
+      ? '/auth/signin'
+      : `/auth/signin?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+
   const { url } = await auth.api.signInSocial({
     body: {
       provider: 'google',
-      callbackURL: '/dashboard',
-      errorCallbackURL: '/auth/signin',
+      callbackURL: callbackUrl,
+      errorCallbackURL,
     },
     headers: await headers(),
   });

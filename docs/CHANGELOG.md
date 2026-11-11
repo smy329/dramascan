@@ -2,6 +2,57 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [0.4.9] - 2026-11-12
+
+### feat: Admin layout (Prompt 049)
+
+Added the protected, responsive foundation for the administration area:
+`/admin` now has a server-enforced shell, a permission-filtered sidebar,
+breadcrumbs, and an account menu, plus one functional overview page. No future
+admin section, placeholder route, schema change, migration, or permission key
+was added.
+
+- `src/app/admin/layout.tsx` and `src/app/admin/page.tsx` both call
+  `requireAdminPageAccess`, so a layout bypass cannot leave the page open. An
+  anonymous visitor is redirected to `/auth/signin?callbackUrl=<admin path>`;
+  an authenticated actor without admin-area access gets a 404.
+- `src/app/admin/_access.ts` caches `resolveActor` and `getActiveSession` per
+  request and translates the pure `resolveAdminPageAccess` decision into
+  `redirect`/`notFound`.
+- `src/components/admin/navigation.ts` is the single navigation model. It
+  declares every planned entry with an `implemented` flag and canonical
+  permission keys, derives `ADMIN_AREA_PERMISSIONS` from the entries, and
+  filters unimplemented/unpermitted entries (and empty groups) before anything
+  reaches the client.
+- `src/components/admin/admin-shell.tsx`, `admin-sidebar.tsx`, and
+  `admin-header.tsx` render the client chrome. The sidebar is persistent at
+  `lg` and a Base UI modal-drawer below it; Base UI supplies focus trap, initial
+  focus, Escape, scroll lock, outside-pointer dismissal, and focus return. The
+  drawer closes on navigation.
+- `src/components/admin/admin-account-menu.tsx` shows identity, Your account
+  (`/dashboard`), View site (`/`), and Sign out through the existing
+  `googleSignOut` action. `src/components/ui/dropdown-menu.tsx` wraps Base UI
+  Menu for it.
+- `src/components/admin/breadcrumbs.ts` resolves labels for implemented routes
+  only and never links an unknown path. `/admin` renders one current `Admin`
+  item and the header does not duplicate the page title.
+- `src/lib/redirects.ts` sanitizes `callbackUrl` and
+  `src/app/auth/signin/page.tsx` / `src/workflows/auth/google-oauth.ts` forward
+  it, so the approved return-to-admin behaviour works. Absolute, protocol-
+  relative, backslash, control-character, whitespace-padded, and non-admin
+  destinations are rejected; `/admin/../other` normalizes to `/other`.
+- `DialogContent` gained an optional `overlayClassName` prop (default
+  unchanged) for the drawer scrim.
+- Documentation: `docs/development/admin-shell.md`.
+
+Verification: `npm run typecheck` (exit 0); `npm run lint` (exit 0); unit tests
+(36 files, 318 passed); `npm run test:integration` (3 files, 40 passed);
+production build (exit 0, known pre-existing `information_pages.position`
+warning on the main database only); `npm run test:e2e` (11 passed in Chromium).
+Authenticated admin/non-admin browser flows were not verified because local
+Google OAuth credentials are placeholders; those decisions are covered by unit
+tests.
+
 ## [0.4.8] - 2026-11-11
 
 ### feat: Shared confirmation dialogs (Prompt 048)

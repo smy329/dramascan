@@ -1,20 +1,22 @@
 import { redirect } from 'next/navigation';
 import { getActiveSession } from '@/platform/auth/session';
 import { googleSignIn } from '@/workflows/auth/google-oauth';
+import { sanitizeCallbackUrl } from '@/lib/redirects';
 
 export const dynamic = 'force-dynamic';
 
 type SignInPageProps = {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; callbackUrl?: string }>;
 };
 
 export default async function SignInPage({ searchParams }: SignInPageProps) {
+  const { error, callbackUrl } = await searchParams;
+  const destination = sanitizeCallbackUrl(callbackUrl);
+
   const session = await getActiveSession();
   if (session) {
-    redirect('/dashboard');
+    redirect(destination);
   }
-
-  const { error } = await searchParams;
 
   let errorNotice = null;
   if (error) {
@@ -40,6 +42,7 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
         {errorNotice}
 
         <form action={googleSignIn} className="w-full">
+          <input type="hidden" name="callbackUrl" value={destination} />
           <button
             type="submit"
             className="w-full rounded-md border border-green-600 bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2"
