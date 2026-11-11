@@ -22,6 +22,15 @@ This document defines the testing conventions, derived from `CONVENTIONS.md` §9
 | `tests/e2e/`         | Tests critical user and admin flows against a running application.                      |
 | `tests/fixtures/`    | Holds factories and seed helpers.                                                       |
 
+### 1.2 Component Tests
+
+- Presentational component tests live under `tests/unit/components/` and use the `.test.tsx` suffix.
+- Vitest keeps `node` as its default environment. A component test opts into jsdom with `// @vitest-environment jsdom` as its first line, so existing unit and integration behavior is unchanged.
+- Component tests use React Testing Library and assert user-observable behavior: roles, accessible names, visible text, links, and fallback states. Avoid internal state or implementation-detail assertions.
+- Call `cleanup` in `afterEach`.
+- Simulate image loading failures with `fireEvent.error`; jsdom does not load images from the network.
+- Name the file after the component under test, for example `content-card.test.tsx`.
+
 ---
 
 ## 2. Test Database Isolation

@@ -2,6 +2,49 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [0.4.6] - 2026-11-11
+
+### feat: Shared content cards (Prompt 046)
+
+Added one reusable, presentational card for drama and movie content. The card is
+layout-agnostic so discovery grids and scroll-snap carousels can own sizing and
+scrolling, and it never fabricates ratings, lifecycle status, or posters.
+
+- Added `ContentCard` with a 2:3 portrait poster, title, content-type label,
+  optional caller-supplied rating, optional drama lifecycle badge, and optional
+  link. Movies never render a lifecycle badge.
+- Ratings render only for a finite 1–5 average and a positive finite count;
+  averages use one decimal and counts abbreviate without rounding up
+  (`4.5 (1.2K)`). The full value is exposed to assistive technology.
+- Posters use a plain `<img>` with `object-cover`; no Next.js image optimization
+  or Sharp. A client-side island catches load errors and falls back to a muted
+  placeholder when the URL is missing, empty, invalid, or fails to load.
+- The card accepts an optional safe `href`; absent or invalid values render a
+  non-interactive article, and no detail route is derived inside the component.
+- Added React Testing Library and jsdom as dev-only dependencies. Vitest keeps
+  `node` as the default environment; component tests opt into jsdom per file.
+- No data fetching, page wiring, schema changes, or runtime dependencies.
+
+### Changed Files
+
+- `src/components/public/ContentCard.tsx` — card composition and optional link
+- `src/components/public/ContentPoster.tsx` — client image island and fallback
+- `src/components/public/content-card.ts` — types, labels, URL/rating helpers
+- `tests/unit/components/content-card.test.tsx` — jsdom/RTL component coverage
+- `tests/unit/components/content-card-helpers.test.ts` — helper coverage
+- `vitest.config.ts` — discover `.test.tsx` unit tests; Node remains the default
+- `package.json`, `package-lock.json` — dev-only test tooling
+- `docs/development/testing-conventions.md` — component-test conventions
+
+### Verification
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass
+- Unit tests — 172 passed
+- Integration tests — 40 passed
+- Playwright E2E — 9 passed (regression; no card-specific route was added)
+- `npm run build` — pass
+
 ## [0.4.5] - 2026-11-11
 
 ### feat: Public footer links and information pages (Prompt 045)
