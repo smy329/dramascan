@@ -35,10 +35,15 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // A single worker keeps first-request route compilation from racing across
+  // tests. This suite is small; determinism matters more than parallelism.
+  workers: 1,
   timeout: 30_000,
+  // Development servers compile routes on first request. A cold `/drama`
+  // compile under load can exceed the default 5s expectation, so allow the
+  // route transition to finish without masking genuine failures.
   expect: {
-    timeout: 5_000,
+    timeout: 10_000,
   },
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {

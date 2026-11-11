@@ -1,50 +1,41 @@
-import { PublicPageLayout } from '@/components/public/Layout';
-import { Tabs, TabsContent, TabsList } from '@/components/ui/tabs';
-import { Tab } from '@/components/ui/tab';
-import { Card } from '@/components/ui/card';
+import { PageHeader, PublicPageLayout } from '@/components/public/Layout';
+
+const PLATFORMS = [
+  { name: 'Viki', note: 'Korean, Chinese, Japanese, and Taiwanese series with subtitles.' },
+  { name: 'Netflix', note: 'Original productions plus a broad licensed catalogue.' },
+  { name: 'Prime Video', note: 'Regional catalogues that vary by country.' },
+  { name: 'Disney+', note: 'Korean originals and select Asian film titles.' },
+  { name: 'iQIYI', note: 'Chinese drama and variety, with international subtitles.' },
+  { name: 'Kocowa', note: 'Korean broadcast content, often close to air date.' },
+  { name: 'TVBAnywhere+', note: 'Cantonese-language drama and film.' },
+  { name: 'Seezn', note: 'Korean streaming catalogue and originals.' },
+];
 
 export default function PlatformsPage() {
   return (
     <PublicPageLayout title="Platforms">
-      <div className="space-y-12">
-        <h1 className="text-4xl font-bold text-white dark:text-gray-900">
-          Streaming Platforms
-        </h1>
+      <div className="space-y-10">
+        <PageHeader
+          eyebrow="Discover"
+          title="Platforms"
+          description="DramaScan does not host video itself. Where a title is available elsewhere, its page will link you to the platform that carries it."
+        />
 
-        <p className="text-lg text-gray-400 dark:text-gray-500 max-w-2xl">
-          DramaScan partners with leading streaming platforms to bring you the best
-          international drama and movie content. Discover where your favorite stories
-          are available.
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {PLATFORMS.map(platform =>
+            <li key={platform.name} className="rounded-xl border border-border bg-card p-5">
+              <p className="text-sm font-medium text-foreground">{platform.name}</p>
+              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                {platform.note}
+              </p>
+            </li>
+          )}
+        </ul>
+
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          Platform availability depends on your region and changes without notice. Nothing on this
+          page guarantees that a title can be streamed in your country.
         </p>
-
-        <Tabs defaultValue="available" className="w-full">
-          <TabsList>
-            <Tab value="available">Currently Available</Tab>
-            <Tab value="partners">Partner Platforms</Tab>
-          </TabsList>
-          <TabsContent value="available">
-            <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Currently Available</h3>
-              <ul className="grid grid-cols-2 gap-2 text-sm">
-                <li className="hover:text-primary dark:hover:text-primary/60">Viki</li>
-                <li className="hover:text-primary dark:hover:text-primary/60">Netflix</li>
-                <li className="hover:text-primary dark:hover:text-primary/60">Amazon Prime</li>
-                <li className="hover:text-primary dark:hover:text-primary/60">Disney+</li>
-              </ul>
-            </Card>
-          </TabsContent>
-          <TabsContent value="partners">
-            <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Partner Platforms</h3>
-              <ul className="grid grid-cols-2 gap-2 text-sm">
-                <li className="hover:text-primary dark:hover:text-primary/60">iQIYI</li>
-                <li className="hover:text-primary dark:hover:text-primary/60">TVBAnywhere+</li>
-                <li className="hover:text-primary dark:hover:text-primary/60">Kocowa</li>
-                <li className="hover:text-primary dark:hover:text-primary/60">Seezn</li>
-              </ul>
-            </Card>
-          </TabsContent>
-        </Tabs>
       </div>
     </PublicPageLayout>
   );

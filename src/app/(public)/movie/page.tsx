@@ -1,41 +1,48 @@
-import { PublicPageLayout } from '@/components/public/Layout';
-import { Card } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList } from '@/components/ui/tabs';
-import { Tab } from '@/components/ui/tab';
+import Link from 'next/link';
+import { Film } from 'lucide-react';
+
+import { EmptyState, PageHeader, PublicPageLayout } from '@/components/public/Layout';
+import { buttonVariants } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 
 export default function MoviesPage() {
   return (
     <PublicPageLayout title="Movies">
-      <div className="space-y-12">
-        <h1 className="text-4xl font-bold text-white dark:text-gray-900">
-          Feature Film Collection
-        </h1>
-
-        <p className="text-lg text-gray-400 dark:text-gray-500 max-w-2xl">
-          Explore a curated selection of international feature films, including
-          award-winning dramas, independent cinema, and popular releases.
-        </p>
+      <div className="space-y-10">
+        <PageHeader
+          eyebrow="Browse"
+          title="Feature films"
+          description="A curated selection of international film — festival favourites, independent cinema, and widely loved releases."
+        />
 
         <Tabs defaultValue="recent" className="w-full">
           <TabsList>
-            <Tab value="recent">Recent Releases</Tab>
-            <Tab value="classic">Classic Films</Tab>
+            <TabsTrigger value="recent">Recent releases</TabsTrigger>
+            <TabsTrigger value="classic">Classic films</TabsTrigger>
           </TabsList>
-          <TabsContent value="recent">
-            <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Recent Releases</h3>
-              <p className="text-sm text-muted-foreground dark:text-muted-foreground/60">
-                New films added weekly
-              </p>
-            </Card>
+
+          <TabsContent value="recent" className="pt-6">
+            <EmptyState
+              icon={Film}
+              title="No films published yet"
+              description="The film catalogue is still being prepared. Recent releases will appear here first."
+            >
+              <Link
+                href="/platforms"
+                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+              >
+                Where to watch
+              </Link>
+            </EmptyState>
           </TabsContent>
-          <TabsContent value="classic">
-            <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Classic Films</h3>
-              <p className="text-sm text-muted-foreground dark:text-muted-foreground/60">
-                Timeless cinema
-              </p>
-            </Card>
+
+          <TabsContent value="classic" className="pt-6">
+            <EmptyState
+              icon={Film}
+              title="No classic films yet"
+              description="Older titles are added after their sources are verified for browser playback."
+            />
           </TabsContent>
         </Tabs>
       </div>

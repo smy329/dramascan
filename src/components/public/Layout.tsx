@@ -1,36 +1,32 @@
 /**
- * Public website layout component.
+ * Public website layout.
  *
- * Provides a consistent responsive structure for public-facing pages:
- * - Main navigation (collapsed mobile, expanded desktop)
- * - Content area with padding
- * - Footer with links and metadata
- * - Cinematic dark theme suitable for a drama streaming platform
+ * The public site is a dark, cinematic surface: a sticky header, a compact
+ * mobile bottom bar, a slide-over menu for secondary destinations, and a
+ * content column that stays readable at every breakpoint.
  *
- * This layout is intentionally minimal and content-focused,
- * avoiding admin-dashboard aesthetics.
+ * `PublicPageLayout` resolves the signed-in state on the server. If the auth
+ * subsystem is unavailable (for example, a local environment without the
+ * required configuration), the public site still renders as a guest instead
+ * of failing the whole page.
  */
 
-import type { JSX } from 'react';
+import type { JSX, ReactNode } from 'react';
+import Link from 'next/link';
 
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Clapperboard, Film, Play, Tv } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
-/**
- * Navigation link item.
- */
+import { PublicNavbar } from '@/components/public/PublicNavbar';
+import { buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+
+/** Primary public destinations. */
 export type NavItem = {
-  /** Route path (relative to root) */
   href: string;
-  /** Display label */
   label: string;
-  /** Whether this item has a dropdown */
-  hasDropdown?: boolean;
-  /** Dropdown items (if hasDropdown is true) */
-  items?: NavItem[];
 };
 
-/** Default navigation items for the public website. */
 export const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Home' },
   { href: '/drama', label: 'Dramas' },
@@ -41,406 +37,351 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/bookmark', label: 'Bookmark' },
 ];
 
-/** Mobile navigation toggle button. */
-const mobileNavToggle =
-  <Button
-    variant="ghost"
-    aria-label="Open main navigation"
-    className="sm:hidden p-2"
-  >
-    <svg
-      className="h-6 w-6 stroke-current stroke-2"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <line x1="3" y1="6" x2="21" y2="6"></line>
-      <line x1="3" y1="12" x2="21" y2="12"></line>
-      <line x1="3" y1="18" x2="21" y2="18"></line>
-    </svg>
-  </Button>
-;
+type PublicPageLayoutProps = Readonly<{
+  title: string;
+  children?: ReactNode;
+}>;
 
-/** Bottom navigation bar for mobile devices. */
-const mobileBottomNav =
-  <nav className="fixed bottom-0 left-0 right-0 z-50 bg-black dark:bg-gray-950/50 border-t border-gray-900/20 px-6 py-1">
-    <div className="flex flex-1 sm:flex-1 justify-around">
-      <a
-        href="/"
-        className="flex flex-col items-center text-sm text-gray-400 dark:text-gray-500 hover:text-primary dark:hover:text-primary/60 transition-colors"
-        aria-label="Home"
-      >
-        <svg
-          className="h-4 w-4 mb-1 stroke-current"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <line x1="3" y1="3" x2="21" y2="3"></line>
-          <line x1="3" y1="16" x2="21" y2="16"></line>
-          <line x1="12" y1="10" x2="12" y2="14"></line>
-        </svg>
-        Home
-      </a>
-      <a
-        href="/trending"
-        className="flex flex-col items-center text-sm text-gray-400 dark:text-gray-500 hover:text-primary dark:hover:text-primary/60 transition-colors"
-        aria-label="Trending"
-      >
-        <svg
-          className="h-4 w-4 mb-1 stroke-current"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <line x1="3" y1="3" x2="21" y2="3"></line>
-          <line x1="3" y1="16" x2="21" y2="16"></line>
-          <line x1="12" y1="10" x2="12" y2="14"></line>
-          <circle cx="12" cy="12" r="10"></circle>
-        </svg>
-        Trending
-      </a>
-      <a
-        href="/bookmark"
-        className="flex flex-col items-center text-sm text-gray-400 dark:text-gray-500 hover:text-primary dark:hover:text-primary/60 transition-colors"
-        aria-label="Bookmark"
-      >
-        <svg
-          className="h-4 w-4 mb-1 stroke-current"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M19 21l-7-5-7 5H5"></path>
-        </svg>
-        Bookmark
-      </a>
-    </div>
-    <Button
-      variant="link"
-      aria-label="Open navigation"
-      className="sm:hidden block text-gray-400 dark:text-gray-500 hover:text-primary dark:hover:text-primary/60 p-2"
-    >
-      Profile
-    </Button>
-  </nav>
-;
+/** Best-effort session lookup for the public header. */
+async function resolveNavUser(): Promise<{ signedIn: boolean; userName?: string | null }> {
+  try {
+    // Dynamic import keeps a missing configuration from breaking public pages.
+    const { getActiveSession } = await import('@/platform/auth/session');
+    const session = await getActiveSession();
 
-/** Hamburger menu items (secondary destinations). */
-const hamburgerMenuItems =
-  <nav className="fixed inset-0 z-50 py-8 bg-white dark:bg-gray-900 shadow-lg">
-    <ul className="flex flex-col w-full max-w-none space-y-1 px-8 pb-8">
-      <li>
-        <a
-          href="/categories"
-          className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
-        >
-          Categories
-        </a>
-      </li>
-      <li>
-        <a
-          href="/platforms"
-          className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
-        >
-          Platforms
-        </a>
-      </li>
-      <li>
-        <a
-          href="/help"
-          className="block rounded-md px-2 py-2 text-lg font-medium text-gray-900 dark:text-gray-100 hover:bg-primary/5 dark:hover:bg-primary/10"
-        >
-          Help
-        </a>
-      </li>
-    </ul>
-  </nav>
-;
-
-/** Public website main navigation component. */
-export function PublicNavbar(): JSX.Element {
-  return (
-    <>
-      <header
-        className="border-b border-gray-900/20 dark:border-gray-900/20 bg-black dark:bg-gray-950/50 sticky top-0 z-50 backdrop-blur-sm"
-      >
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between sm:py-4">
-          {/* Brand/logo */}
-          <Button
-            variant="link"
-            className="self-center underline underline-offset-4 hover:text-primary dark:hover:text-primary/60"
-          >
-            DramaScan
-          </Button>
-
-          {/* Desktop navigation */}
-          <nav className="hidden sm:block space-x-8">
-            {NAV_ITEMS.map((item) =>
-                <a
-                  key={item.href}
-                  href={item.href}
-                  className="underline underline-offset-4 hover:text-primary dark:hover:text-primary/60"
-                >
-                  {item.label}
-                </a>
-              )}
-          </nav>
-        </div>
-      </header>
-
-      {/* Mobile bottom navigation bar */}
-      {mobileBottomNav}
-
-      {/* Hamburger menu button */}
-      {mobileNavToggle}
-
-      {/* Hamburger menu with secondary destinations */}
-      {hamburgerMenuItems}
-    </>
-  );
+    return session
+      ? { signedIn: true, userName: session.userName }
+      : { signedIn: false, userName: null };
+  } catch {
+    return { signedIn: false, userName: null };
+  }
 }
 
-/** Hero section for the homepage. */
+/** Home hero. */
 export function HeroSection(): JSX.Element {
   return (
-    <section className="bg-gradient-to-b from-black/90 via-black/80 to-black/70 min-h-screen relative">
-      <div className="absolute inset-0"></div>
+    <section className="hero-texture relative overflow-hidden border-b border-border/60">
+      <div className="mx-auto grid w-full max-w-6xl gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:py-32">
+        <div>
+          <p className="mb-5 text-sm text-muted-foreground">
+            International drama and film, curated in one place.
+          </p>
 
-      <div className="relative max-w-7xl mx-auto px-6 py-24 sm:py-32">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
-          <div>
-            <p className="text-primary/60 text-sm uppercase tracking-wider mb-6">
-              Stream Dramas & Movies
-            </p>
-            <h1 className="text-5xl sm:text-6xl font-bold text-white dark:text-gray-100 leading-none mb-6">
-              Watch International Drama & Movies
-            </h1>
-            <p className="text-lg text-gray-400 dark:text-gray-500 mb-8">
-              Discover thousands of dramas and movies from around the world. Your
-              next favorite story is just a click away.
-            </p>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-              <Button variant="default" className="py-3 px-6">
-                Browse Dramas
-              </Button>
-              <Button variant="outline" className="py-3 px-6">
-                Browse Movies
-              </Button>
+          <h1 className="max-w-2xl text-4xl font-semibold leading-[1.05] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
+            International drama and movies, in one place.
+          </h1>
+
+          <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+            Stream standout series and films from Korea, Japan, China, Thailand, and beyond —
+            without the clutter.
+          </p>
+
+          <div className="mt-9 flex flex-wrap items-center gap-3">
+            <Link
+              href="/drama"
+              className={cn(buttonVariants({ variant: 'default', size: 'lg' }), 'gap-2')}
+            >
+              <Play className="size-4 fill-current" aria-hidden="true" />
+              Browse dramas
+            </Link>
+            <Link
+              href="/movie"
+              className={cn(buttonVariants({ variant: 'outline', size: 'lg' }), 'gap-2')}
+            >
+              Browse movies
+            </Link>
+          </div>
+        </div>
+
+        <div className="relative">
+          <div className="relative overflow-hidden rounded-xl border border-border bg-card p-6 shadow-[0_30px_80px_-40px_rgba(0,0,0,0.9)]">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">Now building</span>
+              <span className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground">
+                Preview
+              </span>
             </div>
-          </div>
 
-          {/* Illustration/visual - keep it simple and cinematic */}
-          <div className="hidden sm:block">
-            <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
-              <p className="text-muted-foreground">Featured Content</p>
-            </Card>
+            <div className="mt-8 flex aspect-[4/3] items-center justify-center rounded-lg border border-border bg-[radial-gradient(circle_at_30%_20%,rgba(226,61,92,0.22),transparent_55%),radial-gradient(circle_at_75%_80%,rgba(226,61,92,0.12),transparent_60%)]">
+              <span className="flex size-16 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-primary">
+                <Play className="size-6 fill-current" aria-hidden="true" />
+              </span>
+            </div>
+
+            <p className="mt-6 text-sm font-medium text-foreground">
+              The catalogue is being prepared.
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              New series and films will appear here first.
+            </p>
           </div>
         </div>
       </div>
-
-      {/* Scroll indicator */}
-      <a
-        href="#features"
-        className="absolute bottom-8 left-1/2 -translate-x-1/2 text-gray-400 dark:text-gray-500 text-sm hover:text-primary transition-colors"
-      >
-        Scroll down
-      </a>
     </section>
   );
 }
 
-/** Feature highlights section. */
-export function FeaturesSection(): JSX.Element {
+const BROWSE_LINKS = [
+  {
+    href: '/drama',
+    label: 'Dramas',
+    description: 'Series from Korea, Japan, China, Thailand, and beyond.',
+    Icon: Clapperboard,
+  },
+  {
+    href: '/movie',
+    label: 'Movies',
+    description: 'Feature films, from festival favourites to crowd-pleasers.',
+    Icon: Film,
+  },
+  {
+    href: '/platforms',
+    label: 'Platforms',
+    description: 'Where the stories you want are available to stream.',
+    Icon: Tv,
+  },
+] as const;
+
+/** Browse tiles shown on the home page. */
+export function BrowseSection(): JSX.Element {
   return (
-    <section className="py-20 sm:py-32 bg-gray-900 dark:bg-gray-900">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          <FeatureCard title="Cinematic Experience" description="High-quality streaming with support for multiple resolutions and aspect ratios." />
-          <FeatureCard title="Extensive Library" description="Thousands of dramas and movies from around the world, regularly updated." />
-          <FeatureCard title="Multiple Languages" description="Support for multiple subtitles and audio languages." />
+    <section aria-labelledby="browse-heading" className="mx-auto w-full max-w-6xl px-6 py-14">
+      <div className="flex items-end justify-between gap-6">
+        <div>
+          <h2 id="browse-heading" className="text-2xl font-semibold text-foreground">
+            Find your next story
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Start with a format, then narrow it down.
+          </p>
         </div>
+      </div>
+
+      <div className="mt-8 grid gap-4 sm:grid-cols-3">
+        {BROWSE_LINKS.map(({ href, label, description, Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            className="group flex flex-col rounded-xl border border-border bg-card p-6 transition-colors hover:border-primary/40 hover:bg-secondary/40"
+          >
+            <span className="flex size-10 items-center justify-center rounded-lg border border-border bg-secondary text-primary">
+              <Icon className="size-5" aria-hidden="true" />
+            </span>
+            <span className="mt-5 text-base font-medium text-foreground">{label}</span>
+            <span className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+              {description}
+            </span>
+            <span className="mt-5 text-sm font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
+              Browse {label.toLowerCase()}
+            </span>
+          </Link>
+        ))}
       </div>
     </section>
   );
 }
 
-/** Feature card component. */
-type FeatureCardProps = {
+/**
+ * The three-step explanation shown once, on the home page.
+ */
+export function HowItWorksSection(): JSX.Element {
+  const steps = [
+    {
+      title: 'Find something',
+      description:
+        'Browse by format, genre, or platform. Search by title when you already know what you want.',
+    },
+    {
+      title: 'Press play',
+      description:
+        'Stream in your browser. No plugins, no downloads, no account required to watch.',
+    },
+    {
+      title: 'Pick it back up',
+      description:
+        'Your place in an episode is remembered, so you can return to the exact scene you left.',
+    },
+  ];
+
+  return (
+    <section aria-labelledby="how-it-works-heading" className="border-t border-border/60">
+      <div className="mx-auto w-full max-w-6xl px-6 py-14">
+        <h2 id="how-it-works-heading" className="text-2xl font-semibold text-foreground">
+          How it works
+        </h2>
+        <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+          Three things, in this order. That is the whole product.
+        </p>
+
+        <ol className="mt-8 grid gap-4 sm:grid-cols-3">
+          {steps.map((step, index) => (
+            <li key={step.title} className="rounded-xl border border-border bg-card p-6">
+              <span className="text-xs font-medium tabular-nums text-primary">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <h3 className="mt-3 text-base font-medium text-foreground">{step.title}</h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                {step.description}
+              </p>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  );
+}
+
+/** Page heading used by every public page except the home page. */
+export function PageHeader({
+  eyebrow,
+  title,
+  description,
+}: Readonly<{ eyebrow: string; title: string; description: string }>): JSX.Element {
+  return (
+    <header className="max-w-2xl">
+      <p className="text-xs font-medium uppercase tracking-[0.2em] text-primary">{eyebrow}</p>
+      <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+        {title}
+      </h1>
+      <p className="mt-4 text-base leading-relaxed text-muted-foreground">{description}</p>
+    </header>
+  );
+}
+
+/** Consistent "nothing to show" block for catalogue pages. */
+export function EmptyState({
+  icon: Icon,
+  title,
+  description,
+  children,
+}: Readonly<{
+  icon: LucideIcon;
   title: string;
   description: string;
-};
-
-export function FeatureCard({ title, description }: FeatureCardProps): JSX.Element {
+  children?: ReactNode;
+}>): JSX.Element {
   return (
-    <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
-      <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">{title}</h3>
-      <p className="text-muted-foreground text-sm">{description}</p>
-    </Card>
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40 px-6 py-14 text-center">
+      <span className="flex size-12 items-center justify-center rounded-full border border-border bg-secondary text-muted-foreground">
+        <Icon className="size-5" aria-hidden="true" />
+      </span>
+      <h2 className="mt-5 text-base font-medium text-foreground">{title}</h2>
+      <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{description}</p>
+      {children ? <div className="mt-6">{children}</div> : null}
+    </div>
   );
 }
 
-/** How it works section. */
-export function HowItWorksSection(): JSX.Element {
+/** Footer column. */
+function FooterColumn({
+  heading,
+  links,
+}: Readonly<{ heading: string; links: ReadonlyArray<{ href: string; label: string }> }>) {
   return (
-    <section className="py-20 sm:py-32 bg-gray-900 dark:bg-gray-900">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur rounded-lg">
-            <div className="text-5xl font-bold text-primary">1</div>
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mt-3">Search</h3>
-            <p className="text-muted-foreground text-sm">
-              Find your favorite drama or movie by title, genre, or actor.
-            </p>
-          </div>
-
-          <div className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur rounded-lg">
-            <div className="text-5xl font-bold text-primary">2</div>
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mt-3">Watch</h3>
-            <p className="text-muted-foreground text-sm">
-              Stream instantly in your browser with no registration required.
-            </p>
-          </div>
-
-          <div className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur rounded-lg">
-            <div className="text-5xl font-bold text-primary">3</div>
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mt-3">Enjoy</h3>
-            <p className="text-muted-foreground text-sm">
-              Enjoy ad-free streaming on any device.
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
+    <div>
+      <h2 className="text-sm font-medium text-foreground">{heading}</h2>
+      <ul className="mt-4 space-y-3 text-sm">
+        {links.map(link => (
+          <li key={`${heading}-${link.href}-${link.label}`}>
+            <Link
+              href={link.href}
+              className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {link.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
-/** Public page base layout. */
-export function PublicPageLayout({
-  title,
-  children,
-}: {
-  title: string;
-  children: any;
-}): JSX.Element {
-  return (
-    <main className="min-h-screen bg-gray-900 dark:bg-gray-950">
-      {/* Hero section on home page */}
-      {title === 'Home' ?
-        <HeroSection />
-       : null}
-
-      {/* Features section */}
-      <FeaturesSection />
-
-      {/* How it works section */}
-      <HowItWorksSection />
-
-      {/* Content area */}
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        {children}
-      </div>
-
-      {/* Footer */}
-      <PublicFooter />
-    </main>
-  );
-}
-
-/** Public page component with shared layout. */
-export function PublicPage({
-  title,
-  children,
-}: {
-  title: string;
-  children: any;
-}): JSX.Element {
-  return (
-    <PublicPageLayout title={title}>
-      {children}
-    </PublicPageLayout>
-  );
-}
-
-/** Public website footer component. */
+/** Public website footer. */
 export function PublicFooter(): JSX.Element {
   return (
-    <footer className="border-t border-gray-900/20 dark:border-gray-900/20 my-12">
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-          {/* Brand/links */}
-          <div>
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">DramaScan</h3>
-            <ul className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm text-muted-foreground dark:text-muted-foreground/60">
-              {NAV_ITEMS.map((item) =>
-                  <li key={item.href}>
-                    <a href={item.href} className="hover:text-primary dark:hover:text-primary/60">
-                      {item.label}
-                    </a>
-                  </li>
-                )}
-            </ul>
+    <footer className="border-t border-border/60 bg-background">
+      <div className="mx-auto w-full max-w-6xl px-6 py-14">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="sm:col-span-2 lg:col-span-1">
+            <Link href="/" className="flex items-center gap-2.5" aria-label="DramaScan home">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <Play className="size-3.5 fill-current" aria-hidden="true" />
+              </span>
+              <span className="text-[15px] font-semibold text-foreground">DramaScan</span>
+            </Link>
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
+              A focused home for international drama and film.
+            </p>
           </div>
 
-          {/* Categories */}
-          <div>
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Categories</h3>
-            <ul className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm text-muted-foreground dark:text-muted-foreground/60">
-              <li>
-                <a href="/categories" className="hover:text-primary dark:hover:text-primary/60">
-                  Drama Categories
-                </a>
-              </li>
-              <li>
-                <a href="/categories" className="hover:text-primary dark:hover:text-primary/60">
-                  Movie Categories
-                </a>
-              </li>
-              <li>
-                <a href="/platforms" className="hover:text-primary dark:hover:text-primary/60">
-                  Platforms
-                </a>
-              </li>
-            </ul>
-          </div>
+          <FooterColumn
+            heading="Browse"
+            links={[
+              { href: '/drama', label: 'Dramas' },
+              { href: '/movie', label: 'Movies' },
+              { href: '/categories', label: 'Categories' },
+            ]}
+          />
 
-          {/* Legal */}
-          <div>
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Legal</h3>
-            <ul className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm text-muted-foreground dark:text-muted-foreground/60">
-              <li>
-                <a href="/" className="hover:text-primary dark:hover:text-primary/60">
-                  Home
-                </a>
-              </li>
-              <li>
-                <a href="/" className="hover:text-primary dark:hover:text-primary/60">
-                  FAQ
-                </a>
-              </li>
-            </ul>
-          </div>
+          <FooterColumn
+            heading="Discover"
+            links={[
+              { href: '/platforms', label: 'Platforms' },
+              { href: '/trending', label: 'Trending' },
+              { href: '/bookmark', label: 'Bookmarks' },
+            ]}
+          />
+
+          <FooterColumn
+            heading="Support"
+            links={[
+              { href: '/help', label: 'Help' },
+              { href: '/auth/signin', label: 'Sign in' },
+            ]}
+          />
         </div>
 
-        {/* Bottom copyright */}
-        <div className="border-t border-gray-900/20 dark:border-gray-900/20 pt-6 pt-12">
-          <p className="text-sm text-muted-foreground dark:text-muted-foreground/60">
-            © {new Date().getFullYear()} DramaScan. All rights reserved.
-          </p>
+        <div className="mt-12 flex flex-col gap-3 border-t border-border/60 pt-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <p>© {new Date().getFullYear()} DramaScan. All rights reserved.</p>
+          <p>Made for people who stay for the last episode.</p>
         </div>
       </div>
     </footer>
   );
+}
+
+/** Public page base layout. */
+export async function PublicPageLayout({
+  title,
+  children,
+}: PublicPageLayoutProps): Promise<JSX.Element> {
+  const { signedIn, userName } = await resolveNavUser();
+  const isHome = title === 'Home';
+
+  return (
+    <div className="flex min-h-screen flex-col bg-background">
+      <PublicNavbar signedIn={signedIn} userName={userName} />
+
+      <main id="main-content" className="flex-1 pb-24 md:pb-0">
+        {isHome ? (
+          <>
+            <HeroSection />
+            <BrowseSection />
+            <HowItWorksSection />
+          </>
+        ) : null}
+
+        {children ? (
+          <div className="mx-auto w-full max-w-6xl px-6 py-12 sm:py-16">{children}</div>
+        ) : null}
+      </main>
+
+      <PublicFooter />
+    </div>
+  );
+}
+
+/** Public page component with shared layout. */
+export async function PublicPage({ title, children }: PublicPageLayoutProps): Promise<JSX.Element> {
+  return <PublicPageLayout title={title}>{children}</PublicPageLayout>;
 }

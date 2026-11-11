@@ -124,3 +124,31 @@ All implementation prompts through 040 complete.
 - Super Admin bootstrap (D-022): only the normalized `SUPER_ADMIN_EMAIL` can be promoted, and only while no Super Admin exists. Promotion is transaction-scoped under `pg_advisory_xact_lock(4627001033)` and is idempotent; no self-service promotion path exists.
 - `.env.local` in this workspace is UTF-16 LE, which Node's built-in env-file loaders do not parse. Verification commands read it explicitly with `[System.IO.File]::ReadAllText($path, [Text.Encoding]::Unicode)` and pass values as process environment variables. The file itself was never modified.
 - Real Google OAuth consent cannot be completed locally because `.env.local` still contains placeholder Google client credentials (`CHANGE_ME_GOOGLE_CLIENT_ID`); the OAuth redirect, PKCE state persistence, callback error path, and session gate were verified without a live Google account.
+
+---
+
+## Public Site Repair ΓÇö 2026-11-11
+
+The public site was verified in Chromium at 1440├ù900 and 390├ù844. Before the
+repair it rendered zero `<header>` elements, no navigation, black text on a dark
+surface, transparent buttons, and no active dark-mode class.
+
+The repair:
+
+- migrated the application from Tailwind 3.4 to 4.3.5 to match the vendored
+  shadcn components, and replaced the JavaScript config with CSS-first tokens;
+- added the missing semantic tokens, base text colour, heading typography, and
+  Geist font wiring;
+- rebuilt `PublicNavbar` as a client component with a desktop header, mobile
+  bottom bar, and accessible slide-over menu;
+- mounted the navigation in `PublicPageLayout` and made marketing sections
+  home-only;
+- added `/trending`, `/bookmark`, and `/help`, and restyled every public page;
+- corrected Base UI tab orientation variants that collapsed the tab layout;
+- expanded the Playwright spec to cover desktop header, mobile bottom bar, menu
+  open/close/navigation, colour readability, and every public route.
+
+Verification: typecheck 0, lint 0, unit 107/107, integration 22/22, production
+build 0, Playwright 3/3 in Chromium, and a production-build browser audit of all
+nine public routes (200, readable foreground, no horizontal overflow, no console
+errors).

@@ -578,6 +578,51 @@ The schema also had to be materialized as an ordered migration rather than an ad
 
 ---
 
+## D-023 - Tailwind v4 and the public shell contract
+
+**Date:** 2026-11-11
+**Status:** Approved by user
+**Resolves:** Public site repair after Prompts 042–044
+
+**Context:** The application ran Tailwind 3.4 while the vendored shadcn
+components were written for Tailwind v4. Unknown utilities silently emitted no
+CSS, which removed button backgrounds, card surfaces, borders, and text colours.
+The public navigation component existed but was never mounted, and the four
+declared CSS variables did not cover the component library's contract.
+
+**Decision:**
+
+1. **Tailwind direction:** Use Tailwind v4 with `@tailwindcss/postcss` and the
+   CSS-first configuration in `src/app/globals.css`. Do not reintroduce a
+   JavaScript Tailwind config unless a future decision supersedes this one.
+2. **Token contract:** `globals.css` owns the semantic tokens consumed by the
+   component library (`background`, `foreground`, `card`, `popover`, `primary`,
+   `secondary`, `muted`, `accent`, `destructive`, `border`, `input`, `ring`) and
+   maps them into `@theme inline`. Components must use semantic utilities, not
+   raw palette classes.
+3. **Dark mode:** The public site is dark by default. A `dark` class is applied
+   on `<html>` so class-based `dark:` variants in vendored components resolve.
+4. **Navigation ownership:** `PublicNavbar` is a client component responsible
+   for the desktop header, the mobile bottom bar, and the slide-over menu.
+   `PublicPageLayout` remains a Server Component and resolves guest/session
+   state with a best-effort lookup that cannot fail the page.
+5. **Home-only marketing:** Hero, browse tiles, and how-it-works render only on
+   the home route. Catalogue pages own their content and heading.
+
+**Consequences:**
+
+- Any new component must use the semantic tokens; raw `bg-gray-*` / `text-white`
+  pairs are not acceptable fallbacks.
+- Base UI attribute variants must be written against the attributes the
+  installed version actually emits (for example `data-[orientation=horizontal]`),
+  not older shorthand attributes.
+- Navigation changes are verified at 1440×900 and 390×844 in Chromium, including
+  menu open/close and route transitions.
+- The Playwright public-site spec is the regression gate for the shell and must
+  fail if the header, bottom bar, or readable foreground colours disappear.
+
+---
+
 ## Decision log rules
 
 - A decision is added only after explicit user approval or when the specification

@@ -1,49 +1,54 @@
-import { PublicPageLayout } from '@/components/public/Layout';
-import { Tabs, TabsContent, TabsList } from '@/components/ui/tabs';
-import { Tab } from '@/components/ui/tab';
-import { Card } from '@/components/ui/card';
+import { PageHeader, PublicPageLayout } from '@/components/public/Layout';
+
+const DRAMA_GENRES = [
+  { name: 'Romance', note: 'Slow burns, second chances, and the people who cause them.' },
+  { name: 'Melodrama', note: 'High emotion, long looks, and one impossible choice.' },
+  { name: 'Historical', note: 'Courts, dynasties, and costume drama with real weight.' },
+  { name: 'Political', note: 'Power, press, and the cost of staying in the room.' },
+];
+
+const MOVIE_GENRES = [
+  { name: 'Action', note: 'Chases, fights, and the occasional improbable jump.' },
+  { name: 'Thriller', note: 'Tension that builds quietly until it does not.' },
+  { name: 'Documentary', note: 'Real people, real stakes, no script.' },
+  { name: 'Independent', note: 'Small budgets, distinct voices, festival runs.' },
+];
+
+function GenreGroup({ heading, genres }: Readonly<{
+  heading: string;
+  genres: ReadonlyArray<{ name: string; note: string }>;
+}>) {
+  return (
+    <section aria-labelledby={`${heading}-heading`}>
+      <h2 id={`${heading}-heading`} className="text-lg font-medium text-foreground">
+        {heading}
+      </h2>
+      <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+        {genres.map(genre =>
+          <li key={genre.name} className="rounded-xl border border-border bg-card p-5">
+            <p className="text-sm font-medium text-foreground">{genre.name}</p>
+            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{genre.note}</p>
+          </li>
+        )}
+      </ul>
+    </section>
+  );
+}
 
 export default function CategoriesPage() {
   return (
     <PublicPageLayout title="Categories">
-      <div className="space-y-12">
-        <h1 className="text-4xl font-bold text-white dark:text-gray-900">
-          Browse by Category
-        </h1>
+      <div className="space-y-10">
+        <PageHeader
+          eyebrow="Browse"
+          title="Categories"
+          description="Start with a genre when you know the mood you want. Both lists grow as the catalogue is published."
+        />
 
-        <p className="text-lg text-gray-400 dark:text-gray-500 max-w-2xl">
-          Find dramas and movies organized by genre, theme, and style. Browse our
-          collection to discover content that matches your taste.
-        </p>
-
-        <Tabs defaultValue="drama-categories" className="w-full">
-          <TabsList>
-            <Tab value="drama-categories">Drama Genres</Tab>
-            <Tab value="movie-categories">Movie Categories</Tab>
-          </TabsList>
-          <TabsContent value="drama-categories">
-            <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Drama Genres</h3>
-              <ul className="grid grid-cols-2 gap-2 text-sm">
-                <li className="hover:text-primary dark:hover:text-primary/60">Romance</li>
-                <li className="hover:text-primary dark:hover:text-primary/60">Melodrama</li>
-                <li className="hover:text-primary dark:hover:text-primary/60">Historical</li>
-                <li className="hover:text-primary dark:hover:text-primary/60">Political</li>
-              </ul>
-            </Card>
-          </TabsContent>
-          <TabsContent value="movie-categories">
-            <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Movie Categories</h3>
-              <ul className="grid grid-cols-2 gap-2 text-sm">
-                <li className="hover:text-primary dark:hover:text-primary/60">Action</li>
-                <li className="hover:text-primary dark:hover:text-primary/60">Thriller</li>
-                <li className="hover:text-primary dark:hover:text-primary/60">Documentary</li>
-                <li className="hover:text-primary dark:hover:text-primary/60">Independent</li>
-              </ul>
-            </Card>
-          </TabsContent>
-        </Tabs>
+        <div className="grid gap-10 lg:grid-cols-2">
+          <GenreGroup heading="Drama genres" genres={DRAMA_GENRES} />
+          <GenreGroup heading="Film genres" genres={MOVIE_GENRES} />
+        </div>
       </div>
     </PublicPageLayout>
   );
