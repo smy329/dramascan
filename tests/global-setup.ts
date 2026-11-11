@@ -7,9 +7,48 @@
  */
 import 'dotenv/config';
 import { execSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { parse } from 'dotenv';
 import { Pool } from 'pg';
 import globalTeardown from './global-teardown';
+
+/**
+ * Loads `.env.local` tolerating the encoding it is stored in.
+ *
+ * `dotenv/config` only reads `.env` as UTF-8. The repository's local file can
+ * be UTF-16 LE (with a BOM), so `TEST_DATABASE_URL` would silently be absent.
+ * Variables already present in the process environment always win.
+ */
+function loadLocalEnv() {
+  let contents: Buffer;
+
+  try {
+    contents = readFileSync('.env.local');
+  } catch {
+    return;
+  }
+
+  let text: string;
+  if (contents.length >= 2 && contents[0] === 0xff && contents[1] === 0xfe) {
+    text = contents.subarray(2).toString('utf16le');
+  } else if (contents.length >= 2 && contents[0] === 0xfe && contents[1] === 0xff) {
+    const body = Buffer.from(contents.subarray(2));
+    if (body.length % 2 === 0) {
+      body.swap16();
+    }
+    text = body.toString('utf16le');
+  } else {
+    text = contents.toString('utf8').replace(/^\uFEFF/, '');
+  }
+
+  for (const [key, value] of Object.entries(parse(text))) {
+    if (!Object.prototype.hasOwnProperty.call(process.env, key)) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadLocalEnv();
 
 async function globalSetup() {
   const testDatabaseUrl = process.env.TEST_DATABASE_URL;
