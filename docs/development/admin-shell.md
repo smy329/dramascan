@@ -59,8 +59,8 @@ Request /admin
             ├─ forbidden  → notFound()
             └─ allowed    → { actor, user }
        ├─ filterAdminNavigation(ADMIN_NAVIGATION, actor)
-       ├─ getAdminBreadcrumbs('/admin')
-       └─ <AdminShell navigation breadcrumbs user>{children}</AdminShell>
+       └─ <AdminShell navigation user>{children}</AdminShell>
+            └─ getAdminBreadcrumbs(usePathname())     (client; nested routes ready)
   └─ page.tsx
        └─ requireAdminPageAccess('/admin')            (same cached reads)
        └─ <h1>Overview</h1> + actor roles
@@ -99,16 +99,37 @@ the shell. The shell therefore uses the broader derived permission set below.
 Operations inside future admin pages must still call their own canonical guard;
 the shell gate is not a substitute.
 
-### 4.2 `ADMIN_AREA_PERMISSIONS`
+### 4.2 Super Admin-only surfaces
 
-The union of every navigation entry's permission keys, de-duplicated, derived at
-module load:
+System Configuration and Roles & permissions are Super Admin-only
+(REQUIREMENTS §8.9; decision D-025). They are marked with
+`superAdminOnly: true` in the navigation model and are hidden from every actor
+without the authoritative `isSuperAdmin` flag — holding `admin.manage`,
+`settings.read`, or `settings.manage` is never a substitute. Information pages
+stays permission-based, and the System group as a whole is not Super Admin-only.
+
+The same rule is enforced server-side by `requireSuperAdmin(actor)` from
+`src/modules/authorization/guards.ts`, which checks `actor.isSuperAdmin`:
+
+- `/admin/api/roles` — every action;
+- `/admin/api/users?action=authorize-admin` — only the role-assigning action;
+- `src/workflows/admin/roles.ts` — all functions;
+- `src/workflows/admin/users.ts` — `authorizeUserAsAdmin` only.
+
+Ordinary user management (`deactivate-admin`, `reactivate-admin`) and
+`inspect-role` keep their canonical `admin.manage` requirement. Sidebar
+visibility is never the boundary.
+
+### 4.3 `ADMIN_AREA_PERMISSIONS`
+
+The union of the permission keys of every non-Super-Admin-only navigation entry,
+de-duplicated, derived at module load:
 
 ```ts
 ADMIN_AREA_PERMISSIONS = unique(
-  ADMIN_NAVIGATION.flatMap(group =>
-    group.entries.flatMap(entry => entry.permissions)
-  )
+  ADMIN_NAVIGATION.flatMap(group => group.entries)
+    .filter(entry => entry.superAdminOnly !== true)
+    .flatMap(entry => entry.permissions)
 );
 ```
 
@@ -117,6 +138,10 @@ to enter the admin area and see the Overview page. This is intentional for the
 shell and does not grant access to any future operation, which keeps its own
 guard. Adding a navigation entry automatically widens the set; do not add a
 permission that should not grant shell access.
+
+Permissions that exist only on a Super Admin-only entry are excluded, so
+`settings.read` no longer opens the shell: a custom role holding only that key
+has no reachable section and is denied at the gate.
 
 ---
 
@@ -132,6 +157,7 @@ type AdminNavEntry = Readonly<{
   href: string;
   permissions: readonly PermissionKey[]; // any-of; empty = admin-area access
   implemented: boolean;
+  superAdminOnly?: boolean; // visible only to the authoritative Super Admin
 }>;
 ```
 
@@ -152,12 +178,17 @@ type AdminNavEntry = Readonly<{
 | System        | Roles & permissions | `/admin/roles`             | `admin.manage`                                     | No          |
 | System        | Information pages   | `/admin/information-pages` | `settings.manage`, `admin.manage`                  | No          |
 
+Settings and Roles & permissions additionally carry `superAdminOnly: true` and
+are hidden from every non-Super-Admin; Information pages stays permission-based.
+
 ### 5.1 Exposing a future section
 
 1. Create the route under `src/app/admin/<section>/`.
 2. Flip that entry's `implemented` to `true` in `navigation.ts`.
 3. Gate the new route's layout/page with `requireAdminPageAccess`.
 4. Add the route to `ADMIN_ROUTE_LABELS` if it needs a breadcrumb.
+5. For a Super Admin-only surface, set `superAdminOnly: true` and guard its
+   route and service functions with `requireSuperAdmin`.
 
 Do not add an entry whose permission key is not in the catalog; a test asserts
 every key is canonical.
@@ -165,8 +196,9 @@ every key is canonical.
 ### 5.2 Filtering
 
 `filterAdminNavigation(groups, actor)` drops entries where `implemented` is
-false, drops entries whose permissions do not match, and drops groups left with
-no entries. An entry with no permissions requires admin-area access.
+false, drops `superAdminOnly` entries for any actor without `isSuperAdmin`,
+drops entries whose permissions do not match, and drops groups left with no
+entries. An entry with no permissions requires admin-area access.
 
 `isAdminNavItemActive(pathname, href)` matches `/admin` exactly and other
 sections on themselves or their descendants (`/admin/dramas/42`), never on
@@ -210,8 +242,15 @@ signed-in user to the destination, and renders a hidden `callbackUrl` input.
 - gives every crumb except the current one an `href`;
 - never invents a link for an unknown segment.
 
-`ADMIN_ROUTE_LABELS` currently maps only `/admin → Admin`. The resolver already
-supports nested paths, so a future section only adds labels.
+`ADMIN_ROUTE_LABELS` maps `/admin → Admin` and every planned static nested route
+(`/admin/users → Users`, `/admin/roles → Roles & permissions`, `/admin/settings
+→ Settings`, …). Detail paths with id segments (for example
+`/admin/users/42`) are not labelled yet and keep the `Admin` fallback until a
+later prompt extends the resolver.
+
+The shell computes `getAdminBreadcrumbs(usePathname())` in the client, so a
+future nested page renders the correct trail with no extra wiring. The resolver
+and the label map stay framework-free and shared.
 
 The header renders `<nav aria-label="Breadcrumb"><ol>` with
 `aria-current="page"` on the current crumb. The page supplies the only `h1`; the
@@ -265,6 +304,11 @@ letter, then `?`.
 | Shell/drawer        | `tests/unit/components/admin-shell.test.tsx`                |
 | Account menu        | `tests/unit/components/admin-account-menu.test.tsx`         |
 | Page gate           | `tests/unit/app/admin-page.test.tsx`                        |
+| Super Admin guard   | `tests/unit/modules/authorization/guards.test.ts`           |
+| Roles API guard     | `tests/unit/app/admin-api-roles.test.ts`                    |
+| Users API guard     | `tests/unit/app/admin-api-users.test.ts`                    |
+| Roles service guard | `tests/unit/workflows/admin/roles.test.ts`                  |
+| Users service guard | `tests/unit/workflows/admin/users.test.ts`                  |
 | Anonymous redirect  | `tests/e2e/admin-access.spec.ts`                            |
 
 Run the focused suites:
@@ -283,6 +327,11 @@ decisions are covered by unit tests against the pure access and navigation
 functions instead. This limitation is not a claim that the flows were verified
 in a browser.
 
+The Super Admin-only rule is likewise verified by unit tests that call the real
+`requireSuperAdmin` guard through the REST route handlers and workflows with a
+mocked `resolveActor`. That exercises the API and service enforcement without a
+live session; it is not an end-to-end browser proof.
+
 ---
 
 ## 11. Related Documents
@@ -291,5 +340,8 @@ in a browser.
 - [State Components](state-components.md)
 - [Testing Conventions](testing-conventions.md)
 - [Coding Conventions](coding-conventions.md)
-- Design: `docs/superpowers/specs/2026-11-12-admin-layout-design.md`
-- Plan: `docs/superpowers/plans/2026-11-12-admin-layout.md`
+- Decisions: `docs/decisions/DECISIONS.md` D-025
+- Design: `docs/superpowers/specs/2026-11-12-admin-layout-design.md`,
+  `docs/superpowers/specs/2026-11-12-admin-sidebar-breadcrumbs-design.md`
+- Plans: `docs/superpowers/plans/2026-11-12-admin-layout.md`,
+  `docs/superpowers/plans/2026-11-12-admin-sidebar-breadcrumbs.md`

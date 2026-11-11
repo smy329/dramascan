@@ -10,7 +10,49 @@ const LABELS = {
 describe('getAdminBreadcrumbs', () => {
   it('returns a single current item for /admin', () => {
     expect(getAdminBreadcrumbs('/admin')).toEqual([{ label: 'Admin' }]);
-    expect(ADMIN_ROUTE_LABELS).toEqual({ '/admin': 'Admin' });
+    expect(ADMIN_ROUTE_LABELS['/admin']).toBe('Admin');
+  });
+
+  it('labels every planned nested admin route', () => {
+    const planned = [
+      '/admin/dramas',
+      '/admin/movies',
+      '/admin/episodes',
+      '/admin/categories',
+      '/admin/platforms',
+      '/admin/reports',
+      '/admin/reviews',
+      '/admin/users',
+      '/admin/analytics',
+      '/admin/notifications',
+      '/admin/settings',
+      '/admin/roles',
+      '/admin/information-pages',
+    ];
+
+    expect(planned.every((path) => typeof ADMIN_ROUTE_LABELS[path] === 'string')).toBe(true);
+    expect(ADMIN_ROUTE_LABELS['/admin/users']).toBe('Users');
+    expect(ADMIN_ROUTE_LABELS['/admin/roles']).toBe('Roles & permissions');
+  });
+
+  it('resolves planned nested routes with the default labels', () => {
+    expect(getAdminBreadcrumbs('/admin/users')).toEqual([
+      { label: 'Admin', href: '/admin' },
+      { label: 'Users' },
+    ]);
+    expect(getAdminBreadcrumbs('/admin/roles')).toEqual([
+      { label: 'Admin', href: '/admin' },
+      { label: 'Roles & permissions' },
+    ]);
+    expect(getAdminBreadcrumbs('/admin/settings?tab=1')).toEqual([
+      { label: 'Admin', href: '/admin' },
+      { label: 'Settings' },
+    ]);
+  });
+
+  it('keeps the Admin fallback for unlabelled detail paths', () => {
+    expect(getAdminBreadcrumbs('/admin/users/42')).toEqual([{ label: 'Admin' }]);
+    expect(getAdminBreadcrumbs('/admin/unknown')).toEqual([{ label: 'Admin' }]);
   });
 
   it('links known ancestors and leaves the current item unlinked', () => {

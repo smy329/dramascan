@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Dialog } from '@/components/ui/dialog';
 import { AdminHeader } from './admin-header';
 import { AdminSidebar } from './admin-sidebar';
-import type { AdminBreadcrumb } from './breadcrumbs';
+import { getAdminBreadcrumbs } from './breadcrumbs';
 import type { AdminNavGroup } from './navigation';
 
 export type AdminShellUser = Readonly<{
@@ -16,7 +16,6 @@ export type AdminShellUser = Readonly<{
 
 type AdminShellProps = Readonly<{
   navigation: readonly AdminNavGroup[];
-  breadcrumbs: readonly AdminBreadcrumb[];
   user: AdminShellUser;
   children: ReactNode;
 }>;
@@ -25,12 +24,14 @@ type AdminShellProps = Readonly<{
  * Client-side admin chrome.
  *
  * This component performs no authorization: it renders only the navigation the
- * server already permitted. It owns the mobile drawer state and closes the
- * drawer whenever the route changes.
+ * server already permitted. It owns the mobile drawer state, closes the drawer
+ * whenever the route changes, and derives breadcrumbs from the current
+ * pathname so nested pages need no extra wiring.
  */
-export function AdminShell({ navigation, breadcrumbs, user, children }: AdminShellProps) {
+export function AdminShell({ navigation, user, children }: AdminShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
+  const breadcrumbs = getAdminBreadcrumbs(pathname);
 
   useEffect(() => {
     setMobileOpen(false);

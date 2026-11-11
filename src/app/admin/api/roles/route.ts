@@ -1,5 +1,5 @@
 import { createRole, editRole, assignPermission, revokePermission, getRolePermissions, validateSuperAdminAccess } from '@/workflows/admin/roles';
-import { resolveActor, requirePermission, toPermissionKey } from '@/modules/authorization';
+import { resolveActor, requireSuperAdmin } from '@/modules/authorization';
 import { mapErrorToRest } from '@/platform/Http';
 import { AppError } from '@/platform/errors';
 import { redirect } from 'next/navigation';
@@ -16,8 +16,9 @@ export async function GET(request: Request) {
 
   try {
     const actor = await resolveActor();
-    // Centralized server-side authorization guard (Super Admin / permitted).
-    requirePermission(actor, toPermissionKey('admin', 'manage'));
+    // Role and permission management is Super Admin-only. Enforced here at the
+    // API boundary as well as in the workflow service.
+    requireSuperAdmin(actor);
 
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');

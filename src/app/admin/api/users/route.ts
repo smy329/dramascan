@@ -1,5 +1,5 @@
 import { authorizeUserAsAdmin, deactivateAdminUser, reactivateAdminUser, inspectUserRole } from '@/workflows/admin/users';
-import { resolveActor, requirePermission, toPermissionKey } from '@/modules/authorization';
+import { resolveActor, requirePermission, requireSuperAdmin, toPermissionKey } from '@/modules/authorization';
 import { mapErrorToRest } from '@/platform/Http';
 import { AppError } from '@/platform/errors';
 import { redirect } from 'next/navigation';
@@ -16,11 +16,16 @@ export async function GET(request: Request) {
 
   try {
     const actor = await resolveActor();
-    // Centralized server-side authorization guard (Super Admin / permitted).
-    requirePermission(actor, toPermissionKey('admin', 'manage'));
-
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
+
+    // Authorizing an administrator assigns a role, so it is Super Admin-only.
+    // Ordinary user management keeps its canonical permission requirement.
+    if (action === 'authorize-admin') {
+      requireSuperAdmin(actor);
+    } else {
+      requirePermission(actor, toPermissionKey('admin', 'manage'));
+    }
 
     if (!action) {
       return new Response('Missing action', { status: 400 });

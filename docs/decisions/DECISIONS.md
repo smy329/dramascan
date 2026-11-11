@@ -672,6 +672,60 @@ administrators no way to edit, hide, reorder, or unpublish a page.
 
 ---
 
+## D-025 - Super Admin-only administration surfaces
+
+**Date:** 2026-11-12
+**Status:** Approved by user
+**Resolves:** Prompt 050; implements `REQUIREMENTS.md` §8.9 and §8.1
+
+**Context:** System Configuration (§8.9) is accessible only to Super Admin, and
+role and permission management can grant or remove privileges. The Prompt 049
+navigation model filtered by permission alone, so a custom role holding
+`admin.manage` or `settings.manage` would have seen those entries once they were
+implemented. A permission can be granted to any role; the Super Admin flag
+cannot. Visibility is also not a boundary: the operations behind those entries
+must be refused server-side.
+
+**Decision:**
+
+1. **Explicit flag:** `AdminNavEntry.superAdminOnly` marks a navigation entry as
+   Super Admin-only. It is set on the System Configuration and Roles &
+   permissions entries only; Information pages stays permission-based
+   (`settings.manage` / `admin.manage`), and the System group as a whole is not
+   Super Admin-only.
+2. **Authoritative check:** `requireSuperAdmin(actor)` in
+   `src/modules/authorization/guards.ts` checks `actor.isSuperAdmin`. It is not a
+   permission check, so holding `admin.manage` or any other key is never a
+   substitute. It throws `AuthenticationError` for anonymous actors and
+   `AuthorizationError` for authenticated non-Super-Admins.
+3. **Enforcement at every boundary:** navigation filtering hides the entry from
+   non-Super-Admins regardless of permissions; the REST routes
+   (`/admin/api/roles` for every action, `/admin/api/users` for
+   `authorize-admin`) and the workflows (`workflows/admin/roles.ts` for all
+   functions, `authorizeUserAsAdmin` in `workflows/admin/users.ts`) apply the
+   same guard. Server-side authorization is the boundary; sidebar visibility is
+   not.
+4. **Admin-area permission union:** `ADMIN_AREA_PERMISSIONS` is derived from
+   non-Super-Admin-only entries only, so a permission that exists solely on a
+   Super Admin-only surface (currently `settings.read`) can no longer open the
+   admin shell. Super Admin still enters via the flag.
+5. **Out of scope:** System Configuration persistence, a settings API, and any
+   change to last-Super-Admin protection are not part of this decision.
+
+**Consequences:**
+
+- A non-Super-Admin with `admin.manage` loses access to role and permission
+  management and to administrator authorization, even though that permission
+  previously allowed it.
+- Ordinary user management (`deactivate-admin`, `reactivate-admin`) and
+  `inspect-role` keep their canonical `admin.manage` requirement.
+- A custom role holding only `settings.read` is denied entry to the admin area;
+  it has no reachable section.
+- Adding a Super Admin-only surface in future means setting `superAdminOnly` and
+  guarding its route and service with `requireSuperAdmin`.
+
+---
+
 ## Decision log rules
 
 - A decision is added only after explicit user approval or when the specification

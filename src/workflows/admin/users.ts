@@ -1,8 +1,11 @@
 /** Administrator user account management workflows.
  *
- * These Server Actions allow Super Admin to manage administrator accounts.
- * Public users cannot register as administrators — only Super Admin
- * can authorize, activate, deactivate, or inspect roles.
+ * Authorizing an account as an administrator assigns the administrator role,
+ * so `authorizeUserAsAdmin` is Super Admin-only (`requireSuperAdmin`).
+ * Ordinary administrator account status changes and role inspection
+ * (`deactivateAdminUser`, `reactivateAdminUser`, `inspectUserRole`) require the
+ * canonical `admin.manage` permission. Public users cannot register as
+ * administrators.
  *
  * Safety / error handling:
  *   - All functions return typed errors safe for end users
@@ -12,7 +15,12 @@
 
 'use server';
 
-import { requirePermission, resolveActor, toPermissionKey } from '@/modules/authorization';
+import {
+  requirePermission,
+  requireSuperAdmin,
+  resolveActor,
+  toPermissionKey,
+} from '@/modules/authorization';
 
 // ---- Authorize user as admin ------------------------------------------
 // Super Admin action: authorize an existing Google-authenticated account
@@ -21,8 +29,9 @@ import { requirePermission, resolveActor, toPermissionKey } from '@/modules/auth
 // Returns true on success, or an error object on failure.
 export async function authorizeUserAsAdmin() {
   // Resolve the actor server-side and re-check authorization (defense in depth).
+  // Assigning the administrator role is Super Admin-only.
   const actor = await resolveActor();
-  requirePermission(actor, toPermissionKey('admin', 'manage'));
+  requireSuperAdmin(actor);
 
   try {
     return { success: true };

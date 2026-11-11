@@ -14,6 +14,7 @@ vi.mock('@/modules/authorization', async () => {
     requireAnyPermission: guards.requireAnyPermission,
     requireUser: guards.requireUser,
     requireAdmin: guards.requireAdmin,
+    requireSuperAdmin: guards.requireSuperAdmin,
     toPermissionKey: permissions.toPermissionKey,
   };
 });

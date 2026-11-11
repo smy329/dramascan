@@ -54,7 +54,6 @@ describe('resolveAdminPageAccess', () => {
     'user.read',
     'user.manage',
     'analytics.read',
-    'settings.read',
     'settings.manage',
     'admin.manage',
   ] as const)('allows an actor holding %s', (permission) => {
@@ -62,6 +61,18 @@ describe('resolveAdminPageAccess', () => {
       status: 'allowed',
       actor: actor([permission]),
     });
+  });
+
+  it('forbids an actor whose only permission belongs to a Super Admin-only entry', () => {
+    expect(resolveAdminPageAccess(actor(['settings.read']), '/admin')).toEqual({
+      status: 'forbidden',
+    });
+  });
+
+  it('denies a settings.read-only actor but allows a Super Admin and a non-Super-Admin operator', () => {
+    expect(resolveAdminPageAccess(actor(['settings.read']), '/admin').status).toBe('forbidden');
+    expect(resolveAdminPageAccess(actor([], true), '/admin').status).toBe('allowed');
+    expect(resolveAdminPageAccess(actor(['admin.manage']), '/admin').status).toBe('allowed');
   });
 
   it('always allows Super Admin', () => {

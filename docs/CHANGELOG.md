@@ -2,6 +2,46 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [0.5.0] - 2026-11-12
+
+### feat: Super Admin-only admin surfaces and nested breadcrumbs (Prompt 050)
+
+Made System Configuration and Roles & permissions Super Admin-only in the
+centralized navigation and enforced the same rule at the API and service
+boundaries, and made breadcrumbs correct for the planned nested admin routes.
+No new admin pages, placeholder routes, permission keys, schema, or migrations.
+
+- `AdminNavEntry` gains `superAdminOnly`. Settings and Roles & permissions set
+  it; Information pages stays permission-based and the System group is not
+  Super Admin-only. `filterAdminNavigation` hides a `superAdminOnly` entry from
+  any actor without `isSuperAdmin`, regardless of permissions.
+- `ADMIN_AREA_PERMISSIONS` now derives from non-Super-Admin-only entries, so a
+  permission that exists only on a Super Admin-only surface (currently
+  `settings.read`) no longer opens the admin shell.
+- `requireSuperAdmin(actor)` added to `src/modules/authorization/guards.ts`
+  (exported from the module index). It checks `actor.isSuperAdmin`, is not a
+  permission check, and throws `AuthenticationError` (401) for anonymous
+  actors and `AuthorizationError` (403) otherwise.
+- Enforced at the API and service boundaries: every `/admin/api/roles` action
+  and `src/workflows/admin/roles.ts` function; `authorize-admin` in
+  `/admin/api/users` and `authorizeUserAsAdmin` in the users workflow. Ordinary
+  user management (`deactivate-admin`, `reactivate-admin`) and `inspect-role`
+  keep their canonical `admin.manage` requirement.
+- `ADMIN_ROUTE_LABELS` extended to all thirteen planned static nested routes;
+  `AdminShell` computes `getAdminBreadcrumbs(usePathname())`, so a future nested
+  page gets the correct trail with no extra wiring. The `breadcrumbs` prop was
+  removed from the shell and the layout. Unlabelled paths keep the `Admin`
+  fallback.
+- Decision D-025; `docs/development/admin-shell.md` updated.
+
+Verification: `npm run typecheck` (exit 0); `npm run lint` (exit 0); unit tests
+(40 files, 365 passed, 47 new); `npm run test:integration` (3 files, 40 passed);
+production build (exit 0, known pre-existing `information_pages.position`
+warning on the main database only); `npm run test:e2e` (11 passed in Chromium).
+Authenticated browser flows remain unverified because local Google OAuth
+credentials are placeholders; the Super Admin rule is covered by unit tests
+that call the real guard through the route handlers and workflows.
+
 ## [0.4.9] - 2026-11-12
 
 ### feat: Admin layout (Prompt 049)

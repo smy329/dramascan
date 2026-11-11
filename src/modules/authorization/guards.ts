@@ -93,6 +93,24 @@ export function requireAdmin(actor: ActorContext): ActorContext {
 }
 
 /**
+ * Require that the actor is the Super Admin. Throws `AuthenticationError` when
+ * anonymous, `AuthorizationError` when authenticated but not Super Admin.
+ *
+ * This is not a permission check: `isSuperAdmin` is the authoritative
+ * definition, so holding `admin.manage` (or any other permission) is never a
+ * substitute.
+ */
+export function requireSuperAdmin(actor: ActorContext): ActorContext {
+  if (actor.userId === null) {
+    throw new AuthenticationError('Authentication required.');
+  }
+  if (!actor.isSuperAdmin) {
+    throw new AuthorizationError('Super Admin permission required.');
+  }
+  return actor;
+}
+
+/**
  * Resource-level access check: the actor holds the permission and (optionally)
  * satisfies the resource scope (e.g. ownership).
  *

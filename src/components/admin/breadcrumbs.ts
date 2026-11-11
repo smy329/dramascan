@@ -15,6 +15,19 @@ export type AdminBreadcrumb = Readonly<{
 
 export const ADMIN_ROUTE_LABELS: Readonly<Record<string, string>> = {
   '/admin': 'Admin',
+  '/admin/dramas': 'Dramas',
+  '/admin/movies': 'Movies',
+  '/admin/episodes': 'Episodes',
+  '/admin/categories': 'Categories',
+  '/admin/platforms': 'Platforms',
+  '/admin/reports': 'Reports',
+  '/admin/reviews': 'Reviews',
+  '/admin/users': 'Users',
+  '/admin/analytics': 'Analytics',
+  '/admin/notifications': 'Notifications',
+  '/admin/settings': 'Settings',
+  '/admin/roles': 'Roles & permissions',
+  '/admin/information-pages': 'Information pages',
 };
 
 const ADMIN_ROOT = '/admin';

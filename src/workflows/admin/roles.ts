@@ -14,7 +14,7 @@
 
 'use server';
 
-import { requirePermission, resolveActor, toPermissionKey } from '@/modules/authorization';
+import { requireSuperAdmin, resolveActor } from '@/modules/authorization';
 
 // ---- Create role -------------------------------------------------------
 // Super Admin action: create a new custom role.
@@ -30,7 +30,7 @@ export async function createRole(name: string, description: string) {
   // Server Actions are callable by clients; an actor must never be accepted as
   // an argument.
   const actor = await resolveActor();
-  requirePermission(actor, toPermissionKey('admin', 'manage'));
+  requireSuperAdmin(actor);
 
   try {
     // In a full implementation, this would insert into the database.
@@ -53,7 +53,7 @@ export async function createRole(name: string, description: string) {
 export async function editRole(roleId: string, name?: string, description?: string) {
   // Resolve the actor server-side and re-check authorization (defense in depth).
   const actor = await resolveActor();
-  requirePermission(actor, toPermissionKey('admin', 'manage'));
+  requireSuperAdmin(actor);
 
   try {
     // In a full implementation, this would update the database.
@@ -76,7 +76,7 @@ export async function assignPermission(
 ) {
   // Resolve the actor server-side and re-check authorization (defense in depth).
   const actor = await resolveActor();
-  requirePermission(actor, toPermissionKey('admin', 'manage'));
+  requireSuperAdmin(actor);
 
   try {
     // In a full implementation, this would insert into the permissions table.
@@ -99,7 +99,7 @@ export async function revokePermission(
 ) {
   // Resolve the actor server-side and re-check authorization (defense in depth).
   const actor = await resolveActor();
-  requirePermission(actor, toPermissionKey('admin', 'manage'));
+  requireSuperAdmin(actor);
 
   try {
     // In a full implementation, this would delete or update the permissions table entry.
@@ -118,7 +118,7 @@ export async function revokePermission(
 export async function getRolePermissions(_roleId: string) {
   // Resolve the actor server-side and re-check authorization (defense in depth).
   const actor = await resolveActor();
-  requirePermission(actor, toPermissionKey('admin', 'manage'));
+  requireSuperAdmin(actor);
 
   try {
     // In a full implementation, this would query the permissions table.
@@ -147,7 +147,7 @@ export async function validateSuperAdminAccess(
 ) {
   // Resolve the actor server-side and re-check authorization (defense in depth).
   const actor = await resolveActor();
-  requirePermission(actor, toPermissionKey('admin', 'manage'));
+  requireSuperAdmin(actor);
 
   try {
     // In a full implementation, this would check:

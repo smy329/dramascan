@@ -21,6 +21,11 @@ export type AdminNavEntry = Readonly<{
   /** Any-of permissions. Empty means "any actor with admin-area access". */
   permissions: readonly PermissionKey[];
   implemented: boolean;
+  /**
+   * Super Admin-only surfaces are hidden from every actor without the
+   * authoritative `isSuperAdmin` flag, regardless of permissions.
+   */
+  superAdminOnly?: boolean;
 }>;
 
 export type AdminNavGroup = Readonly<{
@@ -153,6 +158,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavGroup[] = [
         href: '/admin/settings',
         permissions: ['settings.read', 'settings.manage', 'admin.manage'],
         implemented: false,
+        superAdminOnly: true,
       },
       {
         id: 'roles',
@@ -160,6 +166,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavGroup[] = [
         href: '/admin/roles',
         permissions: ['admin.manage'],
         implemented: false,
+        superAdminOnly: true,
       },
       {
         id: 'information-pages',
@@ -173,11 +180,17 @@ export const ADMIN_NAVIGATION: readonly AdminNavGroup[] = [
 ];
 
 /**
- * Union of every permission that grants access to some admin section. Derived
- * from the navigation model so the shell gate cannot drift from the entries.
+ * Union of every permission that grants access to a non-Super-Admin-only admin
+ * section. Derived from the navigation model so the shell gate cannot drift
+ * from the entries. Permissions that exist only on a Super Admin-only entry
+ * are excluded: holding one must not open the admin shell.
  */
 export const ADMIN_AREA_PERMISSIONS: readonly PermissionKey[] = Array.from(
-  new Set(ADMIN_NAVIGATION.flatMap((group) => group.entries.flatMap((entry) => entry.permissions)))
+  new Set(
+    ADMIN_NAVIGATION.flatMap((group) => group.entries)
+      .filter((entry) => entry.superAdminOnly !== true)
+      .flatMap((entry) => entry.permissions)
+  )
 );
 
 /**
@@ -218,6 +231,9 @@ function isEntryVisible(
   areaAccess: boolean
 ): boolean {
   if (!entry.implemented) {
+    return false;
+  }
+  if (entry.superAdminOnly === true && !actor.isSuperAdmin) {
     return false;
   }
   if (entry.permissions.length === 0) {

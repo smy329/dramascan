@@ -160,3 +160,79 @@ describe('isAdminNavItemActive', () => {
     expect(isAdminNavItemActive('/admin/dramas-two', '/admin/dramas')).toBe(false);
   });
 });
+
+function entryById(id: string) {
+  return ALL_ENTRIES.find((entry) => entry.id === id);
+}
+
+const SYSTEM_GROUP: readonly AdminNavGroup[] = [
+  {
+    id: 'system',
+    label: 'System',
+    entries: [
+      {
+        id: 'settings',
+        label: 'Settings',
+        href: '/admin/settings',
+        permissions: ['settings.read', 'settings.manage', 'admin.manage'],
+        implemented: true,
+        superAdminOnly: true,
+      },
+      {
+        id: 'roles',
+        label: 'Roles & permissions',
+        href: '/admin/roles',
+        permissions: ['admin.manage'],
+        implemented: true,
+        superAdminOnly: true,
+      },
+      {
+        id: 'information-pages',
+        label: 'Information pages',
+        href: '/admin/information-pages',
+        permissions: ['settings.manage', 'admin.manage'],
+        implemented: true,
+      },
+    ],
+  },
+];
+
+describe('Super Admin-only entries', () => {
+  it('marks only Settings and Roles & permissions', () => {
+    expect(entryById('settings')?.superAdminOnly).toBe(true);
+    expect(entryById('roles')?.superAdminOnly).toBe(true);
+    expect(entryById('information-pages')?.superAdminOnly).not.toBe(true);
+  });
+
+  it('hides Super Admin-only entries from an actor with admin.manage', () => {
+    const visible = filterAdminNavigation(SYSTEM_GROUP, actor(['admin.manage']));
+
+    expect(visible[0]?.entries.map((entry) => entry.id)).toEqual(['information-pages']);
+  });
+
+  it('hides Super Admin-only entries from an actor with settings.manage', () => {
+    const visible = filterAdminNavigation(SYSTEM_GROUP, actor(['settings.manage']));
+
+    expect(visible[0]?.entries.map((entry) => entry.id)).toEqual(['information-pages']);
+  });
+
+  it('shows every system entry to a Super Admin', () => {
+    const visible = filterAdminNavigation(SYSTEM_GROUP, actor([], true));
+
+    expect(visible[0]?.entries.map((entry) => entry.id)).toEqual([
+      'settings',
+      'roles',
+      'information-pages',
+    ]);
+  });
+
+  it('excludes Super Admin-only permissions from the admin-area union', () => {
+    expect(ADMIN_AREA_PERMISSIONS).not.toContain('settings.read');
+    expect(ADMIN_AREA_PERMISSIONS).toContain('settings.manage');
+    expect(ADMIN_AREA_PERMISSIONS).toContain('admin.manage');
+  });
+
+  it('denies an actor whose only permission is on a Super Admin-only entry', () => {
+    expect(hasAdminAreaAccess(actor(['settings.read']))).toBe(false);
+  });
+});

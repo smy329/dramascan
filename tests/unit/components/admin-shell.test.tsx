@@ -40,12 +40,11 @@ const navigation: readonly AdminNavGroup[] = [
   },
 ];
 
-const breadcrumbs = [{ label: 'Admin' }] as const;
 const user = { name: 'Ada Lovelace', email: 'ada@example.com' } as const;
 
 function renderShell() {
   return render(
-    <AdminShell navigation={navigation} breadcrumbs={breadcrumbs} user={user}>
+    <AdminShell navigation={navigation} user={user}>
       <p>Admin content</p>
     </AdminShell>
   );
@@ -81,6 +80,20 @@ describe('AdminShell', () => {
     const current = nav.querySelector('[aria-current="page"]');
     expect(current?.textContent).toBe('Admin');
     expect(current?.closest('a')).toBeNull();
+  });
+
+  it('resolves nested breadcrumbs from the current pathname', () => {
+    pathnameState.value = '/admin/users';
+
+    renderShell();
+
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    const current = nav.querySelector('[aria-current="page"]');
+    const ancestor = nav.querySelector('a');
+
+    expect(current?.textContent).toBe('Users');
+    expect(current?.closest('a')).toBeNull();
+    expect(ancestor?.getAttribute('href')).toBe('/admin');
   });
 
   it('renders the page content inside the main landmark', () => {
@@ -130,7 +143,7 @@ describe('AdminShell', () => {
 
     pathnameState.value = '/admin/dramas';
     view.rerender(
-      <AdminShell navigation={navigation} breadcrumbs={breadcrumbs} user={user}>
+      <AdminShell navigation={navigation} user={user}>
         <p>Admin content</p>
       </AdminShell>
     );

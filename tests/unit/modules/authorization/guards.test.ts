@@ -5,6 +5,7 @@ import {
   requireAdmin,
   requireAnyPermission,
   requirePermission,
+  requireSuperAdmin,
   requireUser,
 } from '@/modules/authorization/guards';
 import type { ActorContext } from '@/modules/authorization/actors';
@@ -126,5 +127,26 @@ describe('assertResourceAccess', () => {
 
   it('denies anonymous actors even for unowned resources', () => {
     expect(assertResourceAccess(anonymous, 'review.read')).toBe(false);
+  });
+});
+
+describe('requireSuperAdmin', () => {
+  it('rejects anonymous actors with AuthenticationError', () => {
+    expect(() => requireSuperAdmin(anonymous)).toThrow(AuthenticationError);
+  });
+
+  it('rejects an authenticated non-Super-Admin even with admin.manage', () => {
+    const adminManager: ActorContext = {
+      userId: 'user-9',
+      roles: ['admin'],
+      isSuperAdmin: false,
+      permissions: ['admin.manage'],
+    };
+
+    expect(() => requireSuperAdmin(adminManager)).toThrow(AuthorizationError);
+  });
+
+  it('returns the actor for a Super Admin', () => {
+    expect(requireSuperAdmin(superAdmin)).toBe(superAdmin);
   });
 });
