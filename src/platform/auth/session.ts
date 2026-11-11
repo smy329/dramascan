@@ -11,7 +11,7 @@
  * limit is invalidated and `null` is returned.
  */
 
-/* eslint-disable @typescript-eslint/no-var-requires */
+
 import 'server-only';
 
 import { eq } from 'drizzle-orm';

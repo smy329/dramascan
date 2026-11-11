@@ -42,7 +42,7 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 /** Mobile navigation toggle button. */
-const mobileNavToggle = (
+const mobileNavToggle =
   <Button
     variant="ghost"
     aria-label="Open main navigation"
@@ -62,10 +62,10 @@ const mobileNavToggle = (
       <line x1="3" y1="18" x2="21" y2="18"></line>
     </svg>
   </Button>
-);
+;
 
 /** Bottom navigation bar for mobile devices. */
-const mobileBottomNav = (
+const mobileBottomNav =
   <nav className="fixed bottom-0 left-0 right-0 z-50 bg-black dark:bg-gray-950/50 border-t border-gray-900/20 px-6 py-1">
     <div className="flex flex-1 sm:flex-1 justify-around">
       <a
@@ -136,10 +136,10 @@ const mobileBottomNav = (
       Profile
     </Button>
   </nav>
-);
+;
 
 /** Hamburger menu items (secondary destinations). */
-const hamburgerMenuItems = (
+const hamburgerMenuItems =
   <nav className="fixed inset-0 z-50 py-8 bg-white dark:bg-gray-900 shadow-lg">
     <ul className="flex flex-col w-full max-w-none space-y-1 px-8 pb-8">
       <li>
@@ -168,7 +168,7 @@ const hamburgerMenuItems = (
       </li>
     </ul>
   </nav>
-);
+;
 
 /** Public website main navigation component. */
 export function PublicNavbar(): JSX.Element {
@@ -188,8 +188,7 @@ export function PublicNavbar(): JSX.Element {
 
           {/* Desktop navigation */}
           <nav className="hidden sm:block space-x-8">
-            {NAV_ITEMS.map((item) => {
-              return (
+            {NAV_ITEMS.map((item) =>
                 <a
                   key={item.href}
                   href={item.href}
@@ -197,8 +196,7 @@ export function PublicNavbar(): JSX.Element {
                 >
                   {item.label}
                 </a>
-              );
-            })}
+              )}
           </nav>
         </div>
       </header>
@@ -340,9 +338,9 @@ export function PublicPageLayout({
   return (
     <main className="min-h-screen bg-gray-900 dark:bg-gray-950">
       {/* Hero section on home page */}
-      {title === 'Home' ? (
+      {title === 'Home' ?
         <HeroSection />
-      ) : null}
+       : null}
 
       {/* Features section */}
       <FeaturesSection />
@@ -386,15 +384,13 @@ export function PublicFooter(): JSX.Element {
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">DramaScan</h3>
             <ul className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm text-muted-foreground dark:text-muted-foreground/60">
-              {NAV_ITEMS.map((item) => {
-                return (
+              {NAV_ITEMS.map((item) =>
                   <li key={item.href}>
                     <a href={item.href} className="hover:text-primary dark:hover:text-primary/60">
                       {item.label}
                     </a>
                   </li>
-                );
-              })}
+                )}
             </ul>
           </div>
 
