@@ -2,6 +2,57 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [0.4.7] - 2026-11-11
+
+### feat: Shared loading and empty states (Prompt 047)
+
+Added reusable, accessible state primitives for later use by public and admin
+interfaces. This prompt delivers the components only: no page wiring, no route
+`loading.tsx`/`error.tsx` boundaries, and no migration of the existing
+`Layout.EmptyState`.
+
+- Added `Skeleton` (`text`, `circle`, `rectangle`) and `SkeletonGroup`, which
+  owns one `role="status"` / `aria-live="polite"` announcement for any number of
+  decorative bones and imposes no layout of its own.
+- Added `ContentCardSkeleton`, mirroring `ContentCard`'s 2:3 poster,
+  `rounded-xl` frame, `gap-3`, and metadata rhythm to limit layout shift. The
+  whole block is decorative.
+- Added `LoadingIndicator` with `inline` and `block` variants and `sm`/`md`/`lg`
+  spinner sizes. The spinner is `aria-hidden`; the accessible name is `sr-only`
+  text inside the component's single status region.
+- Added `EmptyState` mirroring the existing public API (`icon`, `title`,
+  `description`, `children`) plus optional `description`, `className`, and
+  `headingLevel` (1–6, default 2, out-of-range falls back to `h2`).
+- Added server-compatible `RetryState` (`role="alert"`) and a separate
+  `RetryButton` client island. The button disables and sets `aria-busy` while
+  retrying, blocks duplicate clicks, and announces `Retrying…`.
+- All animated elements carry `motion-reduce:animate-none`.
+- No new runtime or dev dependencies, no schema changes, and no modifications to
+  `src/components/ui/**` or the existing `Layout.EmptyState`.
+
+### Changed Files
+
+- `src/components/states/heading.ts` — heading level type and tag resolver
+- `src/components/states/skeleton.tsx` — `Skeleton` and `SkeletonGroup`
+- `src/components/states/content-card-skeleton.tsx` — card placeholder
+- `src/components/states/loading-indicator.tsx` — inline and block loading
+- `src/components/states/empty-state.tsx` — shared empty state
+- `src/components/states/retry-state.tsx` — server-compatible retry block
+- `src/components/states/retry-button.tsx` — client retry island
+- `tests/unit/components/*.test.ts(x)` — six new state-component test files
+- `docs/development/state-components.md` — component API and usage guide
+- `docs/README.md`, `docs/PROJECT_STATUS.md` — documentation index and status
+
+### Verification
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass
+- Unit tests — 208 passed (68 component tests)
+- Integration tests — 40 passed
+- Playwright E2E — 9 passed (regression; no route was added)
+- `npm run build` — pass (pre-existing main-database `information_pages`
+  migration warnings persist and degrade gracefully)
+
 ## [0.4.6] - 2026-11-11
 
 ### feat: Shared content cards (Prompt 046)
