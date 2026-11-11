@@ -8,6 +8,13 @@
       "when": 1794318473505,
       "tag": "0000_boring_harry_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794393519254,
+      "tag": "0001_pale_earthquake",
+      "breakpoints": true
     }
   ]
 }

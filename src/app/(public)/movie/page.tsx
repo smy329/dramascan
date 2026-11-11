@@ -1,6 +1,6 @@
 import { PublicPageLayout } from '@/components/public/Layout';
 import { Card } from '@/components/ui/card';
-import { Tabs } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList } from '@/components/ui/tabs';
 import { Tab } from '@/components/ui/tab';
 
 export default function MoviesPage() {
@@ -17,22 +17,26 @@ export default function MoviesPage() {
         </p>
 
         <Tabs defaultValue="recent" className="w-full">
-          <Tab value="recent">
+          <TabsList>
+            <Tab value="recent">Recent Releases</Tab>
+            <Tab value="classic">Classic Films</Tab>
+          </TabsList>
+          <TabsContent value="recent">
             <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Recent Releases</h3>
               <p className="text-sm text-muted-foreground dark:text-muted-foreground/60">
                 New films added weekly
               </p>
             </Card>
-          </Tab>
-          <Tab value="classic">
+          </TabsContent>
+          <TabsContent value="classic">
             <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Classic Films</h3>
               <p className="text-sm text-muted-foreground dark:text-muted-foreground/60">
                 Timeless cinema
               </p>
             </Card>
-          </Tab>
+          </TabsContent>
         </Tabs>
       </div>
     </PublicPageLayout>

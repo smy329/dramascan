@@ -1,6 +1,6 @@
 import { PublicPageLayout } from '@/components/public/Layout';
 import { Card } from '@/components/ui/card';
-import { Tabs } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList } from '@/components/ui/tabs';
 import { Tab } from '@/components/ui/tab';
 
 export default function DramasPage() {
@@ -18,22 +18,26 @@ export default function DramasPage() {
         </p>
 
         <Tabs defaultValue="trending" className="w-full">
-          <Tab value="trending">
+          <TabsList>
+            <Tab value="trending">Trending Now</Tab>
+            <Tab value="complete">Complete Series</Tab>
+          </TabsList>
+          <TabsContent value="trending">
             <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Trending Now</h3>
               <p className="text-sm text-muted-foreground dark:text-muted-foreground/60">
                 Currently trending across all categories
               </p>
             </Card>
-          </Tab>
-          <Tab value="complete">
+          </TabsContent>
+          <TabsContent value="complete">
             <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Complete Series</h3>
               <p className="text-sm text-muted-foreground dark:text-muted-foreground/60">
                 Full seasons available
               </p>
             </Card>
-          </Tab>
+          </TabsContent>
         </Tabs>
       </div>
     </PublicPageLayout>

@@ -1,5 +1,5 @@
 import { PublicPageLayout } from '@/components/public/Layout';
-import { Tabs } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList } from '@/components/ui/tabs';
 import { Tab } from '@/components/ui/tab';
 import { Card } from '@/components/ui/card';
 
@@ -18,7 +18,11 @@ export default function PlatformsPage() {
         </p>
 
         <Tabs defaultValue="available" className="w-full">
-          <Tab value="available">
+          <TabsList>
+            <Tab value="available">Currently Available</Tab>
+            <Tab value="partners">Partner Platforms</Tab>
+          </TabsList>
+          <TabsContent value="available">
             <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Currently Available</h3>
               <ul className="grid grid-cols-2 gap-2 text-sm">
@@ -28,8 +32,8 @@ export default function PlatformsPage() {
                 <li className="hover:text-primary dark:hover:text-primary/60">Disney+</li>
               </ul>
             </Card>
-          </Tab>
-          <Tab value="partners">
+          </TabsContent>
+          <TabsContent value="partners">
             <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Partner Platforms</h3>
               <ul className="grid grid-cols-2 gap-2 text-sm">
@@ -39,7 +43,7 @@ export default function PlatformsPage() {
                 <li className="hover:text-primary dark:hover:text-primary/60">Seezn</li>
               </ul>
             </Card>
-          </Tab>
+          </TabsContent>
         </Tabs>
       </div>
     </PublicPageLayout>

@@ -1,5 +1,5 @@
 import { PublicPageLayout } from '@/components/public/Layout';
-import { Tabs } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList } from '@/components/ui/tabs';
 import { Tab } from '@/components/ui/tab';
 import { Card } from '@/components/ui/card';
 
@@ -17,7 +17,11 @@ export default function CategoriesPage() {
         </p>
 
         <Tabs defaultValue="drama-categories" className="w-full">
-          <Tab value="drama-categories">
+          <TabsList>
+            <Tab value="drama-categories">Drama Genres</Tab>
+            <Tab value="movie-categories">Movie Categories</Tab>
+          </TabsList>
+          <TabsContent value="drama-categories">
             <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Drama Genres</h3>
               <ul className="grid grid-cols-2 gap-2 text-sm">
@@ -27,8 +31,8 @@ export default function CategoriesPage() {
                 <li className="hover:text-primary dark:hover:text-primary/60">Political</li>
               </ul>
             </Card>
-          </Tab>
-          <Tab value="movie-categories">
+          </TabsContent>
+          <TabsContent value="movie-categories">
             <Card className="p-6 bg-gray-900/50 dark:bg-gray-900/50 backdrop-blur">
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Movie Categories</h3>
               <ul className="grid grid-cols-2 gap-2 text-sm">
@@ -38,7 +42,7 @@ export default function CategoriesPage() {
                 <li className="hover:text-primary dark:hover:text-primary/60">Independent</li>
               </ul>
             </Card>
-          </Tab>
+          </TabsContent>
         </Tabs>
       </div>
     </PublicPageLayout>

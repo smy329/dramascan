@@ -21,16 +21,25 @@ vi.mock('next/headers', () => ({
 
 import { getActiveSession } from '@/platform/auth/session';
 
-type AccountStatus = { isActive: boolean; deletedAt: Date | null };
-
 /** Minimal Drizzle-like chain that resolves to the supplied rows. */
-function query(rows: AccountStatus[]) {
+function query<T>(rows: T[]) {
   const builder: Record<string, unknown> = {};
   const chain = () => builder;
   builder.from = chain;
   builder.where = chain;
   builder.limit = () => Promise.resolve(rows);
   return builder;
+}
+
+function sessionRow(overrides: Partial<{ lastActivityAt: Date | null }> = {}) {
+  return {
+    id: 'session-1',
+    expiresAt: new Date(Date.now() + 60_000),
+    lastActivityAt: new Date(),
+    ipAddress: null,
+    userAgent: null,
+    ...overrides,
+  };
 }
 
 function signedInAs(id = 'user-1') {
@@ -75,7 +84,24 @@ describe('getActiveSession', () => {
 
   it('returns the identity for an active user', async () => {
     signedInAs();
-    selectMock.mockReturnValue(query([{ isActive: true, deletedAt: null }]));
+    selectMock
+      .mockReturnValueOnce(query([{ isActive: true, deletedAt: null }]))
+      .mockReturnValueOnce(query([{ isActive: true, deletedAt: null }]))
+      .mockReturnValueOnce(query([sessionRow()]));
+
+    await expect(getActiveSession()).resolves.toEqual({
+      userId: 'user-1',
+      userEmail: 'user@example.com',
+      userName: 'Test User',
+    });
+  });
+
+  it('treats a session without a recorded last activity as fresh', async () => {
+    signedInAs();
+    selectMock
+      .mockReturnValueOnce(query([{ isActive: true, deletedAt: null }]))
+      .mockReturnValueOnce(query([{ isActive: true, deletedAt: null }]))
+      .mockReturnValueOnce(query([sessionRow({ lastActivityAt: null })]));
 
     await expect(getActiveSession()).resolves.toEqual({
       userId: 'user-1',

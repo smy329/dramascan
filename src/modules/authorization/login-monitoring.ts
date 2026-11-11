@@ -13,8 +13,8 @@
 import 'server-only';
 
 import { db } from '@/db/client';
-import { eq, sql } from 'drizzle-orm';
-import { loginAttempts } from '@/modules/auth/schema';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { loginAttempts, users } from '@/modules/auth/schema';
 
 /** Maximum failed attempts before temporary lockout is triggered. */
 const DEFAULT_FAILURE_THRESHOLD = 5;
@@ -44,15 +44,17 @@ export async function countFailedAttempts(
   const since = new Date(Date.now() - windowMinutes * 60000);
 
   const [result] = await db
-    .select({ count: sql`count(*)` })
+    .select({ count: sql<string>`count(*)` })
     .from(loginAttempts)
     .where(
-      eq(loginAttempts.userId, userId),
-      sql`${loginAttempts.createdAt} >= ${since}`,
-      eq(loginAttempts.success, false)
+      and(
+        eq(loginAttempts.userId, userId),
+        eq(loginAttempts.success, false),
+        gte(loginAttempts.createdAt, since)
+      )
     );
 
-  return Number(result.count);
+  return Number(result?.count ?? 0);
 }
 
 /** Check whether a user is currently locked out. */
@@ -71,10 +73,7 @@ export async function isUserLockedOut(userId: string): Promise<{
   const [earliest] = await db
     .select({ createdAt: loginAttempts.createdAt })
     .from(loginAttempts)
-    .where(
-      eq(loginAttempts.userId, userId),
-      eq(loginAttempts.success, false)
-    )
+    .where(and(eq(loginAttempts.userId, userId), eq(loginAttempts.success, false)))
     .orderBy(loginAttempts.createdAt);
 
   let lockUntil: Date | undefined;
@@ -111,7 +110,7 @@ export async function getUserLoginAttempts(
     })
     .from(loginAttempts)
     .where(eq(loginAttempts.userId, userId))
-    .orderBy(loginAttempts.createdAt.desc())
+    .orderBy(desc(loginAttempts.createdAt))
     .limit(limit);
 
   return rows.map(row => ({
@@ -129,7 +128,7 @@ export async function getAllLoginAttempts(
   offset: number = 0
 ): Promise<Array<{
   id: string;
-  userId: string;
+  userId: string | null;
   success: boolean;
   ipAddress: string | null;
   userAgent: string | null;
@@ -145,7 +144,7 @@ export async function getAllLoginAttempts(
       createdAt: loginAttempts.createdAt,
     })
     .from(loginAttempts)
-    .orderBy(loginAttempts.createdAt.desc())
+    .orderBy(desc(loginAttempts.createdAt))
     .limit(limit)
     .offset(offset);
 
@@ -167,37 +166,36 @@ export async function getLoginStatistics(): Promise<{
   lockedOutUsers: number;
   recentFailed: number;
 }> {
-  const now = new Date();
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const lockoutWindowStart = new Date(Date.now() - DEFAULT_LOCKOUT_DURATION * 60 * 1000);
 
-  const [totalResult, successResult, failedResult] = await Promise.all([
-    db.$count(loginAttempts),
-    db.$count(
-      loginAttempts.where((success) => eq(success, true))
-    ),
-    db.$count(
-      loginAttempts.where(
-        gte(loginAttempts.createdAt, twentyFourHoursAgo),
-        eq(loginAttempts.success, false)
-      )
-    ),
-  ]);
-
-  // Count users with recent failed attempts who may be locked out
-  const [lockedUsersResult] = await db
-    .select({ count: sql`count(distinct ${loginAttempts.userId})` })
-    .from(loginAttempts)
-    .where(
-      eq(loginAttempts.success, false),
-      sql`${loginAttempts.createdAt} >= ${new Date(Date.now() - DEFAULT_LOCKOUT_DURATION * 60000)}`
-    );
+  const [totalAttempts, successfulLogins, failedLogins, recentFailed, lockedUsers] =
+    await Promise.all([
+      db.$count(loginAttempts),
+      db.$count(loginAttempts, eq(loginAttempts.success, true)),
+      db.$count(loginAttempts, eq(loginAttempts.success, false)),
+      db.$count(
+        loginAttempts,
+        and(eq(loginAttempts.success, false), gte(loginAttempts.createdAt, twentyFourHoursAgo))
+      ),
+      // Users with failures inside the lockout window who may be restricted.
+      db
+        .select({ count: sql<string>`count(distinct ${loginAttempts.userId})` })
+        .from(loginAttempts)
+        .where(
+          and(
+            eq(loginAttempts.success, false),
+            gte(loginAttempts.createdAt, lockoutWindowStart)
+          )
+        ),
+    ]);
 
   return {
-    totalAttempts: Number(totalResult),
-    successfulLogins: Number(successResult),
-    failedLogins: Number(failedResult),
-    lockedOutUsers: Number(lockedUsersResult.count),
-    recentFailed: 0,
+    totalAttempts,
+    successfulLogins,
+    failedLogins,
+    lockedOutUsers: Number(lockedUsers[0]?.count ?? 0),
+    recentFailed,
   };
 }
 
@@ -213,13 +211,18 @@ export async function getLoginStatistics(): Promise<{
  * Returns `true` if the session should be revoked, `false` otherwise.
  */
 export async function checkGoogleSecurityChange(userId: string): Promise<boolean> {
-  // Best-effort check: if the user account is deactivated or soft-deleted,
-  // revoke all sessions. Otherwise, no real-time Google security integration.
+  // Best-effort check: if the user account is deactivated, soft-deleted, or
+  // missing, revoke all sessions. Otherwise, no real-time Google security
+  // integration is promised.
   const [account] = await db
-    .select({ isActive: false, deletedAt: false })
-    .from(loginAttempts)
+    .select({ isActive: users.isActive, deletedAt: users.deletedAt })
+    .from(users)
+    .where(eq(users.id, userId))
     .limit(1);
-  // In practice, this would check the users table for isActive/deletedAt status.
-  // For now, return false (no automatic revocation beyond deactivated accounts).
-  return false;
+
+  if (!account) {
+    return true;
+  }
+
+  return !account.isActive || account.deletedAt !== null;
 }

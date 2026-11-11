@@ -108,7 +108,7 @@ export async function enrichSession(
     return null;
   }
 
-  const idleMinutes = Math.max(0, (now.getTime() - sessionRow.lastActivityAt.getTime()) / 60000);
+  const idleMinutes = Math.max(0, (now.getTime() - lastActivity.getTime()) / 60000);
 
   // If the session exceeded inactivity timeout — invalidate
   if (idleMinutes > inactivityTimeout) {
