@@ -237,3 +237,207 @@ Provide:
 - Any unresolved issues.
 
 **Completion requirement:** A micro-prompt is considered fully completed only when its implementation has been verified, its changes have been committed, and its commit has been successfully pushed to the configured GitHub branch.
+
+
+# Autonomous Testing, Runtime Verification & Bug-Fixing Protocol
+
+## 1. Objective
+
+Act as an autonomous full-stack development, testing, debugging, and quality-assurance agent for this project.
+
+Do not consider a prompt complete merely because its code has been written or TypeScript compiles. Implement, execute, test, diagnose, fix, and re-verify the requested functionality using the available project tools.
+
+## 2. Required Testing Infrastructure
+
+Inspect the existing project before making changes.
+
+Ensure the project has appropriate infrastructure for:
+
+- TypeScript type checking.
+- ESLint.
+- Production builds.
+- Vitest unit tests.
+- PostgreSQL integration tests using `TEST_DATABASE_URL`.
+- Playwright end-to-end browser tests using Chromium.
+- Runtime server verification.
+- Test failure reports and browser screenshots.
+
+If Playwright or required testing infrastructure is missing, implement it incrementally without replacing or breaking existing configurations.
+
+Use the existing package manager and project conventions.
+
+Add useful npm scripts where appropriate, such as:
+
+- `typecheck`
+- `lint`
+- `test`
+- `test:unit`
+- `test:integration`
+- `test:e2e`
+- `build`
+
+Do not create duplicate or conflicting scripts.
+
+## 3. Runtime and Browser Testing
+
+Use the terminal to execute the application and testing commands.
+
+Configure Playwright's `webServer` to start the Next.js development or dedicated test server automatically when running E2E tests.
+
+Use a real browser engine (Chromium) to verify actual application behavior.
+
+For each applicable feature:
+
+1. Start the application using the appropriate test configuration.
+2. Open the relevant page in Chromium.
+3. Exercise the actual user workflow.
+4. Test relevant interactions, navigation, forms, validation, and error states.
+5. Inspect browser console errors and failed network requests.
+6. Capture screenshots when useful, especially for UI failures.
+7. Inspect server logs for runtime exceptions.
+8. Verify the expected database changes and application responses.
+
+Do not claim that browser testing occurred unless the browser tests actually executed.
+
+## 4. Database and Integration Test Safety
+
+Use `TEST_DATABASE_URL` exclusively for automated integration and E2E database operations.
+
+Before running database tests:
+
+- Validate that the configured test database name ends with `_test`.
+- Verify that it differs from `DATABASE_URL`.
+- Verify that the connection points to the expected local test database.
+- Never run destructive test cleanup against the development or production database.
+- Never expose database credentials in logs or reports.
+
+Create isolated test data and reliable cleanup procedures.
+
+Do not assume that successful database connectivity proves application-level database correctness.
+
+## 5. Autonomous Debugging Loop
+
+Whenever a test or runtime check fails:
+
+1. Capture the actual error, stack trace, browser console output, or failing assertion.
+2. Identify the root cause rather than suppressing the symptom.
+3. Inspect related code, dependencies, database schema, and application flow.
+4. Write or update a regression test reproducing the failure.
+5. Implement the smallest maintainable fix.
+6. Run the previously failing test.
+7. Run relevant regression tests.
+8. Repeat until the failure is resolved or a genuine external limitation prevents progress.
+
+Do not:
+- Delete failing tests to obtain a passing result.
+- Weaken assertions without a justified technical reason.
+- Hide exceptions or suppress errors merely to make tests pass.
+- Mock application behavior when the real implementation can be tested safely.
+- Claim a bug is fixed without reproducing and verifying the fix.
+
+If a failure cannot be resolved, report the exact blocker and the evidence collected.
+
+## 6. Security Verification
+
+For security-sensitive features, perform targeted checks appropriate to the implementation.
+
+Prioritize:
+
+- Authentication and session validation.
+- RBAC and canonical `resource.action` permission enforcement.
+- Super Admin bootstrap and deactivation behavior.
+- Server-side authorization and resource ownership.
+- Input validation and SQL injection prevention.
+- CSRF and XSS protections where applicable.
+- Rate limiting.
+- Secret and environment-variable exposure.
+- Unauthorized API and server-action access.
+
+Test both authorized and unauthorized scenarios.
+
+Do not claim a comprehensive security audit merely because ordinary tests pass.
+
+Never use production credentials or weaken production security to make tests easier.
+
+## 7. Performance and Reliability Checks
+
+For applicable features, check:
+
+- Database query efficiency and unnecessary queries.
+- Connection pool behavior.
+- Server errors and unhandled promise rejections.
+- Unnecessary client-side JavaScript.
+- Memory-intensive operations.
+- Video playback and external MP4 source behavior.
+- Appropriate loading, empty, error, and retry states.
+
+Use measurable evidence where possible. Do not invent performance results or claim scalability without load testing.
+
+Preserve the project's approved low-RAM architecture and all recorded technical decisions.
+
+## 8. Per-Prompt Completion Gate
+
+Before declaring any individual micro-prompt complete:
+
+1. Review the implementation against the exact prompt requirements.
+2. Run TypeScript type checking.
+3. Run ESLint.
+4. Run relevant Vitest unit tests.
+5. Run relevant PostgreSQL integration tests.
+6. Run relevant Playwright E2E tests.
+7. Run a production build when appropriate.
+8. Review browser console and server logs for relevant runtime errors.
+9. Review the Git diff and check for accidental changes or secrets.
+10. Fix discovered regressions and repeat verification.
+
+Do not unnecessarily run the entire expensive test suite after every tiny change. However, run the full regression suite at meaningful milestones and before production readiness.
+
+If infrastructure does not yet exist, establish it as part of the appropriate setup work. Never pretend a test passed when it was not executed.
+
+## 9. Git and Documentation
+
+After successful verification:
+
+- Update relevant project documentation.
+- Record tests executed and their actual results.
+- Review the final Git diff.
+- Follow the existing Git commit and push policy.
+- Never commit `.env.local`, credentials, database dumps, test artifacts containing secrets, or browser authentication state.
+- Do not push code with unresolved critical test failures.
+- Never force-push or overwrite unrelated user changes.
+
+## 10. Required Completion Report
+
+For every prompt, provide:
+
+**Implementation**
+- What was implemented.
+- Which files or modules changed.
+
+**Verification**
+- Typecheck: PASS / FAIL / NOT RUN.
+- Lint: PASS / FAIL / NOT RUN.
+- Unit tests: PASS / FAIL / NOT RUN.
+- Integration tests: PASS / FAIL / NOT RUN.
+- Playwright E2E: PASS / FAIL / NOT RUN.
+- Production build: PASS / FAIL / NOT RUN.
+- Runtime/browser checks: actual result.
+
+**Bug fixes**
+- Bugs discovered.
+- Root causes.
+- Fixes applied.
+- Regression tests added.
+
+**Limitations**
+- Tests not executed and why.
+- External services or behaviors not verified.
+- Remaining known issues.
+
+**Git**
+- Commit hash.
+- Push status.
+
+Never report that the application is bug-free. State precisely what was tested, what passed, and what remains unverified.
+
+The objective is to continuously reduce defects through executable verification, not merely to produce code that appears correct.

@@ -83,16 +83,16 @@ mounted.
 
 ### Changed Files
 
-- `package.json`, `package-lock.json` ΓÇö Tailwind v4
-- `postcss.config.js` ΓÇö `@tailwindcss/postcss`
-- `tailwind.config.js` ΓÇö removed
-- `src/app/globals.css` ΓÇö Tailwind v4 import, tokens, base styles
-- `src/app/layout.tsx` ΓÇö Geist variable, dark class, skip link
-- `src/components/public/Layout.tsx` ΓÇö public shell, hero, browse, how-it-works, footer
-- `src/components/public/PublicNavbar.tsx` ΓÇö new responsive navigation
-- `src/app/(public)/{page,drama,movie,categories,platforms,trending,bookmark,help}/page.tsx` ΓÇö page structure and token styling
-- `src/components/ui/tabs.tsx` ΓÇö Base UI orientation variants
-- `playwright.config.ts`, `tests/e2e/public-site.spec.ts` ΓÇö deterministic shell coverage
+- `package.json`, `package-lock.json` — Tailwind v4
+- `postcss.config.js` — `@tailwindcss/postcss`
+- `tailwind.config.js` — removed
+- `src/app/globals.css` — Tailwind v4 import, tokens, base styles
+- `src/app/layout.tsx` — Geist variable, dark class, skip link
+- `src/components/public/Layout.tsx` — public shell, hero, browse, how-it-works, footer
+- `src/components/public/PublicNavbar.tsx` — new responsive navigation
+- `src/app/(public)/{page,drama,movie,categories,platforms,trending,bookmark,help}/page.tsx` — page structure and token styling
+- `src/components/ui/tabs.tsx` — Base UI orientation variants
+- `playwright.config.ts`, `tests/e2e/public-site.spec.ts` — deterministic shell coverage
 
 ## [0.4.3] - 2026-11-11
 
@@ -112,11 +112,15 @@ mounted.
 - Updated NAV_ITEMS to include Trending and Bookmark
 - Modified public page components to use simplified `PublicPageLayout` without `description` prop
 
+### feat: Mobile Navigation
+
+- Added mobile bottom navigation bar with Home, Trending, Bookmark, and Profile
+- Category, Platform, and other secondary destinations placed in hamburger menu
+- Navigation does not overlap the player, dialogs, or mobile browser safe areas
+- TypeScript typecheck passes for all new functionality
+
 ### Changed Files
 
-- `src/components/public/Layout.tsx` — Rewrote layout with PublicNavbar component, added Trending/Bookmark to NAV_ITEMS, simplified function signatures
-- `src/app/(public)/page.tsx` — Removed `description` prop from `PublicPageLayout`
-- `src/app/(public)/drama/page.tsx` — Removed `description` prop from `PublicPageLayout`
-- `src/app/(public)/movie/page.tsx` — Removed `description` prop from `PublicPageLayout`
-- `src/app/(public)/categories/page.tsx` — Removed `description` prop from `PublicPageLayout`
-- `src/app/(public)/platforms/page.tsx` — Removed `description` prop from `PublicPageLayout`
+- `src/components/public/Layout.tsx` — Rewrote layout with mobile bottom navigation, hamburger menu, and PublicNavbar component
+- `docs/PROJECT_STATUS.md` — updated current prompt and added entries for 043 and 044
+- `docs/CHANGELOG.md` — documented prompt 043 and 044 changes

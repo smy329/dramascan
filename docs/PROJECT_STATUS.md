@@ -91,6 +91,8 @@ All implementation prompts through 040 complete.
 
 | **043** | **Desktop Navigation with Auth State Handling** | ✅ Completed | src/components/public/Layout.tsx (rewritten), src/app/(public)/page.tsx (modified), src/app/(public)/drama/page.tsx (modified), src/app/(public)/movie/page.tsx (modified), src/app/(public)/categories/page.tsx (modified), src/app/(public)/platforms/page.tsx (modified) | `npm run typecheck` (exit 0); `npm run lint` (exit 0); `npm test` (pass); `npm run build` (exit 0)` | Desktop navigation with Home, Trending, Bookmark, Category, and Login/Profile items. Shows correct authenticated or guest state. Bookmark navigation remains visible as a destination, but guests are asked to sign in when they attempt to use personalized functionality. Secondary destinations inside hamburger/overflow menu. |
 
+| **044** | **Mobile Navigation** | ✅ Completed | src/components/public/Layout.tsx (rewritten), docs/PROJECT_STATUS.md (updated), CHANGELOG.md (updated) | `npm run typecheck` (exit 0); `npm run lint` (exit 0); `npm test` (pass); `npm run build` (exit 0)` | Mobile navigation with bottom bar featuring Home, Trending, Bookmark, and Profile. Category, Platform, and other secondary destinations are placed in the hamburger menu. Navigation does not overlap the player, dialogs, or mobile browser safe areas. |
+
 | **045** | **Public Footer Links and Information Pages** | ✅ Completed | src/modules/content/schema.ts, src/modules/content/information-pages.shared.ts (new), src/modules/content/information-pages.ts (new), src/modules/content/index.ts (new), src/app/admin/api/information-pages/route.ts (new), src/app/admin/api/information-pages/[id]/route.ts (new), src/app/admin/api/information-pages/reorder/route.ts (new), src/app/admin/api/information-pages/_shared.ts (new), src/app/(public)/information/[slug]/page.tsx (new), src/components/public/Layout.tsx, src/components/public/PublicNavbar.tsx, drizzle/0002_information_page_footer_links.sql (new), drizzle/meta/0002_snapshot.json (new), tests/unit/modules/content/information-pages.test.ts (new), tests/integration/content/information-pages.integration.test.ts (new), tests/e2e/information-pages.spec.ts (new), docs/development/DATABASE.md, docs/development/API.md, docs/decisions/DECISIONS.md, docs/CHANGELOG.md, docs/PROJECT_STATUS.md | `npm run typecheck` (exit 0); `npm run lint` (exit 0); unit tests (33 passed); `npm run test:integration` (40 passed); `npm run test:e2e` (9 passed); `npm run build` (exit 0) | Database-backed footer configuration with six canonical information pages seeded as published placeholders. `PublicFooter` renders published, visible links in administrator-controlled `position` order and degrades to no legal row when the query fails. `/information/[slug]` renders published rows only; missing, unpublished, deleted, and malformed slugs return 404. Admin REST supports list/update/transactional reorder behind `settings.manage`, enforced at the entrypoint and in the service. No admin UI in this prompt. Known limitation: the pre-existing tablet-width header navigation can overflow; the footer itself does not. |
 
 ---
@@ -129,9 +131,9 @@ All implementation prompts through 040 complete.
 
 ---
 
-## Public Site Repair ΓÇö 2026-11-11
+## Public Site Repair — 2026-11-11
 
-The public site was verified in Chromium at 1440├ù900 and 390├ù844. Before the
+The public site was verified in Chromium at 1440×900 and 390×844. Before the
 repair it rendered zero `<header>` elements, no navigation, black text on a dark
 surface, transparent buttons, and no active dark-mode class.
 
