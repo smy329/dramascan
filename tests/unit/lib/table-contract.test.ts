@@ -85,10 +85,7 @@ describe('buildTableHref', () => {
       filters: { status: 'active' },
     }, { sort: 'name', page: 1 });
 
-    expect(href).toContain('sort=name');
-    expect(href).toContain('page=1');
-    expect(href).toContain('q=lee');
-    expect(href).toContain('status=active');
+    expect(href).toBe('/admin/users?pageSize=20&sort=name&q=lee&status=active');
   });
 
   it('replaces the whole filter set when the filters are overridden', () => {

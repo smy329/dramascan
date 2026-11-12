@@ -64,7 +64,7 @@ export function buildTableHref(
   params.set(TABLE_QUERY_PARAMS.pageSize, String(next.pageSize));
   params.set(TABLE_QUERY_PARAMS.sort, next.sort);
 
-  if (next.page > 1 || 'page' in overrides) {
+  if (next.page > 1) {
     params.set(TABLE_QUERY_PARAMS.page, String(next.page));
   }
 
