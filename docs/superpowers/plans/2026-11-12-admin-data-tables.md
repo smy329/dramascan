@@ -3232,6 +3232,67 @@ Do **not** push. Report the commit hash, the verification results, and any unver
 
 ---
 
+### Task 12: Final review fix wave
+
+The whole-branch review (the final gate) found one Important issue and a set of Minor ones. All are fixed in one wave, then re-reviewed once.
+
+**12.1 — An out-of-range page renders an inverted range (Important).**
+`AdminTablePagination` computes `firstRow = (page - 1) * pageSize + 1` and
+`lastRow = Math.min(page * pageSize, total)` with no relationship to
+`totalPages`. With `total = 137`, `pageSize = 20`, a hand-edited or stale
+`?page=8` renders "Showing 141–137 of 137 users", and at `?page=99` the page
+window offers links to pages that do not exist, with `aria-current="page"` on
+the bogus one. This is reachable through exactly the behavior this prompt
+promises — a shared or bookmarked URL.
+
+**Fix:** clamp the effective page once, in `listUsersForAdmin`, and return the
+clamped value as `page`:
+
+```ts
+const totalPages = result.total === 0 ? 0 : Math.ceil(result.total / query.pageSize);
+const effectivePage = Math.min(Math.max(query.page, 1), Math.max(totalPages, 1));
+```
+
+`listUsersForAdmin` must return `page: effectivePage`, and
+`src/app/admin/users/page.tsx` must build `state.page` from **`result.page`**
+rather than from `query.page`, so the summary, the page window, and every
+generated link point at a real page.
+
+**Tests:** a read-model unit test asserting that a `page` beyond the last page
+returns the clamped page, and a pagination component unit test asserting the
+summary and the page window for a page past the last page.
+
+**12.2 — Minor fixes, each one line or less, in files already being touched:**
+
+- `src/modules/auth/repository.ts` — return `Number(totalRow?.value ?? 0)`
+  rather than relying on Drizzle's `count()` coercion, matching the sibling
+  `listInformationPages` and removing a latent upgrade hazard.
+- `src/modules/auth/repository.ts` — clamp the offset so a caller that passes
+  `page: 0` cannot produce a negative offset and a raw PostgreSQL error. The
+  Zod boundary remains the real guard; this is defense in depth.
+- `src/components/admin/data-table/data-table-pagination.tsx` — rename the
+  local `window` to `pageWindow`; it shadows the global identifier.
+- `src/components/admin/data-table/data-table-pagination.tsx` — document the
+  ascending contract of `pageSizeOptions` in its JSDoc, so the insertion of
+  the current page size is not a surprise for a future caller.
+- `src/components/admin/data-table/data-table.tsx` — extract the `aria-sort`
+  computation into a named helper; the lint-forced nested ternary is correct
+  but hard to read.
+- `src/app/admin/users/page.tsx` — type `STATUS_LABELS` as
+  `Record<AdminUserStatus, string>`.
+- `tests/e2e/admin-users.spec.ts` — correct the comment that calls the sort
+  tiebreaker "a random id": ids are UUIDv7 and therefore time-ordered, which
+  is why the ordering is stable.
+- `docs/development/DATABASE.md` — record the rollback path for migration
+  `0003` (`DROP INDEX idx_users_active_created_at;`). Four project documents
+  require every migration to state whether it is reversible or forward-fix-only.
+
+**12.3 — Verify and commit.** Run `npm run typecheck`, `npm run lint`,
+`npm test`, `npm run test:integration`, the production-build wrapper, and
+`npm run test:e2e`. Commit the fix wave locally. Do **not** push.
+
+---
+
 ## Plan Self-Review
 
 - **Spec coverage:** Shared URL contract → Task 1. Identity query → Task 2. Zod contract → Task 3. Read model, guard, projection → Task 4. Supporting index and query plans → Task 5. Table, skeleton, error state, responsive priority → Task 6. Toolbar and pagination → Task 7. Page, loading, error, navigation → Task 8. Test-only seeder → Task 9. Browser workflow and responsive checks → Task 10. Documentation, decision, verification, commit → Task 11. Every spec section maps to a task.
