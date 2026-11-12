@@ -118,7 +118,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavGroup[] = [
         label: 'Users',
         href: '/admin/users',
         permissions: ['user.read', 'user.manage'],
-        implemented: false,
+        implemented: true,
       },
     ],
   },

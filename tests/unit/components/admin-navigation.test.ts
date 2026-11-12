@@ -36,9 +36,10 @@ describe('ADMIN_NAVIGATION', () => {
     expect(ALL_ENTRIES.every((entry) => entry.href.startsWith('/admin'))).toBe(true);
   });
 
-  it('implements only the overview entry for this prompt', () => {
+  it('implements only the overview and users entries for this prompt', () => {
     expect(ALL_ENTRIES.filter((entry) => entry.implemented).map((entry) => entry.id)).toEqual([
       'overview',
+      'users',
     ]);
   });
 });
@@ -61,10 +62,10 @@ describe('hasAdminAreaAccess', () => {
 });
 
 describe('filterAdminNavigation', () => {
-  it('shows only the implemented overview to Super Admin', () => {
+  it('shows the implemented overview and users entries to Super Admin', () => {
     const visible = filterAdminNavigation(ADMIN_NAVIGATION, actor([], true));
 
-    expect(visible.map((group) => group.id)).toEqual(['dashboard']);
+    expect(visible.map((group) => group.id)).toEqual(['dashboard', 'users']);
     expect(visible[0]?.entries.map((entry) => entry.id)).toEqual(['overview']);
   });
 
