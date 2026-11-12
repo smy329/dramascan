@@ -64,18 +64,27 @@ export function parseSortToken(token: string): {
   sortBy: AdminUserSortField;
   sortDirection: 'asc' | 'desc';
 } {
-  const first = token.split(',')[0]?.trim() ?? '';
-  const descending = first.startsWith('-');
-  const column = descending ? first.slice(1) : first;
+  const segments = token.split(',');
 
-  if (!SORT_FIELDS.has(column)) {
-    return { sortBy: 'createdAt', sortDirection: 'desc' };
+  for (const segment of segments) {
+    const trimmed = segment.trim();
+
+    if (trimmed.length === 0) {
+      continue;
+    }
+
+    const descending = trimmed.startsWith('-');
+    const column = descending ? trimmed.slice(1) : trimmed;
+
+    if (SORT_FIELDS.has(column)) {
+      return {
+        sortBy: column as AdminUserSortField,
+        sortDirection: descending ? 'desc' : 'asc',
+      };
+    }
   }
 
-  return {
-    sortBy: column as AdminUserSortField,
-    sortDirection: descending ? 'desc' : 'asc',
-  };
+  return { sortBy: 'createdAt', sortDirection: 'desc' };
 }
 
 const superAdminFilterSchema = z

@@ -48,6 +48,8 @@ describe('admin users query contract', () => {
 
   it('uses the first recognized column of a comma separated sort', () => {
     expect(parseAdminUsersQuery({ sort: 'name,email' }).sortBy).toBe('name');
+    expect(parseAdminUsersQuery({ sort: 'password,email' }).sortBy).toBe('email');
+    expect(parseAdminUsersQuery({ sort: 'password,nope' }).sortBy).toBe('createdAt');
   });
 
   it('normalizes the status and Super Admin filters', () => {
