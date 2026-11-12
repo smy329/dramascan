@@ -152,6 +152,38 @@ describe('AdminDataTable', () => {
     expect(screen.getByText('No accounts yet')).toBeTruthy();
     expect(screen.queryAllByRole('row')).toHaveLength(0);
   });
+
+  it('keeps the search term in a sort link', () => {
+    render(
+      <AdminDataTable
+        caption="Users"
+        columns={columns}
+        rows={rows}
+        rowKey={row => row.id}
+        pathname="/admin/users"
+        state={{ ...state, search: 'lee' }}
+      />
+    );
+
+    const link = within(screen.getByRole('columnheader', { name: /Name/ })).getByRole('link');
+    expect(link.getAttribute('href')).toContain('q=lee');
+  });
+
+  it('flips a descending sort to ascending when the sorted column is clicked again', () => {
+    render(
+      <AdminDataTable
+        caption="Users"
+        columns={columns}
+        rows={rows}
+        rowKey={row => row.id}
+        pathname="/admin/users"
+        state={{ ...state, sort: '-name' }}
+      />
+    );
+
+    const link = within(screen.getByRole('columnheader', { name: /Name/ })).getByRole('link');
+    expect(link.getAttribute('href')).toBe('/admin/users?pageSize=20&sort=name');
+  });
 });
 
 describe('AdminTableSkeleton', () => {
