@@ -25,7 +25,8 @@
  * `users.is_super_admin` / `is_active` / `deleted_at` when resolving an actor.
  */
 
-import { pgTable, text, timestamp, uuid, boolean } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, text, timestamp, uuid, boolean, index } from 'drizzle-orm/pg-core';
 import {
   createdAt,
   deletedAt,
@@ -56,7 +57,12 @@ export const users = pgTable(
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),
   },
-  table => [uniqueConstraint('users', table.email)]
+  table => [
+    uniqueConstraint('users', table.email),
+    index('idx_users_active_created_at')
+      .on(table.createdAt.desc())
+      .where(sql`${table.deletedAt} is null`),
+  ]
 );
 
 // ---- Accounts table ----------------------------------------------------
