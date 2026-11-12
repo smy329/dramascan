@@ -2,6 +2,90 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [0.6.0] - 2026-11-12
+
+### feat: Reusable admin data tables and the users listing (Prompt 051)
+
+Built the admin table kit once and proved it with a complete reference
+implementation, `/admin/users`: server-side pagination, sorting, search, and
+filtering with all table state in the URL, server-side authorization on the
+canonical `user.read` permission, and one supporting index for the production
+list query. No reviews, drama, or movie tables, no row actions, no client-side
+table state, and no new dependency.
+
+- `src/lib/contracts/table.ts` owns the shared URL contract:
+  `TABLE_QUERY_PARAMS`, `DEFAULT_TABLE_PAGE_SIZE` (20),
+  `MAX_TABLE_PAGE_SIZE` (100), `TABLE_PAGE_SIZE_OPTIONS` (20/50/100),
+  `TableQueryState`, and the pure `buildTableHref`. It always emits `pageSize`
+  and `sort`, emits `page` only beyond the first page, and emits `q` and a
+  filter only when they carry a value.
+- `src/components/admin/data-table/` adds `AdminDataTable` (sortable headers
+  with `aria-sort`, an accessible sort-link name, and an empty state),
+  `AdminTableToolbar` (search and filter GET forms, clear link),
+  `AdminTablePagination` (summary, page window, page-size form),
+  `AdminTableSkeleton`, and `AdminTableError`. All are Server Components; the
+  kit imports no module and fetches nothing. `src/components/ui/table.tsx` lost
+  its `'use client'` directive so the vendored primitive renders in a Server
+  Component; it is otherwise untouched.
+- `src/modules/auth/repository.ts` adds `listUserAccounts`, the paged Drizzle
+  query over the auth module's own `users` table, published through
+  `src/modules/auth/index.ts`. `src/modules/users/validation.ts` adds the Zod
+  contract and `parseAdminUsersQuery`;
+  `src/modules/users/read-models/admin-users.ts` adds `listUsersForAdmin` with
+  the `user.read` guard, the query, and the DTO projection, published through
+  `src/modules/users/index.ts`.
+- `src/app/admin/users/{page,loading,error}.tsx` renders the listing; the
+  navigation entry's `implemented` flag is now `true`.
+- `drizzle/0003_needy_infant_terrible.sql` adds one partial index,
+  `idx_users_active_created_at ON users (created_at DESC) WHERE deleted_at IS
+  NULL`, for the default scope and default sort of the listing.
+- Decisions: D-026 — the URL-state contract, the 404 for a page-level permission
+  failure in the admin area (an intentional exception to `CONVENTIONS.md` §6.6),
+  the query-parameter normalization deviation from §6.4, the ownership split
+  between `auth` and `users`, and the supporting index.
+- Documentation: `docs/development/admin-data-tables.md` (new),
+  `docs/development/DATABASE.md` (index, served and unserved queries, measured
+  plans), `docs/development/admin-shell.md` (callback limitation),
+  `docs/development/CONVENTIONS.md`, `docs/architecture/*`,
+  `docs/decisions/DECISIONS.md`, `docs/README.md`, `docs/PROJECT_STATUS.md`.
+
+### Known limitations
+
+- The search remains an `ILIKE` scan over `name` and `email`; no trigram index
+  is added until query-plan evidence justifies one.
+- The `deleted` filter is not served by the partial index: its predicate is the
+  complement of the index predicate. It stays a sequential scan over the
+  (small) deleted subset.
+- The `CREATE INDEX` is not `CONCURRENTLY`, so applying the migration takes a
+  brief write lock on `users`. The index covers `created_at DESC` only, so a
+  sort step remains for tied `created_at` rows.
+- `/admin/users` has no Actions column: the existing admin account routes are
+  stubs, so a row control would report success without changing anything.
+- An anonymous visitor to any admin route is redirected with
+  `callbackUrl=%2Fadmin` rather than the deep-linked path, because a server
+  layout cannot read its own pathname. This is the admin shell's existing
+  behaviour and is recorded with its follow-up in `admin-shell.md`.
+- On the small test database every measured plan chose a sequential scan; the
+  plans in `DATABASE.md` §6.1 record the access path and estimated cost, not
+  evidence that the index is chosen at today's data volume.
+
+### Verification
+
+- `npm run typecheck` (`next typegen && tsc --noEmit`) — exit 0.
+- `npm run lint` — exit 0 (a Node module-type warning from `eslint.config.js`
+  is pre-existing and unrelated).
+- `npm test` — 47 files, 417 tests passed (52 new).
+- `npm run test:integration` — 4 files, 53 tests passed (13 new).
+- Production build through the wrapper script — exit 0. The known pre-existing
+  `information_pages.position` warning appears on the main database only and
+  degrades gracefully.
+- `npm run test:e2e` — 19 tests passed in Chromium (7 new across
+  `admin-users.spec.ts` and `admin-session.spec.ts`; `admin-access.spec.ts`
+  gained the users-listing redirect case). The pre-existing
+  `public-site.spec.ts › footer reaches every public route` flake (it sits on
+  its 30-second timeout boundary) passed this run at 27.8s; it is unrelated to
+  Prompt 051 and was not touched.
+
 ## [0.5.0] - 2026-11-12
 
 ### feat: Super Admin-only admin surfaces and nested breadcrumbs (Prompt 050)

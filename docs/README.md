@@ -49,6 +49,7 @@ For the future upgrade backlog, see `future/`.
 - [State Components](development/state-components.md)
 - [Confirmation Dialogs](development/confirmation-dialogs.md)
 - [Admin Shell](development/admin-shell.md)
+- [Admin Data Tables](development/admin-data-tables.md)
 - [CI/CD Conventions](development/ci-cd.md)
 - [Migration Conventions](development/migration-conventions.md)
 - [Implementation Plan](implementation/implementation-plan.md)

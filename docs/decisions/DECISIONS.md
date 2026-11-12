@@ -726,6 +726,56 @@ must be refused server-side.
 
 ---
 
+## D-026 - Admin data tables: URL state, page-level authorization, and the supporting index
+
+**Date:** 2026-11-12
+**Status:** Approved by user
+**Resolves:** Prompt 051
+
+**Context:** The admin shell had no way to list a collection. The first listing
+(`/admin/users`) needed a shared table-state contract, a server-side query
+path, and a decision about how an admin page answers an actor who reaches the
+admin area but lacks the page's permission.
+
+**Decision:**
+
+1. **URL state:** All table state (page, page size, sort, search, filters)
+   lives in the URL query string. Sorting and pagination are links; search and
+   filters are GET forms. A search or filter change resets to page 1, and so
+   does a sort change.
+2. **Normalization:** An admin page normalizes an invalid query parameter
+   instead of rejecting it, because §6.4 governs REST responses and a
+   navigable URL must survive a stray parameter. The sortable-column
+   allowlist is still enforced server-side; an unknown column never reaches
+   SQL.
+3. **Page-level authorization:** An authenticated actor with admin-area access
+   but without the page's permission receives `notFound()` (404), extending the
+   area-level rule established in Prompt 049 to a page-level permission. This
+   is an intentional exception to `CONVENTIONS.md` §6.6, scoped to the admin
+   area; no existing route's behavior changes and no `forbidden.tsx` or
+   `experimental.authInterrupts` is introduced.
+4. **Ownership:** The auth module owns the Drizzle query over its own `users`
+   table and exposes it through its public API. The users module owns the
+   admin projection and the `user.read` guard, in
+   `modules/users/read-models/`. The auth module may not import the
+   authorization module (§7.2, D-008), so `listUserAccounts` cannot take an
+   `ActorContext`; the protected query is `listUsersForAdmin`.
+5. **Supporting index:** The production listing query is served by a partial
+   index on `users (created_at DESC) WHERE deleted_at IS NULL`. It serves the
+   default scope and the default sort. It does not serve the `deleted` filter
+   or the free-text search, and neither is claimed as covered.
+
+**Consequences:**
+
+- The admin area has one URL contract that every future table reuses.
+- A shared or bookmarked admin URL reproduces the exact view, and an invalid
+  one still renders.
+- An actor without `user.read` cannot learn that `/admin/users` exists.
+- The search remains an `ILIKE` scan until a query plan justifies a trigram
+  index.
+
+---
+
 ## Decision log rules
 
 - A decision is added only after explicit user approval or when the specification

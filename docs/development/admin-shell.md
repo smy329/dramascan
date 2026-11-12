@@ -79,13 +79,23 @@ identity.
 
 | Actor state                         | Result                                            |
 | ----------------------------------- | ------------------------------------------------- |
-| No session (`userId === null`)      | `307` to `/auth/signin?callbackUrl=<admin path>`  |
+| No session (`userId === null`)      | `307` to `/auth/signin?callbackUrl=%2Fadmin`      |
 | Authenticated, no admin permission  | `notFound()` (404)                                |
 | Any admin-area permission           | Allowed                                           |
 | Super Admin                         | Allowed                                           |
 
 An anonymous actor is anonymous even if a malformed actor object sets
 `isSuperAdmin: true`. `hasAdminAreaAccess` checks `userId === null` first.
+
+**The sign-in callback is always `/admin`, never the deep-linked path.** The
+layout passes the literal `/admin` to `requireAdminPageAccess`, and a server
+layout cannot read its own pathname, so an anonymous visitor to *any* admin
+route — `/admin/users` included — is redirected with
+`callbackUrl=%2Fadmin`. The layout's gate runs before the page's own gate, so
+the page's `requestedPath` never participates in an anonymous redirect.
+`buildAdminSignInUrl(path)` already encodes a full path when it is given one
+(`/admin/users` → `callbackUrl=%2Fadmin%2Fusers`), so the limitation belongs to
+the layout, not to the URL builder.
 
 There is no 403 page and no redirect to the public dashboard. Hiding the admin
 area behind a 404 avoids advertising it to signed-in users who have no business
@@ -171,7 +181,7 @@ type AdminNavEntry = Readonly<{
 | Content       | Platforms           | `/admin/platforms`         | `platform.read`                                    | No          |
 | Moderation    | Reports             | `/admin/reports`           | `review.read`, `review.manage`                     | No          |
 | Moderation    | Reviews             | `/admin/reviews`           | `review.read`, `review.manage`                     | No          |
-| Users         | Users               | `/admin/users`             | `user.read`, `user.manage`                         | No          |
+| Users         | Users               | `/admin/users`             | `user.read`, `user.manage`                         | Yes         |
 | Analytics     | Analytics           | `/admin/analytics`         | `analytics.read`                                   | No          |
 | Notifications | Notifications       | `/admin/notifications`     | `admin.manage`                                     | No          |
 | System        | Settings            | `/admin/settings`          | `settings.read`, `settings.manage`, `admin.manage` | No          |
@@ -192,6 +202,11 @@ are hidden from every non-Super-Admin; Information pages stays permission-based.
 
 Do not add an entry whose permission key is not in the catalog; a test asserts
 every key is canonical.
+
+`/admin/users` (Prompt 051) is the first implemented section beyond the overview
+page. Its listing behaviour, URL contract, and page-level authorization are
+documented in [Admin Data Tables](admin-data-tables.md); the admin shell's own
+rules above still apply to it.
 
 ### 5.2 Filtering
 
@@ -229,6 +244,19 @@ The sign-in page sanitizes `searchParams.callbackUrl`, redirects an already
 signed-in user to the destination, and renders a hidden `callbackUrl` input.
 `googleSignIn(formData)` sanitizes the field again before passing
 `callbackURL` to Better Auth and preserves it in `errorCallbackURL`.
+
+**Known limitation (recorded, not fixed by Prompt 051).** A server layout cannot
+read its own pathname, so the layout passes the literal `/admin` to the gate and
+every anonymous admin visitor — including one who requested `/admin/users` — is
+redirected with `callbackUrl=%2Fadmin` and lands on the overview after signing
+in. The page-level gate that would use the deep-linked path never runs for an
+anonymous visitor.
+
+**Follow-up (admin shell, own prompt):** record the requested path before the
+layout's redirect — either a middleware that captures the pathname, or a
+client-side redirect that reads `usePathname()`. `buildAdminSignInUrl` already
+encodes a full path when it is given one, so no change to `src/lib/redirects.ts`
+is required.
 
 ---
 
@@ -336,6 +364,7 @@ live session; it is not an end-to-end browser proof.
 
 ## 11. Related Documents
 
+- [Admin Data Tables](admin-data-tables.md)
 - [Confirmation Dialogs](confirmation-dialogs.md)
 - [State Components](state-components.md)
 - [Testing Conventions](testing-conventions.md)

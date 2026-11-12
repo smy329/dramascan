@@ -45,10 +45,10 @@ Modules are assigned to fixed layers. See `ARCHITECTURE.md` §3 for the layer ma
 
 - **Purpose:** Better Auth integration, Google OAuth, session resolution, first-sign-in user creation, approved Google profile synchronization, account status, session revocation.
 - **Owns:** Better Auth tables (`user`, `account`, `session`, `verification`), canonical user identity, `account_status` (`active` / `deactivated`), Google name and image reference, session metadata.
-- **Public API:** `getSession`, `requireUser`, `resolveActorIdentity`, `syncGoogleProfile`, `setAccountStatus`, `revokeSession`, `revokeAllSessions`, `isDeactivated`.
+- **Public API:** `getSession`, `requireUser`, `resolveActorIdentity`, `syncGoogleProfile`, `setAccountStatus`, `revokeSession`, `revokeAllSessions`, `isDeactivated`, `listUserAccounts`.
 - **Depends on:** platform.
 - **Not responsible for:** roles, permissions, admin authorization, profile page composition, bookmarks, notification preferences.
-- **Boundary notes:** deactivated accounts are rejected during session resolution, before any feature service runs. `auth` never queries role tables.
+- **Boundary notes:** deactivated accounts are rejected during session resolution, before any feature service runs. `auth` never queries role tables. `listUserAccounts` lives in `repository.ts` and reads the module's own `users` table for the admin user listing; it takes no `ActorContext` (§5.4 exception, D-008/D-026) because `auth` may not import `authorization`. The protected entry point is `users.listUsersForAdmin`.
 
 ### 6.2 `authorization` — RBAC and guards
 
@@ -75,7 +75,7 @@ Modules are assigned to fixed layers. See `ARCHITECTURE.md` §3 for the layer ma
 - **Public API:** `getProfile`, `listBookmarks`, `isBookmarked`, `addBookmark`, `removeBookmark`, `toggleBookmark`, `listUserIdsBookmarking`, `deactivateUser`, `reactivateUser`, `listUsersForAdmin`.
 - **Depends on:** `auth`, `authorization`, `content` (availability validation for bookmarks), platform.
 - **Not responsible for:** authentication, sessions, roles, playback data, notifications, reviews.
-- **Boundary notes:** deactivation calls `auth.setAccountStatus` and does not write auth tables directly. Bookmark validation reads content availability through `content`'s public query API.
+- **Boundary notes:** deactivation calls `auth.setAccountStatus` and does not write auth tables directly. Bookmark validation reads content availability through `content`'s public query API. The admin user listing is implemented as `read-models/admin-users.ts` (`listUsersForAdmin`): it enforces the canonical `user.read` guard, reads identity rows through the auth module's public API (`listUserAccounts`), and projects `AdminUserListItem` DTOs. It performs no cross-module JOIN, so the D-011 read-model exception is used for a read-only projection over the auth identity table and nothing more.
 
 ### 6.5 `playback` — Playback, progress, and history
 

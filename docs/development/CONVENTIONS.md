@@ -359,6 +359,7 @@ Collection:
 - Free-text search uses `q`.
 - Date filters use `from`/`to` with ISO dates; analytics interprets ranges in Asia/Dhaka.
 - All query parameters are validated with Zod. No raw SQL fragments or arbitrary column names from clients.
+- **Exception for navigable admin pages (D-026):** an admin page is a URL, not a REST response, so it normalizes an invalid or unknown parameter to a safe default instead of rejecting the request. The allowlist itself is still enforced — an unknown sort column is replaced by the default sort and never reaches SQL. See `docs/development/admin-data-tables.md` §9.
 
 ### 6.5 Error envelope
 
@@ -398,6 +399,7 @@ Collection:
 - Public unavailable content returns `404`, never `403`, to avoid revealing unpublished or trashed content.
 - Authenticated ownership violations on private resources return `404` where returning `403` would leak existence.
 - Permission failures on known admin resources return `403`.
+- **Exception for admin pages (D-026):** an authenticated actor with admin-area access but without the page-level permission receives `404` from an admin page, extending the area-level rule Prompt 049 established so the page's existence is not advertised. The exception is scoped to the admin area; no REST endpoint and no existing route changes. See `docs/development/admin-data-tables.md` §8.
 
 ### 6.7 Authentication, CSRF, and caching
 

@@ -147,6 +147,81 @@ Do not merge unrelated entities into one table. Do not create a single polymorph
 
 The exact search schema is implemented with the search feature and documented here.
 
+### 6.1 `idx_users_active_created_at` (Prompt 051)
+
+One index was added for the admin user listing (`/admin/users`), the only new
+production list query in that prompt. It is defined in
+`src/modules/auth/schema.ts` and applied by
+`drizzle/0003_needy_infant_terrible.sql`:
+
+```sql
+CREATE INDEX "idx_users_active_created_at" ON "users" USING btree ("created_at" DESC NULLS LAST) WHERE "users"."deleted_at" is null;
+```
+
+| Serves | Does not serve |
+| --- | --- |
+| The default scope `deleted_at IS NULL` (the index predicate), used when `status` is absent, `active`, or `deactivated`. | The `deleted` filter: its predicate is `deleted_at IS NOT NULL`, the complement of the index predicate. No btree index on `created_at` can support it, so the filter is a sequential scan over the deleted subset. |
+| The default sort `created_at DESC`. | The free-text search: `ILIKE` against `name` and `email` with escaped wildcards. It remains a sequential scan until query-plan evidence justifies a trigram index. |
+| The default listing's access path (`deleted_at IS NULL` → `created_at DESC`); a sort step remains for tied rows (limitation 2 below). | The residual `active` / `deactivated` / `superAdmin` predicates, which are evaluated after the index scan rather than by the index. |
+
+Two known limitations are recorded rather than hidden:
+
+1. The `CREATE INDEX` is **not** `CONCURRENTLY`, so applying the migration takes
+   a brief write lock on `users` while it builds. The table is small today; a
+   deployment that cannot tolerate the lock needs a reviewed `CONCURRENTLY`
+   follow-up migration.
+2. The index covers `created_at DESC` only, while the query's sort is
+   `ORDER BY created_at DESC, id ASC` (`id` is the deterministic tiebreaker —
+   `CONVENTIONS.md` §6.3). A sort step therefore remains for rows with tied
+   `created_at` values.
+
+#### Measured plans
+
+`EXPLAIN (ANALYZE, BUFFERS)` was run against the migrated `dramascan_test`
+database with a small set of explain-test rows (2 active, 1 deactivated, 2
+deleted), which were removed afterwards. On a table that small PostgreSQL chose
+a sequential scan for every case, so the plans record the access path and its
+estimated cost, **not** evidence that the index is used at today's data volume.
+
+| Query (filter, sort, page) | Chosen path | Partial index used? | Execution time |
+| --- | --- | --- | --- |
+| `deleted_at IS NULL`, `ORDER BY created_at DESC, id ASC`, `LIMIT 20 OFFSET 0` | Seq Scan + sort | No | 0.210 ms |
+| `deleted_at IS NULL AND is_active`, same sort and page | Seq Scan + sort | No | 0.056 ms |
+| `deleted_at IS NULL AND NOT is_active`, same sort and page | Seq Scan + sort | No | 0.067 ms |
+| `deleted_at IS NOT NULL`, same sort and page | Seq Scan + sort | No | 0.054 ms |
+
+Verbatim plan for the default listing (the case the index exists for):
+
+```
+Limit  (cost=1.01..1.01 rows=1 width=106) (actual time=0.151..0.155 rows=3.00 loops=1)
+  Buffers: shared hit=7
+  ->  Sort  (cost=1.01..1.01 rows=1 width=106) (actual time=0.148..0.151 rows=3.00 loops=1)
+        Sort Key: created_at DESC, id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=7
+        ->  Seq Scan on users  (cost=0.00..1.00 rows=1 width=106) (actual time=0.049..0.052 rows=3.00 loops=1)
+              Filter: (deleted_at IS NULL)
+              Rows Removed by Filter: 2
+              Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=72
+Planning Time: 4.352 ms
+Execution Time: 0.210 ms
+```
+
+The other three plans have the same shape: `Limit` → `Sort` (`created_at DESC,
+id`) → `Seq Scan on users` with the filter as shown in the table above. The
+`deleted` case's filter is `(deleted_at IS NOT NULL)` with 3 rows removed; the
+`active` case's is `((deleted_at IS NULL) AND is_active)` with 3 removed; the
+`deactivated` case's is `((deleted_at IS NULL) AND (NOT is_active))` with 4
+removed.
+
+**Read this honestly:** the index is present and correct, and the plans were
+measured on a table far too small for the planner to prefer it. No plan here
+demonstrates that the index is chosen; the index is the documented supporting
+index for the demonstrated access path, as `CONVENTIONS.md` §5.4 requires, and
+production `pg_stat_statements` review is the trigger for any further index.
+
 ---
 
 ## 7. Migrations
@@ -157,6 +232,7 @@ Migration tooling and practices are defined in `CONVENTIONS.md` §10. Database-s
 - The applied baseline is `drizzle/0000_boring_harry_osborn.sql` (50 statements, 42 tables), generated from the complete schema with `drizzle-kit generate` and applied with `drizzle-kit migrate`. Its snapshot is `drizzle/meta/0000_snapshot.json` and its journal entry is `drizzle/meta/_journal.json`.
 - `drizzle/0001_pale_earthquake.sql` adds login monitoring (`login_attempts`) and session activity.
 - `drizzle/0002_information_page_footer_links.sql` adds `information_pages.position`, the active-row slug uniqueness index, the partial footer index, and the six-row information-page seed (forward-only; the seed is idempotent and preserves administrator edits).
+- `drizzle/0003_needy_infant_terrible.sql` adds one partial index, `idx_users_active_created_at`, for the admin user listing (Prompt 051). See §6.1 for the queries it serves, the queries it does not serve, and the measured plans.
 - `npm run db:generate` creates the next numbered migration from schema changes; `npm run db:migrate` applies pending migrations. `npm run db:push` is local-only and must never be used against production.
 - Integration tests build the isolated `_test` database from this same migration chain in `tests/global-setup.ts`, so a broken migration fails CI.
 - Applied migrations are never edited.

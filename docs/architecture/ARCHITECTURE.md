@@ -329,10 +329,10 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 
 - **Purpose:** Better Auth integration, Google OAuth, session resolution, first-sign-in user creation, approved Google profile synchronization, account status, session revocation.
 - **Owns:** Better Auth tables (`user`, `account`, `session`, `verification`), canonical user identity, `account_status` (`active` / `deactivated`), Google name and image reference, session metadata.
-- **Public API:** `getSession`, `requireUser`, `resolveActorIdentity`, `syncGoogleProfile`, `setAccountStatus`, `revokeSession`, `revokeAllSessions`, `isDeactivated`.
+- **Public API:** `getSession`, `requireUser`, `resolveActorIdentity`, `syncGoogleProfile`, `setAccountStatus`, `revokeSession`, `revokeAllSessions`, `isDeactivated`, `listUserAccounts`.
 - **Depends on:** platform.
 - **Not responsible for:** roles, permissions, admin authorization, profile page composition, bookmarks, notification preferences.
-- **Boundary notes:** deactivated accounts are rejected during session resolution, before any feature service runs. `auth` never queries role tables.
+- **Boundary notes:** deactivated accounts are rejected during session resolution, before any feature service runs. `auth` never queries role tables. `listUserAccounts` is the paged identity read over this module's own `users` table and is the documented exception to §5.4: `auth` may not import `authorization` (§7.2, D-008), so it cannot name `ActorContext`. The protected entry point is `users.listUsersForAdmin`, which takes the actor and enforces `user.read` before the query runs (D-026).
 
 ### 6.2 `authorization` — RBAC and guards
 
