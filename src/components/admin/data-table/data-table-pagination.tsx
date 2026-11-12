@@ -158,6 +158,26 @@ function renderPageSizeOption(option: number): JSX.Element {
   );
 }
 
+/**
+ * The page sizes the control offers, with the current one included.
+ *
+ * `CONVENTIONS.md` §6.3 allows any size from 1 to 100, and a hand-edited or
+ * shared link may carry one the control does not offer. A `<select>` shows the
+ * option matching its value and nothing otherwise, so a missing size would
+ * leave the control blank — or showing a stale number — while the page really
+ * shows a different number of rows.
+ */
+function resolvePageSizeOptions(
+  pageSize: number,
+  pageSizeOptions: readonly number[]
+): readonly number[] {
+  if (pageSizeOptions.includes(pageSize)) {
+    return pageSizeOptions;
+  }
+
+  return [...pageSizeOptions, pageSize].sort((left, right) => left - right);
+}
+
 export type AdminTablePaginationProps = Readonly<{
   pathname: string;
   state: TableQueryState;
@@ -221,7 +241,9 @@ export function AdminTablePagination({
             defaultValue={String(state.pageSize)}
             className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm text-foreground"
           >
-            {pageSizeOptions.map(option => renderPageSizeOption(option))}
+            {resolvePageSizeOptions(state.pageSize, pageSizeOptions).map(option =>
+              renderPageSizeOption(option)
+            )}
           </select>
         </div>
         <button

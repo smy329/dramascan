@@ -122,4 +122,26 @@ describe('AdminTablePagination', () => {
     expect(values).toContain('status=active');
     expect(values).not.toContain('page=3');
   });
+
+  it('offers the current page size when it is not one of the standard options', () => {
+    render(
+      <AdminTablePagination
+        pathname="/admin/users"
+        state={{ ...state, pageSize: 1 }}
+        total={3}
+        totalPages={3}
+        itemLabel="users"
+      />
+    );
+
+    const select = screen.getByLabelText('Rows per page') as HTMLSelectElement;
+
+    // The URL asked for one row per page, so the control must say so rather
+    // than show a stale standard value the page is not using.
+    expect(select.value).toBe('1');
+
+    const offered = Array.from(select.options).map(option => option.value);
+
+    expect(offered).toEqual(['1', '20', '50', '100']);
+  });
 });

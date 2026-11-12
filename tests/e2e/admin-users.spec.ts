@@ -15,7 +15,8 @@ import { adminSession } from './support/admin-session.mjs';
 
 test.describe('admin users listing', () => {
   test('lists, searches, filters, sorts, and paginates', async ({ context, page }) => {
-    const session = await adminSession.seed({ email: 'e2e-users-list@example.com' });
+    const email = 'e2e-users-list@example.com';
+    const session = await adminSession.seed({ email });
 
     try {
       await context.addCookies([
@@ -33,6 +34,10 @@ test.describe('admin users listing', () => {
       await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible();
       await expect(page.getByRole('table')).toBeVisible();
 
+      // The listing really holds the seeded account: the controls above could
+      // all render around an empty table.
+      await expect(page.getByRole('cell', { name: email })).toBeVisible();
+
       // Sorting is a link that keeps the rest of the table state.
       await page.getByRole('columnheader', { name: /Name/ }).getByRole('link').click();
       await expect(page).toHaveURL(/sort=-name/);
@@ -43,11 +48,19 @@ test.describe('admin users listing', () => {
       await expect(page).toHaveURL(/status=active/);
       await expect(page).not.toHaveURL(/page=\d/);
 
-      // The search term survives the filter.
+      // The Super Admin filter is a second control in the same GET form, so it
+      // combines with the status filter instead of replacing it.
+      await page.getByLabel('Super Admin').selectOption('yes');
+      await page.getByRole('button', { name: 'Apply' }).first().click();
+      await expect(page).toHaveURL(/status=active/);
+      await expect(page).toHaveURL(/superAdmin=yes/);
+
+      // The search term survives the filters.
       await page.getByLabel('Search users').fill('e2e');
       await page.getByRole('button', { name: 'Search' }).click();
       await expect(page).toHaveURL(/q=e2e/);
       await expect(page).toHaveURL(/status=active/);
+      await expect(page).toHaveURL(/superAdmin=yes/);
     } finally {
       await adminSession.remove(session.userId);
     }
@@ -116,9 +129,9 @@ test.describe('admin users listing', () => {
       ]);
 
       for (const viewport of [
-        { width: 390, height: 844 },
-        { width: 768, height: 1024 },
-        { width: 1440, height: 900 },
+        { width: 390, height: 844, emailVisible: false },
+        { width: 768, height: 1024, emailVisible: true },
+        { width: 1440, height: 900, emailVisible: true },
       ]) {
         await page.setViewportSize(viewport);
         await page.goto('/admin/users');
@@ -128,16 +141,67 @@ test.describe('admin users listing', () => {
         );
 
         expect(overflow).toBeLessThanOrEqual(0);
+
+        // A zero document overflow would also hold if the wrong columns were
+        // hidden, so assert the priority itself: `Email` carries the `sm`
+        // priority and appears from 640px upward.
+        const emailHeader = page.getByRole('columnheader', { name: /Email/ });
+
+        if (viewport.emailVisible) {
+          await expect(emailHeader).toBeVisible();
+        } else {
+          await expect(emailHeader).toBeHidden();
+        }
       }
     } finally {
       await adminSession.remove(session.userId);
     }
   });
 
+  test('walks to the second page through the pagination control', async ({ context, page }) => {
+    // Sorting by email makes the order deterministic: the read model's only
+    // tiebreaker is a random id, and both accounts are created in the same run.
+    const firstEmail = 'e2e-users-page-one@example.com';
+    const secondEmail = 'e2e-users-page-two@example.com';
+    const first = await adminSession.seed({ email: firstEmail });
+    const second = await adminSession.seed({ email: secondEmail });
+
+    try {
+      await context.addCookies([
+        {
+          name: first.cookieName,
+          value: first.cookieValue,
+          url: 'http://localhost:3000',
+          httpOnly: true,
+          sameSite: 'Lax',
+        },
+      ]);
+
+      await page.goto('/admin/users?pageSize=1&sort=email');
+
+      // One row per page, and the control admits the value the URL asked for.
+      await expect(page.getByLabel('Rows per page')).toHaveValue('1');
+      await expect(page.getByRole('cell', { name: firstEmail })).toBeVisible();
+      await expect(page.getByRole('cell', { name: secondEmail })).toHaveCount(0);
+
+      await page.getByRole('link', { name: 'Next' }).click();
+
+      await expect(page).toHaveURL(/page=2/);
+      await expect(page).toHaveURL(/pageSize=1/);
+      await expect(page).toHaveURL(/sort=email/);
+      await expect(page.getByRole('cell', { name: secondEmail })).toBeVisible();
+      await expect(page.getByRole('cell', { name: firstEmail })).toHaveCount(0);
+    } finally {
+      await adminSession.remove(first.userId);
+      await adminSession.remove(second.userId);
+    }
+  });
+
   test('refuses a signed-in account without admin access', async ({ context, page }) => {
-    // A real, active, non-Super-Admin account with no role assignments. The
-    // admin shell answers 404 rather than 403, so the area stays hidden, and
-    // the page's own `user.read` check is a second guard behind it.
+    // A real, active account written with the `viewer` role and no admin
+    // permissions. The admin shell answers 404 rather than 403, so the area
+    // stays hidden, and the page's own `user.read` check is a second guard
+    // behind it.
     const session = await adminSession.seed({
       email: 'e2e-users-forbidden@example.com',
       name: 'E2E Ordinary User',
