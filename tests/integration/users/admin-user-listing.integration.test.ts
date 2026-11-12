@@ -188,11 +188,11 @@ describe('listUserAccounts (real database)', () => {
 
   it('treats a search wildcard as a literal character', async () => {
     const literal = await insertUser({
-      name: 'Hundred % Person',
+      name: '100% Person',
       email: `${TEST_EMAIL_PREFIX}literal@example.com`,
     });
     const other = await insertUser({
-      name: 'HundredX Person',
+      name: '100X Person',
       email: `${TEST_EMAIL_PREFIX}other@example.com`,
     });
 
