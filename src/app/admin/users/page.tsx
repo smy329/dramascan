@@ -6,7 +6,12 @@ import { AdminTablePagination } from '@/components/admin/data-table/data-table-p
 import { AdminTableToolbar } from '@/components/admin/data-table/data-table-toolbar';
 import type { AdminTableColumn } from '@/components/admin/data-table/types';
 import { hasPermission, toPermissionKey } from '@/modules/authorization';
-import { formatSortToken, listUsersForAdmin, parseAdminUsersQuery } from '@/modules/users';
+import {
+  formatSortToken,
+  listUsersForAdmin,
+  parseAdminUsersQuery,
+  type AdminUserStatus,
+} from '@/modules/users';
 import { buildTableHref, type TableQueryState } from '@/lib/contracts/table';
 
 import { requireAdminPageAccess } from '../_access';
@@ -19,7 +24,7 @@ type AdminUserRow = {
   id: string;
   name: string;
   email: string;
-  status: string;
+  status: AdminUserStatus;
   isSuperAdmin: boolean;
   createdAt: string;
 };
@@ -37,7 +42,7 @@ const SUPER_ADMIN_OPTIONS = [
   { value: 'no', label: 'No' },
 ] as const;
 
-const STATUS_LABELS: Record<string, string> = {
+const STATUS_LABELS: Record<AdminUserStatus, string> = {
   active: 'Active',
   deactivated: 'Deactivated',
   deleted: 'Deleted',
@@ -84,8 +89,12 @@ export default async function AdminUsersPage({
   const query = parseAdminUsersQuery(raw);
   const result = await listUsersForAdmin(actor, query);
 
+  // The summary, the page window, and every generated link follow the page the
+  // read model resolved, not the one the URL asked for: a page past the last
+  // one is clamped, so a shared or bookmarked link never renders an inverted
+  // range or a link to a page that does not exist.
   const state: TableQueryState = {
-    page: query.page,
+    page: result.page,
     pageSize: query.pageSize,
     sort: formatSortToken(query.sortBy, query.sortDirection),
     search: query.search,

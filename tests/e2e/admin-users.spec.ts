@@ -160,7 +160,8 @@ test.describe('admin users listing', () => {
 
   test('walks to the second page through the pagination control', async ({ context, page }) => {
     // Sorting by email makes the order deterministic: the read model's only
-    // tiebreaker is a random id, and both accounts are created in the same run.
+    // tiebreaker is the row id, and ids are UUIDv7 — time-ordered — so paging
+    // can neither repeat nor skip a row.
     const firstEmail = 'e2e-users-page-one@example.com';
     const secondEmail = 'e2e-users-page-two@example.com';
     const first = await adminSession.seed({ email: firstEmail });

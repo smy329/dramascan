@@ -47,6 +47,10 @@ function resolveStatus(isActive: boolean, deletedAt: Date | null): AdminUserStat
 /**
  * Read one page of user accounts for the administration area.
  *
+ * A page past the last one — a shared or bookmarked URL, or a page that went
+ * stale while it was open — is clamped to the last page, so the summary, the
+ * page window, and every generated link point at a page that exists.
+ *
  * Throws `AuthenticationError` for an anonymous actor and `AuthorizationError`
  * for an actor without `user.read`, before any query runs.
  */
@@ -56,7 +60,7 @@ export async function listUsersForAdmin(
 ): Promise<AdminUserListResult> {
   requirePermission(actor, toPermissionKey('user', 'read'));
 
-  const result = await listUserAccounts({
+  const identityQuery = {
     page: query.page,
     pageSize: query.pageSize,
     sortBy: query.sortBy,
@@ -64,9 +68,20 @@ export async function listUsersForAdmin(
     search: query.search.length > 0 ? query.search : null,
     status: query.status,
     isSuperAdmin: query.superAdmin,
-  });
+  };
 
-  const totalPages = result.total === 0 ? 0 : Math.ceil(result.total / query.pageSize);
+  const requested = await listUserAccounts(identityQuery);
+
+  const totalPages = requested.total === 0 ? 0 : Math.ceil(requested.total / query.pageSize);
+  const effectivePage = Math.min(Math.max(query.page, 1), Math.max(totalPages, 1));
+
+  // Clamping the metadata alone would leave the table empty under a "Showing
+  // 121–137 of 137 users" summary, so the clamped page is read once more. An
+  // in-range page — every ordinary navigation — is still read exactly once.
+  const result =
+    effectivePage === query.page
+      ? requested
+      : await listUserAccounts({ ...identityQuery, page: effectivePage });
 
   return {
     items: result.rows.map(row => ({
@@ -78,11 +93,11 @@ export async function listUsersForAdmin(
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     })),
-    page: query.page,
+    page: effectivePage,
     pageSize: query.pageSize,
     total: result.total,
     totalPages,
-    hasNextPage: query.page < totalPages,
-    hasPreviousPage: query.page > 1 && totalPages > 0,
+    hasNextPage: effectivePage < totalPages,
+    hasPreviousPage: effectivePage > 1 && totalPages > 0,
   };
 }

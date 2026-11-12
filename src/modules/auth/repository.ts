@@ -120,7 +120,10 @@ export async function listUserAccounts(query: ListUserAccountsQuery): Promise<Us
     query.sortDirection === 'asc'
       ? [asc(sortColumn), asc(users.id)]
       : [desc(sortColumn), asc(users.id)];
-  const offset = (query.page - 1) * query.pageSize;
+  // Defense in depth: `AdminUsersQuery` already refuses a page below 1, so a
+  // negative offset cannot reach PostgreSQL today. Clamping it here keeps that
+  // true if a future caller builds the query by hand.
+  const offset = Math.max((query.page - 1) * query.pageSize, 0);
 
   const rows = await db
     .select({
@@ -141,5 +144,5 @@ export async function listUserAccounts(query: ListUserAccountsQuery): Promise<Us
 
   const [totalRow] = await db.select({ value: count() }).from(users).where(filter);
 
-  return { rows, total: totalRow?.value ?? 0 };
+  return { rows, total: Number(totalRow?.value ?? 0) };
 }

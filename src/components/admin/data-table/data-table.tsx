@@ -48,6 +48,24 @@ export function nextSortToken(currentSort: string, columnSortKey: string): strin
   return `-${columnSortKey}`;
 }
 
+/**
+ * The `aria-sort` value for a sortable column head.
+ *
+ * A function declaration rather than an arrow on purpose: a conditional body
+ * in an arrow trips both `no-confusing-arrow` and `no-extra-parens`, and the
+ * nested ternary this replaces was correct but hard to read.
+ */
+function resolveAriaSort(
+  sorted: boolean,
+  descending: boolean
+): 'ascending' | 'descending' | 'none' {
+  if (!sorted) {
+    return 'none';
+  }
+
+  return descending ? 'descending' : 'ascending';
+}
+
 export type AdminDataTableProps<T> = Readonly<{
   caption: string;
   captionClassName?: string;
@@ -141,7 +159,7 @@ function SortableHead<T>({ column, pathname, state }: SortableHeadProps<T>): JSX
 
   const descending = state.sort.startsWith('-');
   const sorted = (descending ? state.sort.slice(1) : state.sort) === column.sortKey;
-  const ariaSort = sorted ? descending ? 'descending' : 'ascending' : 'none';
+  const ariaSort = resolveAriaSort(sorted, descending);
   const order = descending ? 'descending' : 'ascending';
   const label = sorted
     ? `Sort by ${column.header}, currently ${order}`

@@ -95,6 +95,51 @@ describe('listUsersForAdmin', () => {
     expect(result.hasPreviousPage).toBe(false);
   });
 
+  it('clamps a page past the last page to the last page', async () => {
+    listUserAccountsMock
+      .mockResolvedValueOnce({ total: 42, rows: [] })
+      .mockResolvedValueOnce({
+        total: 42,
+        rows: [
+          {
+            id: 'c',
+            name: 'Grace Hopper',
+            email: 'grace@example.com',
+            isActive: true,
+            isSuperAdmin: false,
+            createdAt: new Date('2026-01-02T03:04:05.000Z'),
+            updatedAt: new Date('2026-01-02T03:04:05.000Z'),
+            deletedAt: null,
+          },
+        ],
+      });
+
+    const result = await listUsersForAdmin(reader, { ...query, page: 8 });
+
+    // 42 accounts at 20 per page is three pages, so page 8 does not exist.
+    expect(result.page).toBe(3);
+    expect(result.totalPages).toBe(3);
+    expect(result.hasNextPage).toBe(false);
+    expect(result.hasPreviousPage).toBe(true);
+
+    // The clamped page is read, not merely reported: the table shows the rows
+    // the summary now describes instead of an empty table.
+    expect(listUserAccountsMock).toHaveBeenCalledTimes(2);
+    expect(listUserAccountsMock).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 }));
+    expect(result.items.map(item => item.id)).toEqual(['c']);
+  });
+
+  it('clamps an empty result to page 1', async () => {
+    listUserAccountsMock.mockResolvedValue({ total: 0, rows: [] });
+
+    const result = await listUsersForAdmin(reader, { ...query, page: 4 });
+
+    expect(result.page).toBe(1);
+    expect(result.totalPages).toBe(0);
+    expect(result.hasNextPage).toBe(false);
+    expect(result.hasPreviousPage).toBe(false);
+  });
+
   it('derives the status with deleted taking precedence over the active flag', async () => {
     listUserAccountsMock.mockResolvedValue({
       total: 1,
@@ -131,5 +176,9 @@ describe('listUsersForAdmin', () => {
       status: 'active',
       isSuperAdmin: true,
     });
+
+    // An in-range page is read exactly once: the clamp costs nothing on every
+    // ordinary navigation.
+    expect(listUserAccountsMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -47,6 +47,41 @@ describe('AdminTablePagination', () => {
     expect(screen.getByText('No users')).toBeTruthy();
   });
 
+  it('shows the last page for a URL that asked past it', () => {
+    // A shared or bookmarked `?page=99` resolves to the last page in the read
+    // model, so the page hands the component the resolved page: the summary,
+    // the page window, and the current-page marker all describe a page that
+    // exists rather than an inverted range over pages nobody can open.
+    render(
+      <AdminTablePagination
+        pathname="/admin/users"
+        state={{ ...state, page: 7 }}
+        total={137}
+        totalPages={7}
+        itemLabel="users"
+      />
+    );
+
+    expect(screen.getByText(/Showing 121–137 of 137 users/).textContent).toBe(
+      'Showing 121–137 of 137 users'
+    );
+
+    // The numbered links only: Previous and Next live in the same nav.
+    const pageLinks = Array.from(
+      screen.getByRole('navigation', { name: 'Pagination' }).querySelectorAll('a')
+    ).filter(link => /^\d+$/.test(link.textContent ?? ''));
+    const labels = pageLinks.map(link => link.textContent);
+
+    // Pages 1 and 7 with the current page's neighbour, and nothing beyond the
+    // last page.
+    expect(labels).toEqual(['1', '6', '7']);
+
+    const current = pageLinks.filter(link => link.getAttribute('aria-current') === 'page');
+
+    expect(current).toHaveLength(1);
+    expect(current[0]?.textContent).toBe('7');
+  });
+
   it('keeps the sort, the search term, and the filters in the page links', () => {
     render(
       <AdminTablePagination

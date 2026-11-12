@@ -16,9 +16,9 @@ export function buildPageWindow(
   }
 
   const pages = new Set<number>([1, totalPages, currentPage]);
-  const window = 1;
+  const windowRadius = 1;
 
-  for (let offset = -window; offset <= window; offset += 1) {
+  for (let offset = -windowRadius; offset <= windowRadius; offset += 1) {
     const candidate = currentPage + offset;
 
     if (candidate >= 1 && candidate <= totalPages) {
@@ -161,6 +161,9 @@ function renderPageSizeOption(option: number): JSX.Element {
 /**
  * The page sizes the control offers, with the current one included.
  *
+ * The options are an ascending list and the result stays ascending, so the
+ * current page size is inserted in order rather than appended.
+ *
  * `CONVENTIONS.md` §6.3 allows any size from 1 to 100, and a hand-edited or
  * shared link may carry one the control does not offer. A `<select>` shows the
  * option matching its value and nothing otherwise, so a missing size would
@@ -205,7 +208,7 @@ export function AdminTablePagination({
 }: AdminTablePaginationProps): JSX.Element {
   const firstRow = total === 0 ? 0 : (state.page - 1) * state.pageSize + 1;
   const lastRow = total === 0 ? 0 : Math.min(state.page * state.pageSize, total);
-  const window = buildPageWindow(state.page, totalPages);
+  const pageWindow = buildPageWindow(state.page, totalPages);
 
   return (
     <div
@@ -220,7 +223,7 @@ export function AdminTablePagination({
 
       <nav aria-label="Pagination" className="flex items-center gap-1">
         {renderPrevious(pathname, state)}
-        {window.map((entry, index) => renderWindowEntry(entry, index, pathname, state))}
+        {pageWindow.map((entry, index) => renderWindowEntry(entry, index, pathname, state))}
         {renderNext(pathname, state, totalPages)}
       </nav>
 
