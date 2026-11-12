@@ -26,7 +26,9 @@ import { like } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { listUserAccounts } from '@/modules/auth';
 import { users } from '@/modules/auth/schema';
+import { listUsersForAdmin } from '@/modules/users';
 import { closePool } from '@/platform/db/pool';
+import { AuthenticationError, AuthorizationError } from '@/platform/errors';
 
 const TEST_EMAIL_PREFIX = 'it-users-';
 
@@ -325,5 +327,56 @@ describe('listUserAccounts (real database)', () => {
     const names = ascending.rows.filter(row => row.name === 'Tied Person').map(row => row.id);
 
     expect(names).toEqual([first, second].sort());
+  });
+
+  it('reports the total number of matching accounts, not the page size', async () => {
+    await insertUser({ name: 'Counted One', email: `${TEST_EMAIL_PREFIX}counted-1@example.com` });
+    await insertUser({ name: 'Counted Two', email: `${TEST_EMAIL_PREFIX}counted-2@example.com` });
+    await insertUser({ name: 'Counted Three', email: `${TEST_EMAIL_PREFIX}counted-3@example.com` });
+
+    const page = await listUserAccounts({
+      page: 2,
+      pageSize: 2,
+      sortBy: 'name',
+      sortDirection: 'asc',
+      search: 'Counted',
+      status: null,
+      isSuperAdmin: null,
+    });
+
+    expect(page.rows).toHaveLength(1);
+    expect(page.total).toBe(3);
+  });
+});
+
+describe('listUsersForAdmin (real database)', () => {
+  it('rejects an anonymous actor', async () => {
+    await expect(
+      listUsersForAdmin(
+        { userId: null, roles: [], isSuperAdmin: false, permissions: [] },
+        { page: 1, pageSize: 20, sortBy: 'createdAt', sortDirection: 'desc', search: '', status: null, superAdmin: null }
+      )
+    ).rejects.toBeInstanceOf(AuthenticationError);
+  });
+
+  it('rejects an actor without user.read', async () => {
+    await expect(
+      listUsersForAdmin(
+        { userId: 'u1', roles: [], isSuperAdmin: false, permissions: ['user.manage'] },
+        { page: 1, pageSize: 20, sortBy: 'createdAt', sortDirection: 'desc', search: '', status: null, superAdmin: null }
+      )
+    ).rejects.toBeInstanceOf(AuthorizationError);
+  });
+
+  it('lists accounts for an actor with user.read', async () => {
+    const id = await insertUser({ name: 'Listed Person', email: `${TEST_EMAIL_PREFIX}listed@example.com` });
+
+    const result = await listUsersForAdmin(
+      { userId: 'u2', roles: [], isSuperAdmin: false, permissions: ['user.read'] },
+      { page: 1, pageSize: 100, sortBy: 'createdAt', sortDirection: 'desc', search: 'Listed Person', status: null, superAdmin: null }
+    );
+
+    expect(result.items.map(item => item.id)).toContain(id);
+    expect(result.items[0]?.status).toBe('active');
   });
 });
