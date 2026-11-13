@@ -7,7 +7,7 @@ import { requirePermission } from '@/modules/authorization';
 import { NotFoundError } from '@/platform/errors';
 
 import { z } from 'zod';
-import { episodes, dramas } from '@/modules/content/schema';
+import { episodes, dramas, seasons } from '@/modules/content/schema';
 import { parseOrThrow, parseCreateEpisodeInput, type CreateEpisodeInput } from '@/modules/content/validation';
 
 /** Permission key for episode management. */
@@ -52,28 +52,26 @@ export async function createEpisode(
   let episodeNumber: number | undefined;
   if (parsed.episode_number !== undefined) {
     // User provided an explicit episode number - validate no duplicate
-    if (parsed.episode_number !== undefined) {
-      const [existing] = await db
-        .select({ id: episodes.id })
-        .from(episodes)
-        .where(
-          and(
-            eq(episodes.drama_id, parsedDramaId),
-            eq(episodes.episode_number, parsed.episode_number),
-            isNull(episodes.deleted_at)
-          )
-        );
+    const [existing] = await db
+      .select({ id: episodes.id })
+      .from(episodes)
+      .where(
+        and(
+          eq(episodes.drama_id, parsedDramaId),
+          eq(episodes.episode_number, parsed.episode_number),
+          isNull(episodes.deleted_at)
+        )
+      );
 
-      if (existing) {
-        return {
-          ok: false,
-          error: {
-            code: 'validation_error',
-            message: 'An episode with this episode number already exists.',
-            fieldErrors: { episode_number: ['An episode with this episode number already exists.'] },
-          },
-        };
-      }
+    if (existing) {
+      return {
+        ok: false,
+        error: {
+          code: 'validation_error',
+          message: 'An episode with this episode number already exists.',
+          fieldErrors: { episode_number: ['An episode with this episode number already exists.'] },
+        },
+      };
     }
     episodeNumber = parsed.episode_number;
   } else {
@@ -113,6 +111,109 @@ export async function createEpisode(
     .returning();
 
   return { ok: true, episode: toEpisode(row) };
+}
+
+/** Move episodes between seasons within the same drama. */
+export async function moveEpisodesToSeason(
+  actor: ActorContext,
+  dramaId: string,
+  episodeIds: string[],
+  targetSeasonId: string | null
+): Promise<{ ok: true; episodesMoved: number } | { ok: false; error: unknown }> {
+  requirePermission(actor, MANAGE_PERMISSION);
+
+  const parsedDramaId = parseOrThrow(z.uuid(), dramaId);
+  const parsedEpisodeIds = episodeIds.map((id) => parseOrThrow(z.uuid(), id));
+
+  // Validate drama exists
+  const [drama] = await db
+    .select({ id: dramas.id, title: dramas.title })
+    .from(dramas)
+    .where(eq(dramas.id, parsedDramaId));
+
+  if (!drama) {
+    return { ok: false, error: new NotFoundError('Drama not found.') };
+  }
+
+  // If moving to a season, validate it belongs to the same drama
+  if (targetSeasonId) {
+    const parsedTargetSeasonId = parseOrThrow(z.uuid(), targetSeasonId);
+    const [targetSeason] = await db
+      .select({ id: seasons.id, title: seasons.title, drama_id: seasons.drama_id })
+      .from(seasons)
+      .where(and(eq(seasons.id, parsedTargetSeasonId), eq(seasons.drama_id, parsedDramaId)));
+
+    if (!targetSeason) {
+      return { ok: false, error: new NotFoundError('Target season not found or does not belong to this drama.') };
+    }
+  }
+
+  // Validate all episodes exist, belong to the same drama, and are not deleted
+  const episodesToMove = await db
+    .select()
+    .from(episodes)
+    .where(
+      and(
+        eq(episodes.drama_id, parsedDramaId),
+        isNull(episodes.deleted_at),
+        episodes.id.in(parsedEpisodeIds)
+      )
+    );
+
+  // Verify all requested episodes were found
+  const foundIds = new Set(episodesToMove.map((e) => e.id));
+  const requestedIds = new Set(parsedEpisodeIds);
+
+  if (foundIds.size !== requestedIds.size) {
+    const missingIds = [...requestedIds].filter((id) => !foundIds.has(id));
+    return {
+      ok: false,
+      error: {
+        code: 'not_found',
+        message: `One or more episodes not found or do not belong to this drama: ${missingIds.join(', ')}`,
+      },
+    };
+  }
+
+  // Perform the move transactionally
+  // Update season_id and recalculate positions in the target season
+  await db.transaction(async (tx) => {
+    // If moving to a season, get the current max position in the target season
+    let targetPosition = 0;
+    if (targetSeasonId) {
+      const parsedTargetSeasonId = parseOrThrow(z.uuid(), targetSeasonId);
+      const [maxPosRow] = await tx
+        .select({ max: sql`MAX(${episodes.position})` })
+        .from(episodes)
+        .where(
+          and(
+            eq(episodes.drama_id, parsedDramaId),
+            eq(episodes.season_id, parsedTargetSeasonId),
+            isNull(episodes.deleted_at)
+          )
+        );
+
+      const currentMaxPos = Number(maxPosRow?.max);
+      targetPosition = currentMaxPos !== null && currentMaxPos !== undefined ? currentMaxPos + 1 : 0;
+    }
+
+    // Move each episode to the target season, appending after existing episodes
+    for (let i = 0; i < episodesToMove.length; i++) {
+      await tx
+        .update(episodes)
+        .set({
+          season_id: targetSeasonId,
+          position: targetPosition + i,
+          updated_at: new Date(),
+        })
+        .where(eq(episodes.id, episodesToMove[i].id));
+    }
+  });
+
+  return {
+    ok: true,
+    episodesMoved: episodesToMove.length,
+  };
 }
 
 /** Renumber episodes in a drama (or within a season). */
