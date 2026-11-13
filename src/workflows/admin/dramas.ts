@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, eq, isNull, ne, count } from 'drizzle-orm';
+import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { requirePermission } from '@/modules/authorization';
@@ -8,7 +8,7 @@ import { NotFoundError } from '@/platform/errors';
 
 import { z } from 'zod';
 import { dramaStatusSchema } from '@/modules/content/validation';
-import { dramas } from '@/modules/content/schema';
+import { dramas, contentSlugHistory, dramaCategories, dramaPlatforms } from '@/modules/content/schema';
 import { parseOrThrow, parseCreateDramaInput, type CreateDramaInput } from '@/modules/content/validation';
 
 /** Permission key for drama management. */
@@ -47,6 +47,8 @@ export async function createDrama(
       slug: parsed.slug,
       description: parsed.description,
       status: parsed.status,
+      poster: parsed.poster,
+      banner: parsed.banner,
       created_at: new Date(),
       updated_at: new Date(),
     })
@@ -89,6 +91,21 @@ export async function updateDrama(
     };
   }
 
+  // Track slug change history if the slug is being changed
+  const [oldDrama] = await db
+    .select({ slug: dramas.slug })
+    .from(dramas)
+    .where(eq(dramas.id, parsedId));
+
+  if (oldDrama && oldDrama.slug !== parsed.slug) {
+    await db.insert(contentSlugHistory).values({
+      content_type: 'drama',
+      content_id: parsedId,
+      old_slug: oldDrama.slug,
+      new_slug: parsed.slug,
+    });
+  }
+
   const [row] = await db
     .update(dramas)
     .set({
@@ -96,6 +113,8 @@ export async function updateDrama(
       slug: parsed.slug,
       description: parsed.description,
       status: parsed.status,
+      poster: parsed.poster,
+      banner: parsed.banner,
       updated_at: new Date(),
     })
     .where(and(eq(dramas.id, parsedId), isNull(dramas.deleted_at)))
@@ -103,6 +122,42 @@ export async function updateDrama(
 
   if (!row) {
     return { ok: false, error: new NotFoundError('Drama not found.') };
+  }
+
+  // Handle categories update (replace all existing categories)
+  if (parsed.categories !== undefined && Array.isArray(parsed.categories)) {
+    // Remove existing category associations
+    await db
+      .delete(dramaCategories)
+      .where(eq(dramaCategories.drama_id, parsedId));
+
+    // Add new category associations
+    if (parsed.categories.length > 0) {
+      await db.insert(dramaCategories).values(
+        parsed.categories.map((catId) => ({
+          drama_id: parsedId,
+          category_id: catId,
+        }))
+      );
+    }
+  }
+
+  // Handle platforms update (replace all existing platforms)
+  if (parsed.platforms !== undefined && Array.isArray(parsed.platforms)) {
+    // Remove existing platform associations
+    await db
+      .delete(dramaPlatforms)
+      .where(eq(dramaPlatforms.drama_id, parsedId));
+
+    // Add new platform associations
+    if (parsed.platforms.length > 0) {
+      await db.insert(dramaPlatforms).values(
+        parsed.platforms.map((platId) => ({
+          drama_id: parsedId,
+          platform_id: platId,
+        }))
+      );
+    }
   }
 
   return { ok: true, drama: toDrama(row) };
@@ -163,6 +218,8 @@ function toDrama(row: typeof dramas.$inferSelect) {
     slug: row.slug,
     description: row.description,
     status: row.status,
+    poster: row.poster,
+    banner: row.banner,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };

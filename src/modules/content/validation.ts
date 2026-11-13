@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { parseListInformationPagesQuery } from '@/modules/content/information-pages.shared';
 
 /** Slug pattern: lowercase alphanumeric plus hyphens, no leading/trailing hyphens. */
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -8,7 +7,7 @@ const MAX_SLUG_LENGTH = 100;
 /** Drama status enum. */
 export const dramaStatusSchema = z.enum(['ongoing', 'completed']);
 
-/** Drama create/edit schema. */
+/** Drama create/edit schema with full metadata support. */
 export const createDramaSchema = z
   .strictObject({
     title: z.string().trim().min(1).max(200),
@@ -20,6 +19,8 @@ export const createDramaSchema = z
       .regex(SLUG_PATTERN, 'Slug must be lowercase alphanumeric with hyphens'),
     description: z.string().optional(),
     status: dramaStatusSchema.default('ongoing'),
+    poster: z.string().url().optional().default(null),
+    banner: z.string().url().optional().default(null),
   })
   .refine(
     value => Object.keys(value).length > 0,

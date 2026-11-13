@@ -84,8 +84,8 @@ export async function PUT(request: Request): Promise<Response> {
     const actor = await resolveActor();
     authorizeDramaAdmin(actor);
 
-    const { dramaId, ...input } = await request.json();
-    const result = await updateDrama(actor, dramaId, input);
+    const body = await request.json();
+    const result = await updateDrama(actor, body.dramaId, body);
 
     if (result.ok) {
       return jsonResponse(
