@@ -26,6 +26,7 @@
   "dependencies": {
     "@base-ui/react": "^1.9.0",
     "@better-auth/drizzle-adapter": "^1.7.18",
+    "@hookform/resolvers": "^7.0.6",
     "@shadcn/ui": "^0.0.4",
     "@tailwindcss/postcss": "^4.3.5",
     "better-auth": "^1.7.18",
@@ -38,6 +39,7 @@
     "pino": "^10.4.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "react-hook-form": "^7.92.0",
     "server-only": "^0.0.1",
     "shadcn": "^4.23.0",
     "tailwindcss": "^4.3.5",
