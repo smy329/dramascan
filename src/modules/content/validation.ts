@@ -19,6 +19,7 @@ export const createDramaSchema = z
       .regex(SLUG_PATTERN, 'Slug must be lowercase alphanumeric with hyphens'),
     description: z.string().optional(),
     status: dramaStatusSchema.default('ongoing'),
+    structure_type: z.enum(['flat', 'season_based']).default('season_based'),
     poster: z.string().url().optional().default(null),
     banner: z.string().url().optional().default(null),
   })
