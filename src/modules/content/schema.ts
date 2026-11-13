@@ -46,6 +46,7 @@ export const dramas = pgTable('dramas', {
   banner: text('banner'),
   status: text('status'),
   publication_status: text('publication_status'),
+  structure_type: text('structure_type').notNull().default('season_based'),
   created_at: created,
   updated_at: updated,
   deleted_at: deleted,
