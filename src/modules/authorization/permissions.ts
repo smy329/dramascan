@@ -24,6 +24,7 @@ export const PERMISSION_RESOURCES = [
   'drama',
   'movie',
   'episode',
+  'season',   // Added
   'category',
   'platform',
   'user',
@@ -63,6 +64,12 @@ export const PERMISSIONS = {
   'episode.update': { resource: 'episode', action: 'update', description: 'Update episodes.' },
   'episode.delete': { resource: 'episode', action: 'delete', description: 'Delete episodes.' },
   'episode.manage': { resource: 'episode', action: 'manage', description: 'Manage episodes.' },
+
+  // Content: season
+  'season.read': { resource: 'season', action: 'read', description: 'Read seasons.' },
+  'season.create': { resource: 'season', action: 'create', description: 'Create seasons.' },
+  'season.update': { resource: 'season', action: 'update', description: 'Update seasons.' },
+  'season.delete': { resource: 'season', action: 'delete', description: 'Delete seasons.' },
 
   // Content: category
   'category.create': { resource: 'category', action: 'create', description: 'Create categories.' },

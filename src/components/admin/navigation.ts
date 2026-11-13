@@ -2,6 +2,7 @@
  * Central admin navigation model.
  *
  * This module is the single source of truth for the administration sidebar.
+ *
  * Every planned entry is declared here with its canonical permission keys and
  * an explicit `implemented` flag. Only entries whose route exists AND whose
  * permissions the actor holds are rendered.
@@ -57,6 +58,13 @@ export const ADMIN_NAVIGATION: readonly AdminNavGroup[] = [
         label: 'Dramas',
         href: '/admin/dramas',
         permissions: ['drama.read'],
+        implemented: true,
+      },
+      {
+        id: 'seasons',
+        label: 'Seasons',
+        href: '/admin/seasons',
+        permissions: ['season.read'],
         implemented: false,
       },
       {
