@@ -7,11 +7,20 @@ import { requirePermission } from '@/modules/authorization';
 import { NotFoundError } from '@/platform/errors';
 
 import { z } from 'zod';
-import { episodes, dramas, seasons } from '@/modules/content/schema';
+import { episodes, dramas } from '@/modules/content/schema';
 import { parseOrThrow, parseCreateEpisodeInput, type CreateEpisodeInput } from '@/modules/content/validation';
 
 /** Permission key for episode management. */
 const MANAGE_PERMISSION = 'episode.manage';
+
+export interface ListEpisodesQuery {
+  page?: number;
+  pageSize?: number;
+  sort?: 'title' | 'episode_number' | 'position' | 'publication_status' | 'createdAt';
+  order?: 'asc' | 'desc';
+  search?: string;
+  publication_status?: 'ongoing' | 'completed';
+}
 
 /** Episode create. */
 export async function createEpisode(
@@ -92,32 +101,91 @@ export async function createEpisode(
   return { ok: true, episode: toEpisode(row) };
 }
 
-/** List episodes for a drama. */
+/** List episodes for a drama with pagination, sorting, and search. */
 export async function listEpisodes(
   actor: ActorContext,
-  dramaId: string
-): Promise<{ ok: true; episodes: ReturnType<typeof toEpisode>[]; total: number } | { ok: false; error: unknown }> {
+  dramaId: string,
+  query: unknown
+): Promise<{
+  ok: true;
+  episodes: ReturnType<typeof toEpisode>[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+} | { ok: false; error: unknown }> {
   requirePermission(actor, MANAGE_PERMISSION);
 
   const parsedDramaId = parseOrThrow(z.uuid(), dramaId);
 
+  // Parse and validate query parameters
+  const parsedQuery = parseOrThrow(listEpisodesQuerySchema, query);
+
+  // Base where conditions: drama must exist and episode not soft-deleted
+  const whereConditions = [
+    eq(episodes.drama_id, parsedDramaId),
+    isNull(episodes.deleted_at),
+  ];
+
+  // Add publication_status filter if provided
+  if (parsedQuery.publication_status) {
+    whereConditions.push(eq(episodes.publication_status, parsedQuery.publication_status));
+  }
+
+  // Add search filter if provided (search by title or episode_number)
+  if (parsedQuery.search) {
+    const searchPattern = `%${parsedQuery.search}%`;
+    whereConditions.push(
+      sql`${episodes.title} ILIKE ${searchPattern} OR CAST(${episodes.episode_number} AS text) ILIKE ${searchPattern}`
+    );
+  }
+
+  // Determine sorting
+  const sortColumn = parsedQuery.sort || 'position';
+  const sortOrder = parsedQuery.order || 'asc';
+
+  // Validate sort column - only allow known columns
+  const allowedSortColumns = ['title', 'episode_number', 'position', 'publication_status'];
+  const validatedSortColumn = allowedSortColumns.includes(sortColumn) ? sortColumn : 'position';
+
+  // Add order BY
+  const sortDirection = sortOrder === 'desc' ? desc : asc;
+  whereConditions.push(sortDirection(episodes[validatedSortColumn]));
+
+  // Count total matching episodes
   const [totalRow] = await db
     .select({ total: count() })
     .from(episodes)
-    .where(and(eq(episodes.drama_id, parsedDramaId), isNull(episodes.deleted_at)));
+    .where(and(...whereConditions));
 
   const total = Number(totalRow?.total ?? 0);
 
+  // Calculate pagination
+  const page = Math.max(1, (parsedQuery.page ?? 1));
+  const pageSize = Math.min(
+    Math.max(1, parsedQuery.pageSize ?? 20),
+    100
+  );
+  const offset = (page - 1) * pageSize;
+
+  // Fetch episodes with pagination
   const rows = await db
     .select()
     .from(episodes)
-    .where(and(eq(episodes.drama_id, parsedDramaId), isNull(episodes.deleted_at)))
-    .orderBy(episodes.position);
+    .where(and(...whereConditions))
+    .limit(pageSize)
+    .offset(offset)
+    .orderBy(sortDirection(episodes[validatedSortColumn]));
+
+  const totalPages = Math.ceil(total / pageSize);
 
   return {
     ok: true,
     episodes: rows.map(toEpisode),
     total,
+    page,
+    pageSize,
+    totalPages,
   };
 }
 
@@ -224,23 +292,7 @@ export async function deleteEpisode(
   return { ok: true };
 }
 
-/** Replace episode video source following Phase 6 process.
- * 
- * This function handles the source replacement workflow:
- * 1. Validates the new video_source URL syntax and HTTPS scheme
- * 2. Does not perform backend video proxying or fetching
- * 3. The actual preview, administrator confirmation, and progress reset
- *    must be handled in the client UI per Phase 6 requirements
- * 4. Resets playback progress for the episode after confirmed replacement
- * 5. Preserves watch-history records and their historical dates
- * 
- * Important: This function only updates the video_source field in the database.
- * The actual preview, administrator confirmation, and progress reset
- * must be handled in the client UI per Phase 6 requirements.
- * 
- * @param newVideoSource - The new public HTTPS direct MP4 URL
- * @returns The updated episode with the new video_source
- */
+/** Replace episode video source following Phase 6 process. */
 export async function replaceEpisodeVideoSource(
   actor: ActorContext,
   episodeId: string,
@@ -303,3 +355,22 @@ function toEpisode(row: typeof episodes.$inferSelect) {
     updatedAt: row.updated_at.toISOString(),
   };
 }
+
+/** Zod schema for listEpisodes query parameters. */
+const listEpisodesQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z
+      .coerce.number().int().min(1).max(100)
+      .default(20),
+    sort: z
+      .enum(['title', 'episode_number', 'position', 'publication_status', 'createdAt'])
+      .optional(),
+    order: z.enum(['asc', 'desc']).optional(),
+    search: z.string().trim().optional(),
+    publication_status: z.enum(['ongoing', 'completed']).optional(),
+  })
+  .refine(
+    (data) => Object.keys(data).length > 0,
+    { message: 'At least one query parameter must be provided.' }
+  );
