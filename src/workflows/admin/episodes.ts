@@ -7,7 +7,7 @@ import { requirePermission } from '@/modules/authorization';
 import { NotFoundError } from '@/platform/errors';
 
 import { z } from 'zod';
-import { episodes, dramas, seasons } from '@/modules/content/schema';
+import { episodes, dramas } from '@/modules/content/schema';
 import { parseOrThrow, parseCreateEpisodeInput, type CreateEpisodeInput } from '@/modules/content/validation';
 
 /** Permission key for episode management. */
@@ -156,6 +156,60 @@ export async function renumberEpisodes(
   return {
     ok: true,
     episodesModified: rows.length,
+  };
+}
+
+/** Reorder episodes by specifying their new order. */
+export async function reorderEpisodes(
+  actor: ActorContext,
+  dramaId: string,
+  episodeIds: string[]
+): Promise<{ ok: true; episodesReordered: number } | { ok: false; error: unknown }> {
+  requirePermission(actor, MANAGE_PERMISSION);
+
+  const parsedDramaId = parseOrThrow(z.uuid(), dramaId);
+
+  // Validate that all episode IDs belong to this drama and are not deleted
+  const validEpisodes = await db
+    .select({ id: episodes.id, position: episodes.position, episode_number: episodes.episode_number, season_id: episodes.season_id })
+    .from(episodes)
+    .where(
+      and(
+        eq(episodes.drama_id, parsedDramaId),
+        isNull(episodes.deleted_at),
+        episodes.id.in(episodeIds.map(parseOrThrow(z.uuid, [])))
+      )
+    );
+
+  // Verify all requested episodes were found and belong to this drama
+  const requestedSet = new Set(episodeIds.map((id) => parseOrThrow(z.uuid, [])));
+  const foundSet = new Set(validEpisodes.map((e) => e.id));
+
+  if (requestedSet.size !== foundSet.size) {
+    return { ok: false, error: new NotFoundError('One or more episodes not found or do not belong to this drama.') };
+  }
+
+  // Get current positions and sort by requested order
+  const episodeMap = new Map(validEpisodes.map((e) => [e.id, e]));
+
+  // Update positions based on the order provided
+  // Position 0 = first, Position 1 = second, etc.
+  const updatePromises = episodeIds.map((episodeId, index) => {
+    const episode = episodeMap.get(episodeId);
+    if (!episode) {
+      return Promise.resolve(); // Should not happen due to validation above
+    }
+    return db
+      .update(episodes)
+      .set({ position: index })
+      .where(eq(episodes.id, episodeId));
+  });
+
+  await Promise.all(updatePromises);
+
+  return {
+    ok: true,
+    episodesReordered: episodeIds.length,
   };
 }
 
