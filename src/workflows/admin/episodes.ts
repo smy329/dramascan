@@ -7,20 +7,11 @@ import { requirePermission } from '@/modules/authorization';
 import { NotFoundError } from '@/platform/errors';
 
 import { z } from 'zod';
-import { episodes, dramas } from '@/modules/content/schema';
+import { episodes, dramas, seasons } from '@/modules/content/schema';
 import { parseOrThrow, parseCreateEpisodeInput, type CreateEpisodeInput } from '@/modules/content/validation';
 
 /** Permission key for episode management. */
 const MANAGE_PERMISSION = 'episode.manage';
-
-export interface ListEpisodesQuery {
-  page?: number;
-  pageSize?: number;
-  sort?: 'title' | 'episode_number' | 'position' | 'publication_status' | 'createdAt';
-  order?: 'asc' | 'desc';
-  search?: string;
-  publication_status?: 'ongoing' | 'completed';
-}
 
 /** Episode create. */
 export async function createEpisode(
@@ -57,29 +48,52 @@ export async function createEpisode(
     }
   }
 
-  // Check for duplicate episode number within the drama (if episode_number is provided)
+  // Determine episode_number: use provided value, or auto-assign the next number
+  let episodeNumber: number | undefined;
   if (parsed.episode_number !== undefined) {
-    const [existing] = await db
-      .select({ id: episodes.id })
+    // User provided an explicit episode number - validate no duplicate
+    if (parsed.episode_number !== undefined) {
+      const [existing] = await db
+        .select({ id: episodes.id })
+        .from(episodes)
+        .where(
+          and(
+            eq(episodes.drama_id, parsedDramaId),
+            eq(episodes.episode_number, parsed.episode_number),
+            isNull(episodes.deleted_at)
+          )
+        );
+
+      if (existing) {
+        return {
+          ok: false,
+          error: {
+            code: 'validation_error',
+            message: 'An episode with this episode number already exists.',
+            fieldErrors: { episode_number: ['An episode with this episode number already exists.'] },
+          },
+        };
+      }
+    }
+    episodeNumber = parsed.episode_number;
+  } else {
+    // Auto-assign the next episode number
+    // Find the max episode_number for this drama (or within this season if season_id provided)
+    const [maxRow] = await db
+      .select({ max: sql`MAX(${episodes.episode_number})` })
       .from(episodes)
       .where(
         and(
           eq(episodes.drama_id, parsedDramaId),
-          eq(episodes.episode_number, parsed.episode_number),
-          isNull(episodes.deleted_at)
+          isNull(episodes.deleted_at),
+          ...(parsed.season_id
+            ? [eq(episodes.season_id, parsed.season_id)]
+            : [])
         )
       );
 
-    if (existing) {
-      return {
-        ok: false,
-        error: {
-          code: 'validation_error',
-          message: 'An episode with this episode number already exists.',
-          fieldErrors: { episode_number: ['An episode with this episode number already exists.'] },
-        },
-      };
-    }
+    const currentMax = Number(maxRow?.max);
+    episodeNumber = currentMax !== null && currentMax !== undefined ? currentMax + 1 : 1;
   }
 
   const [row] = await db
@@ -89,7 +103,7 @@ export async function createEpisode(
       season_id: parsed.season_id,
       title: parsed.title,
       description: parsed.description,
-      episode_number: parsed.episode_number,
+      episode_number: episodeNumber,
       position: parsed.position,
       publication_status: parsed.publication_status,
       video_source: parsed.video_source,
@@ -99,6 +113,50 @@ export async function createEpisode(
     .returning();
 
   return { ok: true, episode: toEpisode(row) };
+}
+
+/** Renumber episodes in a drama (or within a season). */
+export async function renumberEpisodes(
+  actor: ActorContext,
+  dramaId: string,
+  seasonId: string | null
+): Promise<{ ok: true; episodesModified: number } | { ok: false; error: unknown }> {
+  requirePermission(actor, MANAGE_PERMISSION);
+
+  const parsedDramaId = parseOrThrow(z.uuid(), dramaId);
+
+  // Build where conditions based on whether we're renumbering by season or for the whole drama
+  const whereConditions = [
+    eq(episodes.drama_id, parsedDramaId),
+    isNull(episodes.deleted_at),
+  ];
+
+  if (seasonId) {
+    const parsedSeasonId = parseOrThrow(z.uuid(), seasonId);
+    whereConditions.push(eq(episodes.season_id, parsedSeasonId));
+  }
+
+  // Get all episodes in order by current position
+  const rows = await db
+    .select()
+    .from(episodes)
+    .where(and(...whereConditions))
+    .orderBy(episodes.position);
+
+  // Renumber episodes sequentially starting from 1
+  const updatePromises = rows.map((row, index) =>
+    db
+      .update(episodes)
+      .set({ episode_number: index + 1 })
+      .where(eq(episodes.id, row.id))
+  );
+
+  await Promise.all(updatePromises);
+
+  return {
+    ok: true,
+    episodesModified: rows.length,
+  };
 }
 
 /** List episodes for a drama with pagination, sorting, and search. */
@@ -233,7 +291,7 @@ export async function updateEpisode(
           fieldErrors: { episode_number: ['An episode with this episode number already exists.'] },
         },
       };
-    }
+    };
   }
 
   // If season_id is being changed, validate the new season belongs to the drama
