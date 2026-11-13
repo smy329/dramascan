@@ -76,3 +76,30 @@ export class ValidationError extends Error {
     this.name = 'ValidationError';
   }
 }
+
+/** Episode status enum. */
+export const episodeStatusSchema = z.enum(['ongoing', 'completed']);
+
+/** Episode create schema with minimal metadata. */
+export const createEpisodeSchema = z
+  .strictObject({
+    title: z.string().trim().min(1).max(200),
+    description: z.string().optional(),
+    episode_number: z.coerce.number().int().min(1).optional(),
+    position: z.coerce.number().int().min(0).default(0),
+    publication_status: episodeStatusSchema.default('ongoing'),
+    season_id: z.string().uuid().optional(),
+    drama_id: z.string().uuid(),
+    video_source: z.string().url().optional(),
+  })
+  .refine(
+    value => Object.keys(value).length > 0,
+    { message: 'At least one field must be provided.' }
+  );
+
+export type CreateEpisodeInput = z.infer<typeof createEpisodeSchema>;
+
+/** Parse create episode input, throwing a REST-safe validation error on failure. */
+export function parseCreateEpisodeInput(input: unknown): CreateEpisodeInput {
+  return createEpisodeSchema.safeParse(input);
+}
