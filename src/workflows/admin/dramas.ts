@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, eq, isNull, ne, sql, ilike } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { requirePermission } from '@/modules/authorization';
@@ -8,11 +8,29 @@ import { NotFoundError } from '@/platform/errors';
 
 import { z } from 'zod';
 import { dramaStatusSchema } from '@/modules/content/validation';
-import { dramas, contentSlugHistory, dramaCategories, dramaPlatforms } from '@/modules/content/schema';
+import { dramas, contentSlugHistory, dramaCategories, dramaPlatforms, categories, platforms } from '@/modules/content/schema';
 import { parseOrThrow, parseCreateDramaInput, type CreateDramaInput } from '@/modules/content/validation';
 
 /** Permission key for drama management. */
 const MANAGE_PERMISSION = 'drama.manage';
+
+/** List query schema for drama listing. */
+const listDramasQuerySchema = z.strictObject({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  sort: z.enum(['title', 'status', 'createdAt']).default('title'),
+  order: z.enum(['asc', 'desc']).default('asc'),
+  status: z.enum(['draft', 'published', 'unpublished', 'trashed']).optional(),
+  search: z.string().optional(),
+});
+
+/** Drama list query input type. */
+export type ListDramasQuery = z.infer<typeof listDramasQuerySchema>;
+
+/** Parse list query, throwing a REST-safe validation error on failure. */
+export function parseListDramasQuery(input: unknown): ListDramasQuery {
+  return parseOrThrow(listDramasQuerySchema, input);
+}
 
 /** Drama create. */
 export async function createDrama(
@@ -163,29 +181,71 @@ export async function updateDrama(
   return { ok: true, drama: toDrama(row) };
 }
 
-/** List non-deleted dramas for administration. */
+/** List non-deleted dramas for administration with pagination and filters. */
 export async function listDramas(
-  actor: ActorContext
-): Promise<{ ok: true; dramas: ReturnType<typeof toDrama>[]; total: number } | { ok: false; error: unknown }> {
+  actor: ActorContext,
+  query: ListDramasQuery
+): Promise<{
+  ok: true;
+  dramas: ReturnType<typeof toDrama>[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+} | { ok: false; error: unknown }> {
   requirePermission(actor, MANAGE_PERMISSION);
 
+  const offset = (query.page - 1) * query.pageSize;
+
+  // Build WHERE conditions
+  const whereConditions: any[] = [isNull(dramas.deleted_at)];
+
+  // Status filter
+  if (query.status) {
+    whereConditions.push(eq(dramas.status, query.status));
+  }
+
+  // Search filter (title or slug)
+  if (query.search) {
+    const searchPattern = `%${query.search}%`;
+    whereConditions.push(
+      sql`${dramas.title} ILIKE ${searchPattern} OR ${dramas.slug} ILIKE ${searchPattern}`
+    );
+  }
+
+  // Count total
   const [totalRow] = await db
     .select({ total: count() })
     .from(dramas)
-    .where(isNull(dramas.deleted_at));
+    .where(and(...whereConditions));
 
   const total = Number(totalRow?.total ?? 0);
 
+  // Build ORDER BY
+  const sortColumn = query.sort === 'title' ? dramas.title : query.sort === 'status' ? dramas.status : dramas.created_at;
+  const sortOrder = query.order === 'desc' ? desc : asc;
+  const orderBy = sortOrder(sortColumn);
+
+  // Fetch dramas with pagination
   const rows = await db
     .select()
     .from(dramas)
-    .where(isNull(dramas.deleted_at))
-    .orderBy(dramas.title);
+    .where(and(...whereConditions))
+    .orderBy(orderBy)
+    .limit(query.pageSize)
+    .offset(offset);
 
   return {
     ok: true,
     dramas: rows.map(toDrama),
     total,
+    page: query.page,
+    pageSize: query.pageSize,
+    totalPages: total === 0 ? 0 : Math.ceil(total / query.pageSize),
+    hasNextPage: query.page < Math.ceil(total / query.pageSize),
+    hasPreviousPage: query.page > 1,
   };
 }
 
