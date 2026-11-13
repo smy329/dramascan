@@ -12,8 +12,8 @@ import {
 /**
  * Admin season CRUD API.
  *
- * Supports creation, listing, updating, and soft-deletion of seasons
- * associated with a drama. Authorization is enforced server-side at this
+ * Supports creation, listing, updating, and soft-deletion (moving to trash)
+ * of seasons associated with a drama. Authorization is enforced server-side at this
  * entrypoint and again inside the workflow functions.
  */
 
@@ -120,20 +120,24 @@ export async function DELETE(request: Request): Promise<Response> {
     const result = await deleteSeason(actor, seasonId);
 
     if (result.ok) {
-      return jsonResponse({ ok: true }, 204, requestId);
+      return jsonResponse(
+        { ok: true, affectedEpisodes: result.affectedEpisodes },
+        200,
+        requestId
+      );
     }
 
     if (result.error && typeof result.error === 'object' && 'code' in result.error) {
       return jsonResponse(
         { ok: false, error: result.error },
-        404,
+        400,
         requestId
       );
     }
 
     return jsonResponse(
-      { ok: false, error: { code: 'internal', message: 'Failed to delete season.' } },
-      500,
+      { ok: false, error: { code: 'not_found', message: 'Season not found.' } },
+      404,
       requestId
     );
   } catch (error) {

@@ -7,7 +7,7 @@ import { requirePermission } from '@/modules/authorization';
 import { NotFoundError } from '@/platform/errors';
 
 import { z } from 'zod';
-import { seasons, dramaSeasons } from '@/modules/content/schema';
+import { seasons, episodes, dramas } from '@/modules/content/schema';
 import { parseOrThrow, parseCreateDramaInput, type CreateDramaInput } from '@/modules/content/validation';
 
 /** Permission key for season management. */
@@ -159,47 +159,65 @@ export async function listSeasons(
   };
 }
 
-/** Soft-delete a season (mark deleted_at). */
+/** Soft-delete a season (move to trash). */
 export async function deleteSeason(
   actor: ActorContext,
   seasonId: string
-): Promise<{ ok: true } | { ok: false; error: unknown }> {
+): Promise<{ ok: true; affectedEpisodes: number } | { ok: false; error: unknown }> {
   requirePermission(actor, MANAGE_PERMISSION);
 
   const parsedSeasonId = parseOrThrow(z.uuid(), seasonId);
 
-  // Check that the season has no episodes referencing it (or allow orphaned episodes)
-  const [seasonWithEpisodes] = await db
-    .select({ id: seasons.id, title: seasons.title })
-    .from(seasons)
-    .leftJoin(episodes, eq(seasons.id, episodes.season_id))
-    .where(and(eq(seasons.id, parsedSeasonId), isNull(seasons.deleted_at)))
-    .limit(1);
+  // Count episodes that will be affected (episodes with this season_id)
+  const [episodeCountRow] = await db
+    .select({ count: count() })
+    .from(episodes)
+    .where(eq(episodes.season_id, parsedSeasonId));
 
-  if (!seasonWithEpisodes) {
-    return { ok: false, error: new NotFoundError('Season not found.') };
+  const affectedEpisodes = Number(episodeCountRow?.count ?? 0);
+
+  // Check that the season exists and is not already deleted
+  const [season] = await db
+    .select({ id: seasons.id, title: seasons.title, drama_id: seasons.drama_id })
+    .from(seasons)
+    .where(and(eq(seasons.id, parsedSeasonId), isNull(seasons.deleted_at)));
+
+  if (!season) {
+    return { ok: false, error: new NotFoundError('Season not found.'), affectedEpisodes: 0 };
   }
 
-  // If season has episodes, we need to decide: soft-delete the season but keep episodes
-  // or prevent deletion. For now, allow soft-delete and set season_id to null for episodes.
-  const [row] = await db
+  // Check that the drama exists
+  const [drama] = await db
+    .select({ id: dramas.id, title: dramas.title })
+    .from(dramas)
+    .where(eq(dramas.id, season.drama_id));
+
+  if (!drama) {
+    return { ok: false, error: new NotFoundError('Drama not found.'), affectedEpisodes: 0 };
+  }
+
+  // **Critical workflow check**: Prevent deletion if the drama has active episodes
+  // with the season_id set and the drama is currently being streamed or tracked.
+  // For now, we allow the delete but reassign episodes' season_id to null.
+  // A more critical check would verify if the drama has active subscriptions,
+  // which would require additional business logic beyond this prompt's scope.
+
+  // Soft-delete the season
+  await db
     .update(seasons)
     .set({ deleted_at: new Date() })
-    .where(eq(seasons.id, parsedSeasonId))
-    .returning();
+    .where(eq(seasons.id, parsedSeasonId));
 
-  // Set episode season_id to null for episodes in this season
+  // Reassign episodes in this season to have no season_id
   await db
     .update(episodes)
     .set({ season_id: null })
     .where(eq(episodes.season_id, parsedSeasonId));
 
-  if (!row) {
-    return { ok: false, error: new NotFoundError('Season not found.') };
-  }
-
-  return { ok: true };
+  return { ok: true, affectedEpisodes };
 }
+
+/** Function to restore a season from trash (optional future feature). */
 
 function toSeason(row: typeof seasons.$inferSelect) {
   return {
