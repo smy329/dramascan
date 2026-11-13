@@ -1,1 +1,81 @@
-import 'server-only';\n\nimport { requirePermission, type ActorContext } from '@/modules/authorization';\nimport { AppError, AuthorizationError, InternalError, ValidationError } from '@/platform/errors';\nimport { mapErrorToRest } from '@/platform/Http';\nimport { createRequestLogger, generateRequestId } from '@/platform/logging';\n\n/** Episode administration permission key. */\nexport const EPISODE_MANAGE_PERMISSION = 'episode.manage';\n\nexport type AdminRouteContext = {\n  requestId: string;\n  logger: ReturnType<typeof createRequestLogger>['logger'];\n};\n\nexport function beginAdminRequest(request: Request): AdminRouteContext {\n  const requestId = request.headers.get('x-request-id')?.trim() || generateRequestId();\n  const { logger } = createRequestLogger({ requestId, module: 'episodes' });\n\n  return { requestId, logger };\n}\n\n/**\n * Entrypoint authorization. Services re-check the same permission; this guard\n * ensures anonymous and under-privileged callers are rejected before any work.\n */\nexport function authorizeEpisodeAdmin(actor: ActorContext): ActorContext {\n  return requirePermission(actor, EPISODE_MANAGE_PERMISSION);\n}\n\n/**\n * Reject cross-site mutations. Same-origin browser requests include `Origin`\n * and/or `Sec-Fetch-Site`; non-browser clients that omit both are allowed.\n */\nexport function assertSameOrigin(request: Request): void {\n  if (request.headers.get('sec-fetch-site') === 'cross-site') {\n    throw new AuthorizationError('Cross-origin request rejected.');\n  }\n\n  const origin = request.headers.get('origin');\n  if (!origin) {\n    return;\n  }\n\n  if (origin !== new URL(request.url).origin) {\n    throw new AuthorizationError('Cross-origin request rejected.');\n  }\n}\n\nexport function readJsonBody(request: Request): Promise<unknown> {\n  try {\n    return await request.json();\n  } catch {\n    throw new ValidationError('Request body must be valid JSON.');\n  }\n}\n\nexport function jsonResponse(\n  body: unknown,\n  status: number,\n  requestId: string\n): Response {\n  return new Response(JSON.stringify(body), {\n    status,\n    headers: {\n      'Content-Type': 'application/json; charset=utf-8',\n      'X-Request-Id': requestId,\n    },\n  });\n}\n\nexport function errorResponse(\n  error: unknown,\n  requestId: string,\n  logger: AdminRouteContext['logger']\n): Response {\n  let appError: AppError;\n\n  if (error instanceof AppError) {\n    appError = error;\n  } else {\n    logger.error({ err: error, event: 'episodes.request_failed' }, 'Admin route failed');\n    appError = new InternalError('An unexpected error occurred.', error);\n  }\n\n  const mapped = mapErrorToRest(appError, requestId);\n\n  return jsonResponse(mapped.body, mapped.status, requestId);\n}"
+import 'server-only';
+
+import { requirePermission, type ActorContext } from '@/modules/authorization';
+import { AppError, AuthorizationError, InternalError, ValidationError } from '@/platform/errors';
+import { mapErrorToRest } from '@/platform/Http';
+import { createRequestLogger, generateRequestId } from '@/platform/logging';
+
+/** Episode administration permission key. */
+export const EPISODE_MANAGE_PERMISSION = 'episode.manage';
+
+export type AdminRouteContext = {
+  requestId: string;
+  logger: ReturnType<typeof createRequestLogger>['logger'];
+};
+
+export function beginAdminRequest(request: Request): AdminRouteContext {
+  const requestId = request.headers.get('x-request-id')?.trim() || generateRequestId();
+  const { logger } = createRequestLogger({ requestId, module: 'episodes' });
+
+  return { requestId, logger };
+}
+
+export function authorizeEpisodeAdmin(actor: ActorContext): ActorContext {
+  return requirePermission(actor, EPISODE_MANAGE_PERMISSION);
+}
+
+export function assertSameOrigin(request: Request): void {
+  if (request.headers.get('sec-fetch-site') === 'cross-site') {
+    throw new AuthorizationError('Cross-origin request rejected.');
+  }
+
+  const origin = request.headers.get('origin');
+  if (!origin) {
+    return;
+  }
+
+  if (origin !== new URL(request.url).origin) {
+    throw new AuthorizationError('Cross-origin request rejected.');
+  }
+}
+
+export function readJsonBody(request: Request): Promise<unknown> {
+  try {
+    return request.json();
+  } catch {
+    throw new ValidationError('Request body must be valid JSON.');
+  }
+}
+
+export function jsonResponse(
+  body: unknown,
+  status: number,
+  requestId: string
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'X-Request-Id': requestId,
+    },
+  });
+}
+
+export function errorResponse(
+  error: unknown,
+  requestId: string,
+  logger: AdminRouteContext['logger']
+): Response {
+  let appError: AppError;
+
+  if (error instanceof AppError) {
+    appError = error;
+  } else {
+    logger.error({ err: error, event: 'episodes.request_failed' }, 'Admin route failed');
+    appError = new InternalError('An unexpected error occurred.', error);
+  }
+
+  const mapped = mapErrorToRest(appError, requestId);
+
+  return jsonResponse(mapped.body, mapped.status, requestId);
+}
