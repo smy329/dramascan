@@ -49,6 +49,30 @@ table state, and no new dependency.
   `docs/development/CONVENTIONS.md`, `docs/architecture/*`,
   `docs/decisions/DECISIONS.md`, `docs/README.md`, `docs/PROJECT_STATUS.md`.
 
+### feat: Shared admin form patterns (Prompt 052)
+
+Built the shared admin form kit: `AdminForm` shell, `AdminFormField`
+labeled field with validation messaging, and `AdminFormError` server error
+alert, all in `src/components/admin/forms/`. React Hook Form + Zod resolver
+over domain schemas; Server Actions return `{ ok: true; data } | { ok: false;
+error }` via `mapErrorToActionResult`; dirty-state `beforeunload` warning;
+saving indicator via `isSubmitting`; server field errors mapped onto fields;
+no new dependency beyond `react-hook-form` and `@hookform/resolvers`; no
+entity-specific CRUD pages or schemas created.
+
+- `src/components/admin/forms/admin-form-error.tsx` — presentational alert
+  (`role="alert"`), default title `'Could not save'`, optional action slot.
+- `src/components/admin/forms/admin-form-field.tsx` — labeled field with hint,
+  error, and required `*` marker; wires `aria-invalid` and `aria-describedby`.
+- `src/components/admin/forms/admin-form.tsx` — shared create/edit form shell,
+  client validation via `zodResolver`, server-authoritative validation, `beforeunload`
+  dirty-state warning, pending state, and server error display.
+
+Documentation: `docs/development/admin-forms.md` (new),
+  `docs/README.md` (quick link), `docs/CHANGELOG.md` (this entry),
+  `docs/PROJECT_STATUS.md` (row), `docs/development/admin-data-tables.md`
+  (related-document links).
+
 ### Known limitations
 
 - The search remains an `ILIKE` scan over `name` and `email`; no trigram index

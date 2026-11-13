@@ -480,4 +480,5 @@ in production paths.
 - [Database Conventions](DATABASE.md) — the index and the measured plans
 - Decisions: `docs/decisions/DECISIONS.md` D-011, D-022, D-026
 - Design: `docs/superpowers/specs/2026-11-12-admin-data-tables-design.md`
+- [Admin Forms](admin-forms.md) — the create/edit form kit (Prompt 052)
 - Plan: `docs/superpowers/plans/2026-11-12-admin-data-tables.md`

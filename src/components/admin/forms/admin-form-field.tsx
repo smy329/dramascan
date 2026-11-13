@@ -57,7 +57,7 @@ export function AdminFormField({
       <label htmlFor={name} className="text-sm font-medium text-foreground">
         {required ? `${label} *` : label}
       </label>
-      {multiline ? (
+      {multiline ?
         <textarea
           id={name}
           className={CONTROL_CLASS_NAME}
@@ -66,7 +66,7 @@ export function AdminFormField({
           aria-describedby={describedBy}
           {...field}
         />
-      ) : (
+       :
         <Input
           id={name}
           type={type}
@@ -77,13 +77,13 @@ export function AdminFormField({
           className={CONTROL_CLASS_NAME}
           {...field}
         />
-      )}
+      }
       {hint ? <p id={hintId} className="text-xs text-muted-foreground">{hint}</p> : null}
-      {errorMessage ? (
+      {errorMessage ?
         <p id={errorId} className="text-sm text-destructive">
           {errorMessage}
         </p>
-      ) : null}
+       : null}
     </div>
   );
 }

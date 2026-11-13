@@ -8,10 +8,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 
 import { Button } from '@/components/ui/button';
 import { AdminFormError } from '@/components/admin/forms/admin-form-error';
-import type { ActionError, ActionResult } from '@/lib/contracts';
+import type { ActionError, ActionResult } from '@/lib/contracts/common';
 import { cn } from '@/lib/utils';
 
-export type AdminFormServerAction = (payload: unknown) => Promise<ActionResult<unknown>>;
+export type AdminFormServerAction = (_payload: unknown) => Promise<ActionResult<unknown>>;
 
 export type AdminFormProps = Readonly<{
   /** Domain create/edit schema; the single source of client and server validation rules. */
@@ -21,7 +21,7 @@ export type AdminFormProps = Readonly<{
   /** Initial values; required in spirit for edit forms, optional for create forms. */
   defaultValues?: Readonly<Record<string, unknown>>;
   /** Called after a successful save; navigation lives here. */
-  onSuccess?: (data: unknown) => void | Promise<void>;
+  onSuccess?: (_data: unknown) => void | Promise<void>;
   /** Reset the form after a successful save. Default: true. */
   resetOnSuccess?: boolean;
   /** Submit label. Default: 'Save'. */
@@ -51,7 +51,7 @@ export function AdminForm({
   children,
 }: AdminFormProps): JSX.Element {
   const methods = useForm<Record<string, unknown>>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema as z.ZodType<Record<string, unknown>>),
     defaultValues: defaultValues ?? {},
     mode: 'onChange',
   });
@@ -92,7 +92,8 @@ export function AdminForm({
 
     if (error.fieldErrors) {
       for (const [field, messages] of Object.entries(error.fieldErrors)) {
-        setError(field, { type: 'server', message: messages[0] ?? error.message });
+        const firstMessage = Array.isArray(messages) ? messages[0] : messages;
+        setError(field, { type: 'server', message: typeof firstMessage === 'string' ? firstMessage : undefined });
       }
     }
 

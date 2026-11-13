@@ -3,17 +3,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
 
 import { AdminForm } from '@/components/admin/forms/admin-form';
 import { AdminFormField } from '@/components/admin/forms/admin-form-field';
-import type { ActionResult } from '@/lib/contracts';
+import type { ActionResult } from '@/lib/contracts/common';
 
 afterEach(cleanup);
 
 const titleSchema = z.object({ title: z.string().min(1, 'Title is required.') });
 
-type AdminFormServerAction = (payload: unknown) => Promise<ActionResult<unknown>>;
+type AdminFormServerAction = (_payload: unknown) => Promise<ActionResult<unknown>>;
 
 function Harness({
   serverAction,
@@ -21,7 +20,7 @@ function Harness({
   defaultValues,
 }: {
   serverAction: AdminFormServerAction;
-  onSuccess?: (data: unknown) => void | Promise<void>;
+  onSuccess?: (_data: unknown) => void | Promise<void>;
   defaultValues?: Readonly<Record<string, unknown>>;
 }) {
   return (
@@ -90,7 +89,7 @@ describe('AdminForm', () => {
   });
 
   it('disables the submit control and shows the pending label while saving', async () => {
-    let resolveSave: (value: ActionResult<unknown>) => void = () => undefined;
+    let resolveSave: (_value: ActionResult<unknown>) => void = () => undefined;
     const serverAction = vi.fn(
       () =>
         new Promise<ActionResult<unknown>>(resolve => {

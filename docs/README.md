@@ -50,6 +50,7 @@ For the future upgrade backlog, see `future/`.
 - [Confirmation Dialogs](development/confirmation-dialogs.md)
 - [Admin Shell](development/admin-shell.md)
 - [Admin Data Tables](development/admin-data-tables.md)
+- [Admin Forms](development/admin-forms.md)
 - [CI/CD Conventions](development/ci-cd.md)
 - [Migration Conventions](development/migration-conventions.md)
 - [Implementation Plan](implementation/implementation-plan.md)
