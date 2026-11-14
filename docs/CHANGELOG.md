@@ -2,6 +2,47 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [0.8.0] - 2026-11-14
+
+### feat: standalone movie creation and editing (Prompt 065, D-028)
+
+Added an independent movie content type with its own workflow, REST surface,
+validation contracts, and integration coverage. Movies are not dramas with
+hidden seasons or episodes.
+
+- `src/modules/content/validation.ts`: added `moviePublicationStatusSchema`
+  (`draft` | `published` | `unpublished`), `movieVideoSourceSchema` (absolute
+  HTTPS only), `createMovieSchema`/`updateMovieSchema` (full-payload replace),
+  and parse helpers. Also repaired pre-existing broken helpers
+  (`parseCreateDramaInput`, `parseCreateEpisodeInput`, `parseDramaId`) and
+  removed the undefined `parseListInformationPagesQuery` reference.
+- `src/modules/content/schema.ts`: `movies.video_source` (nullable) and
+  `uq_movies_slug_active` (partial unique index on active slugs).
+- `src/workflows/admin/movies.ts` (new): `createMovie`/`updateMovie` with
+  `movie.manage`, active-slug uniqueness (pre-check plus SQLSTATE 23505
+  handling), category/platform existence checks, transactional association
+  replacement, and `content_slug_history` on slug change. DTO fields are
+  camelCase.
+- `src/app/admin/api/movies/` (new): `POST` and `PUT` routes with same-origin
+  protection, `{ data }` envelopes, structured errors, and request IDs.
+- `src/modules/authorization/permissions.ts`: completed the season resource
+  with `season.manage`; migration 0004 updates the permission check constraint.
+- `drizzle/0004_redundant_carmella_unuscione.sql` (new): adds
+  `dramas.structure_type`, `movies.video_source`, `uq_movies_slug_active`, and
+  the updated permission constraint.
+- Minimal type/lint repairs in the drama, episode, and season workflows and
+  their routes (missing imports, `inArray`, ordering expressions, response
+  unions, final newlines) so the project typechecks and builds. The shared
+  admin form resolver and its test mocks were typed minimally for the same
+  reason. The stale admin-navigation expectations were updated to match the
+  implemented content entries; the Movies entry is now marked implemented at
+  the API level.
+- Tests: `tests/unit/modules/content/movie-validation.test.ts` (33 cases) and
+  `tests/integration/content/movies.integration.test.ts` (18 cases) covering
+  authorization, creation, defaults, associations, duplicate/soft-deleted
+  slugs, HTTPS-only sources, full-payload updates, slug history, and the
+  database-level unique index.
+
 ## [0.7.0] - 2026-11-14
 
 ### feat: Super Admin email/password sign-in (approved change, D-027)

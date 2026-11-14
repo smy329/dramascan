@@ -405,6 +405,26 @@ The seed inserts exactly six published, footer-visible rows with body
 `ON CONFLICT ("slug") WHERE "deleted_at" IS NULL DO NOTHING`, so re-running the
 statement is harmless and administrator-edited content is never overwritten.
 
+### 8.3 Standalone movies (Prompt 065)
+
+`movies` is an independent content type owned by the `content` module. A movie
+has no drama, season, or episode parent; it is never modelled as a hidden season
+or episode. Its single direct video source lives on the same row.
+
+| Item | Detail |
+| ---- | ------ |
+| Purpose | Standalone feature films with their own metadata, taxonomies, publication state, and direct playback source. |
+| Primary key | `id uuid` (`uuidv7()` default). |
+| Key columns | `title`, `slug`, `description`, `poster`, `banner`, `publication_status` (`draft`/`published`/`unpublished`), `video_source`. |
+| Timestamps / soft delete | `created_at`, `updated_at`, `deleted_at` (`timestamptz`). Trash is `deleted_at IS NOT NULL`. |
+| Constraints | `uq_movies_slug_active` — partial unique index on `slug WHERE deleted_at IS NULL`, so a slug may be reused after soft delete. |
+| Associations | `movie_categories (movie_id, category_id)` and `movie_platforms (movie_id, platform_id)`, both composite-PK join tables. Associations are replaced wholesale in the same transaction as the movie update. |
+| Video source | Administrator-supplied absolute HTTPS URL. Only syntax and the HTTPS scheme are validated; the server never fetches, proxies, transcodes, or rehosts the media. The browser plays the URL directly. |
+| Migration | `drizzle/0004_redundant_carmella_unuscione.sql` (adds `video_source` and the active-slug index; also adds `dramas.structure_type` and `season.manage`). |
+| Workflow API | `src/workflows/admin/movies.ts` (`createMovie`, `updateMovie`); requires `movie.manage`. Slug changes append `content_slug_history` rows with `content_type = 'movie'`. |
+| Admin API | `POST /admin/api/movies`, `PUT /admin/api/movies`; requires `movie.manage` and same-origin mutations. |
+| Validation | `src/modules/content/validation.ts` (`createMovieSchema`, `updateMovieSchema`, `movieVideoSourceSchema`, `moviePublicationStatusSchema`). Updates are full-payload replaces. |
+
 ---
 
 ## 9. Change Process

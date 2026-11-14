@@ -1,14 +1,14 @@
 import 'server-only';
 
-import { and, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, count, eq, isNull, ne } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission } from '@/modules/authorization';
+import { requirePermission, type ActorContext } from '@/modules/authorization';
 import { NotFoundError } from '@/platform/errors';
 
 import { z } from 'zod';
 import { seasons, episodes, dramas } from '@/modules/content/schema';
-import { parseOrThrow, parseCreateDramaInput, type CreateDramaInput } from '@/modules/content/validation';
+import { parseOrThrow } from '@/modules/content/validation';
 
 /** Permission key for season management. */
 const MANAGE_PERMISSION = 'season.manage';
@@ -68,6 +68,10 @@ export async function createSeason(
       updated_at: new Date(),
     })
     .returning();
+
+  if (!row) {
+    return { ok: false, error: new NotFoundError('Season not found.') };
+  }
 
   return { ok: true, season: toSeason(row) };
 }
@@ -134,7 +138,7 @@ export async function updateSeason(
 export async function listSeasons(
   actor: ActorContext,
   dramaId: string
-): Promise<{ ok: true; seasons: ReturnType<typeof toSeason>[]; total: number } | { ok: false; error: unknown }> {
+): Promise<{ ok: true; seasons: ReturnType<typeof toSeason>[]; total: number }> {
   requirePermission(actor, MANAGE_PERMISSION);
 
   const parsedDramaId = parseOrThrow(z.uuid(), dramaId);
@@ -163,7 +167,10 @@ export async function listSeasons(
 export async function deleteSeason(
   actor: ActorContext,
   seasonId: string
-): Promise<{ ok: true; affectedEpisodes: number } | { ok: false; error: unknown }> {
+): Promise<
+  | { ok: true; affectedEpisodes: number }
+  | { ok: false; error: unknown; affectedEpisodes: number }
+> {
   requirePermission(actor, MANAGE_PERMISSION);
 
   const parsedSeasonId = parseOrThrow(z.uuid(), seasonId);

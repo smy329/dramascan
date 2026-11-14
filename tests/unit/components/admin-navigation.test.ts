@@ -36,9 +36,12 @@ describe('ADMIN_NAVIGATION', () => {
     expect(ALL_ENTRIES.every((entry) => entry.href.startsWith('/admin'))).toBe(true);
   });
 
-  it('implements only the overview and users entries for this prompt', () => {
+  it('marks the implemented content and user entries', () => {
     expect(ALL_ENTRIES.filter((entry) => entry.implemented).map((entry) => entry.id)).toEqual([
       'overview',
+      'dramas',
+      'movies',
+      'episodes',
       'users',
     ]);
   });
@@ -62,10 +65,10 @@ describe('hasAdminAreaAccess', () => {
 });
 
 describe('filterAdminNavigation', () => {
-  it('shows the implemented overview and users entries to Super Admin', () => {
+  it('shows the implemented overview, content, and users entries to Super Admin', () => {
     const visible = filterAdminNavigation(ADMIN_NAVIGATION, actor([], true));
 
-    expect(visible.map((group) => group.id)).toEqual(['dashboard', 'users']);
+    expect(visible.map((group) => group.id)).toEqual(['dashboard', 'content', 'users']);
     expect(visible[0]?.entries.map((entry) => entry.id)).toEqual(['overview']);
   });
 
@@ -73,9 +76,10 @@ describe('filterAdminNavigation', () => {
     expect(filterAdminNavigation(ADMIN_NAVIGATION, current)).toEqual([]);
   });
 
-  it('shows the implemented dashboard to any actor with admin-area access', () => {
+  it('shows the implemented dashboard and content groups to an actor with drama.read', () => {
     expect(filterAdminNavigation(ADMIN_NAVIGATION, actor(['drama.read'])).map((g) => g.id)).toEqual([
       'dashboard',
+      'content',
     ]);
   });
 

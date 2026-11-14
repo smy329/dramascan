@@ -51,7 +51,9 @@ export function AdminForm({
   children,
 }: AdminFormProps): JSX.Element {
   const methods = useForm<Record<string, unknown>>({
-    resolver: zodResolver(schema as z.ZodType<Record<string, unknown>>),
+    resolver: zodResolver(
+      schema as z.ZodType<Record<string, unknown>, Record<string, unknown>>
+    ),
     defaultValues: defaultValues ?? {},
     mode: 'onChange',
   });

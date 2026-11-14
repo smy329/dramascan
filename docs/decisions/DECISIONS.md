@@ -833,6 +833,50 @@ regular users.
 
 ---
 
+## D-028 — Standalone movies are an independent, API-first content type
+
+**Date:** 2026-11-14
+**Status:** Approved by user (Prompt 065)
+
+**Context:** Prompt 065 requires creating and editing standalone movies with
+metadata, categories, platforms, publication state, and a direct video source.
+Movies must not be modelled as dramas with hidden seasons or episodes, and the
+initial architecture excludes admin content UI in this prompt.
+
+**Decision:**
+
+1. **Movies are their own content type.** A movie row has no drama, season, or
+   episode parent. No hidden season/episode rows are created for a movie.
+2. **Scope is workflow + REST API + tests.** No `/admin/movies` pages are built
+   in Prompt 065. The surface is `src/workflows/admin/movies.ts`,
+   `POST/PUT /admin/api/movies`, and shared Zod contracts.
+3. **The slug is explicit and required.** It is unique among non-deleted
+   movies via `uq_movies_slug_active`; soft-deleted slugs may be reused.
+   Slug changes append `content_slug_history` rows with
+   `content_type = 'movie'`.
+4. **The video source is an ordinary editable field.** It is optional/nullable
+   on create and edit, must be an absolute HTTPS URL, and is never fetched,
+   proxied, transcoded, or rehosted by the server. The supplied URL is not
+   hidden from viewers. Preview, replacement confirmation, and playback-progress
+   reset are deferred until the playback infrastructure exists (the playback
+   schema is currently empty).
+5. **Updates replace the full payload**, matching the drama contract:
+   omitted images/video become `null` and associations are replaced in the same
+   transaction.
+
+**Consequences:**
+
+- Movie administration is testable and usable through the API before any UI
+  exists.
+- The server never performs outbound media requests on behalf of an
+  administrator, avoiding SSRF/unrestricted-fetch risk.
+- Source-replacement guarantees from §5.7 cannot yet be honoured; they remain a
+  future requirement once `playback_progress` exists.
+- The navigation's Movies entry is marked implemented at the API level, like
+  Dramas and Episodes; its `/admin/movies` page remains a future prompt.
+
+---
+
 ## Decision log rules
 - A decision is added only after explicit user approval or when the specification
   establishes it.

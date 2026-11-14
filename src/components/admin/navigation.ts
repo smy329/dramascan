@@ -72,7 +72,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavGroup[] = [
         label: 'Movies',
         href: '/admin/movies',
         permissions: ['movie.read'],
-        implemented: false,
+        implemented: true,
       },
       {
         id: 'episodes',

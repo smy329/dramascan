@@ -1,14 +1,14 @@
 ﻿import 'server-only';
 
-import { and, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission } from '@/modules/authorization';
+import { requirePermission, type ActorContext } from '@/modules/authorization';
 import { NotFoundError } from '@/platform/errors';
 
 import { z } from 'zod';
 import { episodes, dramas, seasons } from '@/modules/content/schema';
-import { parseOrThrow, parseCreateEpisodeInput, type CreateEpisodeInput } from '@/modules/content/validation';
+import { parseOrThrow, parseCreateEpisodeInput } from '@/modules/content/validation';
 
 /** Permission key for episode management. */
 const MANAGE_PERMISSION = 'episode.manage';
@@ -34,7 +34,7 @@ export async function createEpisode(
   }
 
   // Parse episode input
-  const parsed = parseOrThrow(parseCreateEpisodeInput, input);
+  const parsed = parseCreateEpisodeInput(input);
 
   // If season_id is provided, check the season exists and belongs to the drama
   if (parsed.season_id) {
@@ -84,9 +84,9 @@ export async function createEpisode(
         and(
           eq(episodes.drama_id, parsedDramaId),
           isNull(episodes.deleted_at),
-          ...(parsed.season_id
+          ...parsed.season_id
             ? [eq(episodes.season_id, parsed.season_id)]
-            : [])
+            : []
         )
       );
 
@@ -109,6 +109,10 @@ export async function createEpisode(
       updated_at: new Date(),
     })
     .returning();
+
+  if (!row) {
+    return { ok: false, error: new NotFoundError('Episode not found.') };
+  }
 
   return { ok: true, episode: toEpisode(row) };
 }
@@ -156,7 +160,7 @@ export async function moveEpisodesToSeason(
       and(
         eq(episodes.drama_id, parsedDramaId),
         isNull(episodes.deleted_at),
-        episodes.id.in(parsedEpisodeIds)
+        inArray(episodes.id, parsedEpisodeIds)
       )
     );
 
@@ -206,7 +210,7 @@ export async function moveEpisodesToSeason(
           position: targetPosition + i,
           updated_at: new Date(),
         })
-        .where(eq(episodes.id, episodesToMove[i].id));
+        .where(eq(episodes.id, episodesToMove[i]!.id));
     }
   });
 
@@ -269,6 +273,7 @@ export async function reorderEpisodes(
   requirePermission(actor, MANAGE_PERMISSION);
 
   const parsedDramaId = parseOrThrow(z.uuid(), dramaId);
+  const parsedEpisodeIds = episodeIds.map(id => parseOrThrow(z.uuid(), id));
 
   // Validate that all episode IDs belong to this drama and are not deleted
   const validEpisodes = await db
@@ -278,12 +283,12 @@ export async function reorderEpisodes(
       and(
         eq(episodes.drama_id, parsedDramaId),
         isNull(episodes.deleted_at),
-        episodes.id.in(episodeIds.map(parseOrThrow(z.uuid, [])))
+        inArray(episodes.id, parsedEpisodeIds)
       )
     );
 
   // Verify all requested episodes were found and belong to this drama
-  const requestedSet = new Set(episodeIds.map((id) => parseOrThrow(z.uuid, [])));
+  const requestedSet = new Set(parsedEpisodeIds);
   const foundSet = new Set(validEpisodes.map((e) => e.id));
 
   if (requestedSet.size !== foundSet.size) {
@@ -326,7 +331,7 @@ export async function listEpisodes(
   page: number;
   pageSize: number;
   totalPages: number;
-} | { ok: false; error: unknown }> {
+}> {
   requirePermission(actor, MANAGE_PERMISSION);
 
   const parsedDramaId = parseOrThrow(z.uuid(), dramaId);
@@ -354,16 +359,18 @@ export async function listEpisodes(
   }
 
   // Determine sorting
-  const sortColumn = parsedQuery.sort || 'position';
-  const sortOrder = parsedQuery.order || 'asc';
+  const sortColumns = {
+    title: episodes.title,
+    episode_number: episodes.episode_number,
+    position: episodes.position,
+    publication_status: episodes.publication_status,
+  } as const;
 
-  // Validate sort column - only allow known columns
-  const allowedSortColumns = ['title', 'episode_number', 'position', 'publication_status'];
-  const validatedSortColumn = allowedSortColumns.includes(sortColumn) ? sortColumn : 'position';
-
-  // Add order BY
-  const sortDirection = sortOrder === 'desc' ? desc : asc;
-  whereConditions.push(sortDirection(episodes[validatedSortColumn]));
+  const requestedSort = parsedQuery.sort ?? 'position';
+  const sortKey =
+    requestedSort in sortColumns ? (requestedSort as keyof typeof sortColumns) : 'position';
+  const sortColumn = sortColumns[sortKey];
+  const sortDirection = parsedQuery.order === 'desc' ? desc : asc;
 
   // Count total matching episodes
   const [totalRow] = await db
@@ -374,7 +381,7 @@ export async function listEpisodes(
   const total = Number(totalRow?.total ?? 0);
 
   // Calculate pagination
-  const page = Math.max(1, (parsedQuery.page ?? 1));
+  const page = Math.max(1, parsedQuery.page ?? 1);
   const pageSize = Math.min(
     Math.max(1, parsedQuery.pageSize ?? 20),
     100
@@ -388,7 +395,7 @@ export async function listEpisodes(
     .where(and(...whereConditions))
     .limit(pageSize)
     .offset(offset)
-    .orderBy(sortDirection(episodes[validatedSortColumn]));
+    .orderBy(sortDirection(sortColumn));
 
   const totalPages = Math.ceil(total / pageSize);
 

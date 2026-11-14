@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { requirePermission, type ActorContext } from '@/modules/authorization';
-import { AppError, AuthorizationError, InternalError, ValidationError } from '@/platform/errors';
+import { AppError, AuthorizationError, InternalError } from '@/platform/errors';
 import { mapErrorToRest } from '@/platform/Http';
 import { createRequestLogger, generateRequestId } from '@/platform/logging';
 

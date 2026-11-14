@@ -70,6 +70,7 @@ export const PERMISSIONS = {
   'season.create': { resource: 'season', action: 'create', description: 'Create seasons.' },
   'season.update': { resource: 'season', action: 'update', description: 'Update seasons.' },
   'season.delete': { resource: 'season', action: 'delete', description: 'Delete seasons.' },
+  'season.manage': { resource: 'season', action: 'manage', description: 'Manage seasons.' },
 
   // Content: category
   'category.create': { resource: 'category', action: 'create', description: 'Create categories.' },

@@ -1,15 +1,19 @@
 import 'server-only';
 
-import { and, eq, isNull, ne, sql, ilike } from 'drizzle-orm';
+import { and, asc, count, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission } from '@/modules/authorization';
+import { requirePermission, type ActorContext } from '@/modules/authorization';
 import { NotFoundError } from '@/platform/errors';
 
 import { z } from 'zod';
-import { dramaStatusSchema } from '@/modules/content/validation';
-import { dramas, contentSlugHistory, dramaCategories, dramaPlatforms, categories, platforms } from '@/modules/content/schema';
-import { parseOrThrow, parseCreateDramaInput, type CreateDramaInput } from '@/modules/content/validation';
+import {
+  content_slug_history as contentSlugHistory,
+  drama_categories as dramaCategories,
+  drama_platforms as dramaPlatforms,
+  dramas,
+} from '@/modules/content/schema';
+import { createDramaSchema, parseOrThrow } from '@/modules/content/validation';
 
 /** Permission key for drama management. */
 const MANAGE_PERMISSION = 'drama.manage';
@@ -72,6 +76,10 @@ export async function createDrama(
       updated_at: new Date(),
     })
     .returning();
+
+  if (!row) {
+    return { ok: false, error: new NotFoundError('Drama not found.') };
+  }
 
   return { ok: true, drama: toDrama(row) };
 }
@@ -196,7 +204,7 @@ export async function listDramas(
   totalPages: number;
   hasNextPage: boolean;
   hasPreviousPage: boolean;
-} | { ok: false; error: unknown }> {
+}> {
   requirePermission(actor, MANAGE_PERMISSION);
 
   const offset = (query.page - 1) * query.pageSize;

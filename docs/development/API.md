@@ -222,6 +222,41 @@ Mutations additionally reject cross-origin requests.
 - No admin UI is implemented in Prompt 045. These endpoints are the control
   surface for a future settings screen.
 
+### 3.9 Standalone movie administration (implemented, Prompt 065)
+
+Movies are an independent content type. These endpoints create and edit a
+movie's metadata, associations, publication state, and direct HTTPS video
+source. Every endpoint requires `movie.manage`; authorization is enforced at the
+route entrypoint and re-checked inside the workflow. Mutations reject
+cross-origin requests.
+
+| Method | Path                 | Auth                | Permission     | Purpose                                                              | Status      |
+| ------ | -------------------- | ------------------- | -------------- | -------------------------------------------------------------------- | ----------- |
+| `POST` | `/admin/api/movies`  | Authenticated admin | `movie.manage` | Create a standalone movie with metadata and associations             | Implemented |
+| `PUT`  | `/admin/api/movies`  | Authenticated admin | `movie.manage` | Replace a movie's full payload (`{ movieId, ...fields }`)             | Implemented |
+
+- `POST` accepts `title` (required), `slug` (required, lowercase
+  alphanumeric/hyphens, unique among non-deleted movies), `description`,
+  `poster`, `banner`, `publication_status` (`draft` default | `published` |
+  `unpublished`), `video_source` (nullable absolute HTTPS URL), `categories`
+  (UUID array), and `platforms` (UUID array). Unknown fields are rejected.
+- `PUT` is a full-payload replace. The same fields are required as on create
+  (except `movieId`, which identifies the row); omitted images/video become
+  `null` and associations are replaced. Changing the slug records the previous
+  value in `content_slug_history`.
+- Success returns `{ "data": { ...movie } }` with camelCase fields:
+  `id`, `title`, `slug`, `description`, `poster`, `banner`,
+  `publicationStatus`, `videoSource`, `createdAt`, `updatedAt`.
+- A duplicate active slug returns `409 conflict`. Unknown category/platform ids
+  return `400 validation_error` with field errors. A missing or soft-deleted
+  movie returns `404`.
+- The video source is stored and played by the browser. The server never
+  fetches, proxies, transcodes, or rehosts it, so the URL is not hidden from
+  viewers and must be a direct HTTPS media URL that supports CORS and byte
+  ranges.
+- No admin UI is implemented in Prompt 065. These endpoints are the control
+  surface for a future movie management screen.
+
 ---
 
 ## 4. Server Action Catalog

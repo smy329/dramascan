@@ -47,7 +47,7 @@ export function assertSameOrigin(request: Request): void {
   }
 }
 
-export function readJsonBody(request: Request): Promise<unknown> {
+export async function readJsonBody(request: Request): Promise<unknown> {
   try {
     return await request.json();
   } catch {

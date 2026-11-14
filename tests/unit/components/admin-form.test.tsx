@@ -37,7 +37,12 @@ function Harness({
 
 describe('AdminForm', () => {
   it('renders the fields and the submit control', () => {
-    const serverAction = vi.fn(async () => ({ ok: true, data: { title: 'Midnight Signal' } }));
+    const serverAction = vi.fn(
+      async (): Promise<ActionResult<unknown>> => ({
+        ok: true,
+        data: { title: 'Midnight Signal' },
+      })
+    );
     render(<Harness serverAction={serverAction} />);
 
     expect(screen.getByLabelText('Title')).toBeTruthy();
@@ -45,7 +50,12 @@ describe('AdminForm', () => {
   });
 
   it('submits the parsed values to the server action and resets on success', async () => {
-    const serverAction = vi.fn(async () => ({ ok: true, data: { title: 'Midnight Signal' } }));
+    const serverAction = vi.fn(
+      async (): Promise<ActionResult<unknown>> => ({
+        ok: true,
+        data: { title: 'Midnight Signal' },
+      })
+    );
     const onSuccess = vi.fn(async () => undefined);
     render(<Harness serverAction={serverAction} onSuccess={onSuccess} defaultValues={{ title: '' }} />);
 
@@ -60,7 +70,12 @@ describe('AdminForm', () => {
   });
 
   it('does not call the server action and shows the resolver error when validation fails', async () => {
-    const serverAction = vi.fn(async () => ({ ok: true, data: { title: 'Midnight Signal' } }));
+    const serverAction = vi.fn(
+      async (): Promise<ActionResult<unknown>> => ({
+        ok: true,
+        data: { title: 'Midnight Signal' },
+      })
+    );
     render(<Harness serverAction={serverAction} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -70,14 +85,16 @@ describe('AdminForm', () => {
   });
 
   it('renders the server error and maps server field errors on failure', async () => {
-    const serverAction = vi.fn(async () => ({
-      ok: false,
-      error: {
-        code: 'validation_error',
-        message: 'The request contains invalid fields.',
-        fieldErrors: { title: ['Title is required.'] },
-      },
-    }));
+    const serverAction = vi.fn(
+      async (): Promise<ActionResult<unknown>> => ({
+        ok: false,
+        error: {
+          code: 'validation_error',
+          message: 'The request contains invalid fields.',
+          fieldErrors: { title: ['Title is required.'] },
+        },
+      })
+    );
     render(<Harness serverAction={serverAction} />);
 
     const input = screen.getByLabelText('Title') as HTMLInputElement;

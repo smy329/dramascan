@@ -81,18 +81,32 @@ export const episodes = pgTable('episodes', {
 });
 
 // ----- movies -----
-export const movies = pgTable('movies', {
-  id: uuidPrimaryKey(),
-  title: text('title').notNull(),
-  slug: text('slug').notNull(),
-  description: text('description'),
-  poster: text('poster'),
-  banner: text('banner'),
-  publication_status: text('publication_status'),
-  created_at: created,
-  updated_at: updated,
-  deleted_at: deleted,
-});
+// A standalone movie is its own content type: it has no drama, season, or
+// episode parent. `video_source` holds the administrator-supplied, direct
+// HTTPS MP4 URL played by the browser (never fetched by the server).
+export const movies = pgTable(
+  'movies',
+  {
+    id: uuidPrimaryKey(),
+    title: text('title').notNull(),
+    slug: text('slug').notNull(),
+    description: text('description'),
+    poster: text('poster'),
+    banner: text('banner'),
+    publication_status: text('publication_status'),
+    video_source: text('video_source'),
+    created_at: created,
+    updated_at: updated,
+    deleted_at: deleted,
+  },
+  table => [
+    // Slugs must stay unique among active movies. Soft-deleted rows keep their
+    // slug so Trash/restore cannot silently collide with a live movie.
+    uniqueIndex('uq_movies_slug_active')
+      .on(table.slug)
+      .where(sql`${table.deleted_at} is null`),
+  ]
+);
 
 // ----- categories -----
 export const categories = pgTable('categories', {
