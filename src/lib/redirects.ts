@@ -22,6 +22,12 @@ const ADMIN_PATH_PREFIX = '/admin';
 export const DEFAULT_CALLBACK_URL = '/dashboard';
 
 /**
+ * Dedicated Super Admin email/password sign-in route. Deliberately not a
+ * predictable path and never linked from public or admin navigation.
+ */
+export const ADMIN_SIGN_IN_PATH = '/vault-7x9k-console';
+
+/**
  * Return a normalized same-origin path, or `null` when the value is unsafe.
  */
 export function sanitizeLocalCallback(value: unknown): string | null {
@@ -78,11 +84,20 @@ export function isAdminPath(value: string): boolean {
 }
 
 /**
+ * Return the admin destination to resume after Super Admin sign-in. Anything
+ * outside the admin area (or unsafe) falls back to `/admin`, so the dedicated
+ * route can never be used as an open redirect.
+ */
+export function sanitizeAdminCallback(value: unknown): string {
+  const requested = sanitizeLocalCallback(value);
+  return requested !== null && isAdminPath(requested) ? requested : ADMIN_PATH_PREFIX;
+}
+
+/**
  * Build the sign-in URL that returns an anonymous visitor to the admin area
  * after authentication. Unsafe or non-admin requests fall back to `/admin`.
  */
 export function buildAdminSignInUrl(requestedPath: unknown): string {
-  const requested = sanitizeLocalCallback(requestedPath);
-  const destination = requested !== null && isAdminPath(requested) ? requested : ADMIN_PATH_PREFIX;
-  return `/auth/signin?callbackUrl=${encodeURIComponent(destination)}`;
+  const destination = sanitizeAdminCallback(requestedPath);
+  return `${ADMIN_SIGN_IN_PATH}?callbackUrl=${encodeURIComponent(destination)}`;
 }

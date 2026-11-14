@@ -40,6 +40,11 @@ A single release must not both add and remove a column that the previous release
 - Every migration states whether it is reversible or forward-fix-only. Drizzle Kit does not generate down migrations by default; document the rollback plan in the PR.
 - Destructive changes (drop table/column, type narrowing, data deletion) require a backup and explicit confirmation before production execution.
 - Data migrations are separate from schema migrations and are idempotent.
+- `drizzle-kit` is invoked through `drizzle.config.ts`, which loads `.env.local`
+  when present. Real environment variables always win, so CI and production
+  supply `DATABASE_URL` directly. Run `npm run db:migrate` after pulling schema
+  changes; a dev database that lags the code produces `column ... does not
+  exist` errors at runtime.
 - Migrations run as a dedicated migration role with DDL rights; the application role has DML rights only.
 - The application must not auto-run migrations at startup in production.
 - Test migrations against a production-like database and verify with `drizzle-kit generate`/`check` that the schema matches.

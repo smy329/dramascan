@@ -21,7 +21,8 @@
     "test:e2e:setup": "playwright install",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:push": "npm run db:generate && drizzle-kit push"
+    "db:push": "npm run db:generate && drizzle-kit push",
+    "db:seed:super-admin": "node scripts/seed-super-admin.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

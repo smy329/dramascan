@@ -18,7 +18,7 @@ describe('resolveAdminPageAccess', () => {
   it('sends anonymous visitors to sign in with the encoded admin path', () => {
     expect(resolveAdminPageAccess(ANONYMOUS, '/admin')).toEqual({
       status: 'anonymous',
-      signInUrl: '/auth/signin?callbackUrl=%2Fadmin',
+      signInUrl: '/vault-7x9k-console?callbackUrl=%2Fadmin',
     });
   });
 
@@ -31,11 +31,11 @@ describe('resolveAdminPageAccess', () => {
   it('sanitizes unsafe requested paths before building the sign-in URL', () => {
     expect(resolveAdminPageAccess(ANONYMOUS, 'https://evil.example')).toEqual({
       status: 'anonymous',
-      signInUrl: '/auth/signin?callbackUrl=%2Fadmin',
+      signInUrl: '/vault-7x9k-console?callbackUrl=%2Fadmin',
     });
     expect(resolveAdminPageAccess(ANONYMOUS, '/dashboard')).toEqual({
       status: 'anonymous',
-      signInUrl: '/auth/signin?callbackUrl=%2Fadmin',
+      signInUrl: '/vault-7x9k-console?callbackUrl=%2Fadmin',
     });
   });
 

@@ -2,6 +2,47 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [0.7.0] - 2026-11-14
+
+### feat: Super Admin email/password sign-in (approved change, D-027)
+
+Added a second, Super-Admin-only authentication path without changing the
+public Google sign-in, and fixed the development database drift that was
+blocking sign-in entirely.
+
+- `src/platform/auth/better-auth.ts` enables `emailAndPassword` with
+  `disableSignUp: true`, `requireEmailVerification: false`, and a 16-character
+  minimum, plus a 5-per-60s rate limit on `/sign-in/email` in production.
+  Public sign-up stays closed; only the seed writes a credential account.
+- `scripts/seed-super-admin.mjs` (new, `npm run db:seed:super-admin`) upserts
+  the Super Admin user and a `provider_id = 'credential'` account containing a
+  Better Auth scrypt hash. Idempotent, password-resetting, advisory-locked, and
+  it never prints the password or hash.
+- `src/app/vault-7x9k-console/` (new) hosts the form at a non-obvious route,
+  with `noindex, nofollow`; `src/app/vault-7x9k-console/page.tsx` redirects a
+  signed-in Super Admin to the admin area.
+- `src/workflows/auth/super-admin-credentials.ts` and
+  `src/workflows/auth/super-admin-sign-in.ts` (new) validate the input and call
+  `auth.api.signInEmail`. Every failure returns `Invalid email or password.`
+  Credentials travel as `FormData` so Next.js's development action log does not
+  serialize the password.
+- `src/lib/redirects.ts` adds `ADMIN_SIGN_IN_PATH` and
+  `sanitizeAdminCallback`; anonymous admin visits now redirect to
+  `/vault-7x9k-console?callbackUrl=%2Fadmin` instead of `/auth/signin`.
+- `drizzle.config.ts` loads `.env.local` when present. Previously `db:migrate`
+  saw an empty `DATABASE_URL` and silently skipped pending migrations, leaving
+  the development database without `sessions.last_activity_at` and
+  `information_pages.position`; sign-in failed with a 500.
+- Tests: `tests/unit/workflows/auth/super-admin-credentials.test.ts`,
+  `tests/integration/auth/super-admin-seed.integration.test.ts`,
+  `tests/e2e/super-admin-signin.spec.ts`, and a test-only credential seeder;
+  `tests/unit/lib/redirects.test.ts`, `tests/unit/components/admin-access.test.ts`,
+  and `tests/e2e/admin-access.spec.ts` were updated for the new route.
+- Documentation: D-027, `SECURITY.md` §3.2/§3.3, `CONVENTIONS.md` environment
+  table, `.env.example`, and the plan in
+  `docs/superpowers/plans/2026-11-14-super-admin-password-login.md`.
+
+
 ## [0.6.0] - 2026-11-12
 
 ### feat: Reusable admin data tables and the users listing (Prompt 051)

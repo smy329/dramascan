@@ -776,8 +776,64 @@ admin area but lacks the page's permission.
 
 ---
 
-## Decision log rules
+## D-027 — Super Admin email/password sign-in at a dedicated route
 
+**Date:** 2026-11-14
+**Status:** Approved by user
+**Supersedes:** The "Google OAuth only" provider clause in `SECURITY.md` §3 and
+`AGENTS.md` §1.2, **for the Super Admin account only**
+
+**Context:** The platform's only operator could not sign in: Google OAuth was
+the sole provider, and the Super Admin bootstrap depends on a Google identity.
+The user explicitly requested a pure email/password login for the Super Admin,
+with no Google involvement and no predictable URL, and chose to keep Google for
+regular users.
+
+**Decision:**
+
+1. **Google stays for regular users.** The public sign-in page and Google
+   provider are unchanged. No email/password registration, verification email,
+   or password-reset flow exists (the project has no email infrastructure).
+2. **Credential sign-in is Super-Admin-only by construction.** Better Auth
+   `emailAndPassword` is enabled with `disableSignUp: true`, so
+   `/api/auth/sign-up/email` always fails. The only credential account is the
+   one the seed writes; no API or UI creates another.
+3. **Provisioning is an explicit script.** `npm run db:seed:super-admin` reads
+   `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD`, then upserts the user
+   (`is_super_admin = true`, `is_active = true`, `deleted_at = NULL`) and the
+   `accounts` row (`provider_id = 'credential'`, `account_id = users.id`).
+   Only Better Auth's scrypt hash is stored; the plaintext is never persisted
+   by the application. Re-running resets the password idempotently under
+   `pg_advisory_xact_lock(4627001034)`. The script never runs at build or
+   startup.
+4. **Dedicated route.** The form lives at `/vault-7x9k-console`, is absent from
+   every navigation, and is `noindex, nofollow`. Anonymous admin requests are
+   redirected there by `buildAdminSignInUrl`. The route is fixed by the file
+   path; no environment variable can move a Next.js route, so none is used.
+5. **Uniform failure.** Unknown email, wrong password, and deactivated account
+   all return `Invalid email or password.` Better Auth rate-limits
+   `/sign-in/email` to 5 requests per 60 seconds per IP in production.
+6. **Session rules are unchanged.** Credential sign-in goes through the same
+   `session.create.before` gate, so deactivated and soft-deleted accounts are
+   still rejected; admin session inactivity and maximum-lifetime policy apply
+   equally.
+
+**Consequences:**
+
+- The Super Admin does not depend on a Google identity or OAuth consent.
+- Possession of both the hidden route and the credentials is required; neither
+  is a substitute for the other, and neither is treated as authorization — the
+  admin gate still checks the database (`is_super_admin`, `is_active`).
+- Losing the password is recoverable only by re-running the seed with database
+  access; there is no self-service reset.
+- The plaintext password exists in `.env.local` (gitignored) because the seed
+  reads it. Production should inject it as a one-off secret and remove it.
+- Regular users still cannot obtain a password, so the account model stays
+  OAuth-first for the public.
+
+---
+
+## Decision log rules
 - A decision is added only after explicit user approval or when the specification
   establishes it.
 - Decisions record context, the approved choice, and consequences.

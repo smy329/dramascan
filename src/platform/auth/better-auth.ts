@@ -1,11 +1,15 @@
 /**
  * Better Auth configuration (server-only).
  *
- * Google OAuth is the only sign-in provider. Email/password authentication is
- * disabled. Better Auth owns the `users`, `accounts`, `sessions`, and
- * `verifications` tables through the Drizzle adapter; the physical columns are
- * snake_case while the TypeScript keys match Better Auth's camelCase field
- * names.
+ * Google OAuth is the sign-in provider for regular users. Email/password is
+ * enabled for exactly one account: the Super Admin provisioned by
+ * `npm run db:seed:super-admin`. `disableSignUp` keeps the public
+ * `/sign-up/email` endpoint closed, so no visitor can create a credential
+ * account; only the seed writes one.
+ *
+ * Better Auth owns the `users`, `accounts`, `sessions`, and `verifications`
+ * tables through the Drizzle adapter; the physical columns are snake_case
+ * while the TypeScript keys match Better Auth's camelCase field names.
  *
  * `generateId: 'uuid'` selects UUID primary keys. The Drizzle adapter reports
  * UUID support for PostgreSQL, so Better Auth relies on the database defaults
@@ -50,7 +54,19 @@ export const auth = betterAuth({
   }),
   socialProviders: googleProvider,
   emailAndPassword: {
-    enabled: false,
+    enabled: true,
+    // Only the seeded Super Admin credential may exist. Without this, the
+    // public sign-up endpoint would let anyone create a password account.
+    disableSignUp: true,
+    requireEmailVerification: false,
+    minPasswordLength: 16,
+  },
+  rateLimit: {
+    // Production enables rate limiting by default; this tightens the password
+    // endpoint. Development is unaffected, so tests are not throttled.
+    customRules: {
+      '/sign-in/email': { window: 60, max: 5 },
+    },
   },
   account: {
     accountLinking: {

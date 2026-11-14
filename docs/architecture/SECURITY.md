@@ -51,8 +51,8 @@ Until a control is implemented and tested, treat the corresponding threat as unm
 
 ## 3. Authentication and Accounts
 
-- **Provider:** Google OAuth only, through Better Auth with PostgreSQL. No password login, email/password registration, additional OAuth providers, custom profile names, custom avatars, public user profiles, account switching, or self-service deletion.
-- **First Super Admin:** bootstrapped from an environment-configured authorized Google email. There is no public setup wizard and no endpoint that grants arbitrary elevation.
+- **Provider:** Google OAuth for regular users, plus a single email/password credential for the Super Admin (D-027). No email/password registration, verification email, password reset, additional OAuth providers, custom profile names, custom avatars, public user profiles, account switching, or self-service deletion.
+- **First Super Admin:** bootstrapped from an environment-configured authorized Google email, or provisioned directly by `npm run db:seed:super-admin`. There is no public setup wizard and no endpoint that grants arbitrary elevation.
 - **Deactivated accounts:** cannot use authenticated features. Historical data is retained, not deleted.
 - **Account identity:** the platform stores only what is needed for authentication and display. It does not store Google credentials or unnecessary profile data.
 - **Administrator separation:** public users cannot register as administrators. Administrator status is granted only by an authorized Super Admin.
@@ -76,8 +76,16 @@ Bootstrap is implemented by `src/platform/auth/auth-hooks.ts` through the Better
 - `getActiveSession` returns `null` when the user is missing, inactive, soft-deleted, or the session has expired. `/dashboard` redirects to `/auth/signin` in that case, and `/auth/signin` redirects to `/dashboard` only for an active session.
 - Deactivating a user therefore invalidates an existing session cookie on the next protected request. The cookie and the `sessions` row may still exist; the database status is the authority.
 
-### 3.3 Administrator session policy
+### 3.3 Super Admin credential sign-in (D-027)
 
+- The only credential account is written by `npm run db:seed:super-admin`. Better Auth's `emailAndPassword.disableSignUp` is enabled, so `/api/auth/sign-up/email` cannot create a second one.
+- The form lives at `/vault-7x9k-console`, is not linked from any navigation, and sends `noindex, nofollow`.
+- `users.is_super_admin` remains the authorization authority. Possessing the route or the credentials never substitutes for the admin gate.
+- Unknown email, wrong password, and deactivated accounts all return `Invalid email or password.` so the form cannot enumerate accounts.
+- `/sign-in/email` is rate-limited to 5 requests per 60 seconds per IP in production. Repeated-failure logging to `login_attempts` is not implemented yet (future prompt); no credentials are ever logged. Server Actions accept the credentials as `FormData` so Next.js's development action log does not serialize the password.
+- The seed is the recovery path: re-running it resets the hash. There is no self-service reset.
+
+### 3.4 Administrator session policy
 - Configurable inactivity timeout and maximum session lifetime, enforced server-side.
 - Super Admin can inspect administrator sessions, terminate one or more sessions, and force reauthentication.
 - Successful and failed administrator logins, repeated failures, and suspicious patterns are recorded without storing credentials.

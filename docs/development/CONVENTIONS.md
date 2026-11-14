@@ -157,7 +157,8 @@ Implemented in `src/platform/config/` (Prompt 009):
 | `TEST_DATABASE_URL`                        | No                                                                  | Test database; the name must end in `_test` and differ from `DATABASE_URL`. |
 | `BETTER_AUTH_SECRET`                       | Production                                                          | Server-only auth secret, at least 32 characters.                            |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Production                                                          | Server-only Google OAuth credentials.                                       |
-| `SUPER_ADMIN_EMAIL`                        | Production                                                          | Google email allowed to bootstrap the first Super Admin.                    |
+| `SUPER_ADMIN_EMAIL`                        | Production                                                          | Email allowed to bootstrap the first Super Admin from a Google sign-in.     |
+| `SUPER_ADMIN_PASSWORD`                     | No (seed only)                                                      | Read only by `npm run db:seed:super-admin`; stored as a hash, min 16 chars.  |
 
 - `src/platform/config/index.ts` imports `server-only` and exports the validated `serverConfig`.
 - Development and test may omit production-only values; any value that is present is still validated.

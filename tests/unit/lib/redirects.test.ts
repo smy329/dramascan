@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ADMIN_SIGN_IN_PATH,
   DEFAULT_CALLBACK_URL,
   buildAdminSignInUrl,
   isAdminPath,
+  sanitizeAdminCallback,
   sanitizeCallbackUrl,
   sanitizeLocalCallback,
 } from '@/lib/redirects';
@@ -71,18 +73,35 @@ describe('isAdminPath', () => {
   );
 });
 
+describe('sanitizeAdminCallback', () => {
+  it('keeps admin paths', () => {
+    expect(sanitizeAdminCallback('/admin/users?page=2')).toBe('/admin/users?page=2');
+  });
+
+  it('falls back to /admin for non-admin or unsafe values', () => {
+    expect(sanitizeAdminCallback('/dashboard')).toBe('/admin');
+    expect(sanitizeAdminCallback('https://evil.example')).toBe('/admin');
+    expect(sanitizeAdminCallback(undefined)).toBe('/admin');
+    expect(sanitizeAdminCallback('/auth/signin')).toBe('/admin');
+  });
+});
+
 describe('buildAdminSignInUrl', () => {
+  it('uses the dedicated admin sign-in route', () => {
+    expect(ADMIN_SIGN_IN_PATH).toBe('/vault-7x9k-console');
+  });
+
   it('encodes the requested admin path', () => {
-    expect(buildAdminSignInUrl('/admin')).toBe('/auth/signin?callbackUrl=%2Fadmin');
+    expect(buildAdminSignInUrl('/admin')).toBe('/vault-7x9k-console?callbackUrl=%2Fadmin');
     expect(buildAdminSignInUrl('/admin/users?page=2')).toBe(
-      '/auth/signin?callbackUrl=%2Fadmin%2Fusers%3Fpage%3D2'
+      '/vault-7x9k-console?callbackUrl=%2Fadmin%2Fusers%3Fpage%3D2'
     );
   });
 
   it('falls back to /admin for unsafe or non-admin requests', () => {
     expect(buildAdminSignInUrl('https://evil.example')).toBe(
-      '/auth/signin?callbackUrl=%2Fadmin'
+      '/vault-7x9k-console?callbackUrl=%2Fadmin'
     );
-    expect(buildAdminSignInUrl('/dashboard')).toBe('/auth/signin?callbackUrl=%2Fadmin');
+    expect(buildAdminSignInUrl('/dashboard')).toBe('/vault-7x9k-console?callbackUrl=%2Fadmin');
   });
 });
