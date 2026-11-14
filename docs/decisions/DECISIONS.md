@@ -877,6 +877,84 @@ initial architecture excludes admin content UI in this prompt.
 
 ---
 
+## D-029 — Drama structure conversion is previewed, transactional, and snapshot-reversible
+
+**Date:** 2026-11-15
+**Status:** Approved by user (Prompt 066)
+
+**Context:** `REQUIREMENTS.md` §4.6 requires administrators to convert a drama
+between the season-based and flat episode structures without losing content
+identity or user state. Episodes carry per-user viewing records, and the
+existing content tables were created with a nullable `episodes.season_id` so a
+flat drama is representable, but no operation existed to move a drama from one
+structure to the other. Converting a live drama risks losing the previous
+season structure, renumbering episodes against viewer history, or applying a
+plan that was computed against a structure that has since changed.
+
+**Decision:**
+
+1. **Both directions are supported, drama→movie is not.** Season→flat merges
+   the seasons into one ordered episode sequence and renumbers it
+   sequentially; flat→season creates the seasons an administrator defines.
+   Converting a drama into a standalone movie stays a future task.
+2. **Episode identity and viewing records are never rewritten.** Episode ids,
+   titles, descriptions, publication status, and video sources survive both
+   directions, so `playback_progress`, `watched_state`, `watch_history`, and
+   `bookmarks` continue to point at the same episodes.
+3. **The canonical season→flat ordering is deterministic:** season position,
+   then episode position, then episode number, then creation time, then id.
+   Episodes without a season are ordered after season-assigned episodes.
+4. **Every conversion is previewed before it is applied.** The preview returns
+   a SHA-256 fingerprint of the structure it planned; the apply must echo that
+   fingerprint, and a mismatch is rejected with `409`. The apply runs in a
+   serializable transaction with the drama row locked `FOR UPDATE`, and
+   PostgreSQL `40001`/`23505` are mapped to `409`.
+5. **The season→flat direction stores an exact snapshot before it runs.** The
+   snapshot keeps the season and episode structure needed to restore it.
+   Restoring re-applies the snapshot's season rows, episode season assignment,
+   episode numbers, and positions only — never titles, descriptions, sources,
+   or viewing data. A snapshot is restorable only while the current flat
+   structure still matches the fingerprint recorded at conversion time; any
+   later episode addition, trash, restore, reorder, renumber, or reassignment
+   makes the snapshot unrestorable and the restore is rejected with `409`. The
+   snapshot is kept in that case.
+6. **One `available` snapshot per drama, history is never deleted.** A partial
+   unique index enforces the single available snapshot. Converting again
+   supersedes the previous snapshot in the same transaction as the conversion;
+   restored and superseded snapshots remain as history.
+7. **When an available snapshot exists, the administrator chooses explicitly.**
+   A flat→season request must state `restore_snapshot` or `convert`; omitting
+   the strategy is a `400`. `restore_snapshot` rejects any distribution input.
+   `convert` supersedes the snapshot only after that explicit choice.
+8. **The flat→season payload is a full distribution map.** Seasons carry a
+   key, a title, and an optional position; assignments map every active
+   episode to exactly one season key. Unknown, duplicate, trashed, and foreign
+   assignments are rejected, and omitting the distribution synthesizes a
+   single Season 1 holding every active episode. Trashed rows are ignored and
+   left untouched in both directions.
+9. **The surface is REST plus a minimal admin UI.** `POST
+   /admin/api/dramas/convert` and the `/admin/dramas` listing and
+   `/admin/dramas/[id]/convert` page require `drama.manage`, enforced
+   server-side on every entrypoint. The admin surface deliberately has no
+   create, edit, delete, or publish controls. The navigation's Dramas entry
+   uses `drama.manage` so it never links to a page the actor would be
+   rejected from.
+
+**Consequences:**
+
+- A converted drama keeps its viewer history and can be returned to its
+  previous season structure exactly, within the limits of the snapshot's
+  restorability rule.
+- The snapshot table adds one bounded table to the content module and one
+  foreign key (`ON DELETE CASCADE`) to `dramas`; the first deliberate foreign
+  key in the content hierarchy.
+- A structure change between preview and confirmation is a conflict rather
+  than a silent partial conversion; the administrator must preview again.
+- Converting a drama to a movie remains unimplemented and is not implied by
+  this decision.
+
+---
+
 ## Decision log rules
 - A decision is added only after explicit user approval or when the specification
   establishes it.

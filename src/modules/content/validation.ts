@@ -138,3 +138,86 @@ export function parseCreateMovieInput(input: unknown): CreateMovieInput {
 export function parseUpdateMovieInput(input: unknown): CreateMovieInput {
   return parseOrThrow(updateMovieSchema, input);
 }
+
+// ----- structure conversion -------------------------------------------------
+
+/** Stored drama structure types. */
+export const conversionStructureTypeSchema = z.enum(['flat', 'season_based']);
+
+/** How a flat drama becomes season-based. */
+export const conversionStrategySchema = z.enum(['convert', 'restore_snapshot']);
+
+/** Snapshot lifecycle states. */
+export const snapshotStatusSchema = z.enum(['available', 'restored', 'superseded']);
+
+/** Administrator-supplied season definition. `key` is an opaque assignment target. */
+export const conversionSeasonInputSchema = z.strictObject({
+  key: z.string().trim().min(1).max(64),
+  title: z.string().trim().min(1).max(100),
+  position: z.number().int().min(0).optional(),
+});
+
+/** Assignment of one active episode to one supplied season key. */
+export const conversionAssignmentInputSchema = z.strictObject({
+  episodeId: z.uuid(),
+  seasonKey: z.string().trim().min(1).max(64),
+});
+
+/** Full flat → season distribution payload. */
+export const conversionDistributionSchema = z.strictObject({
+  seasons: z.array(conversionSeasonInputSchema).min(1).max(100),
+  assignments: z.array(conversionAssignmentInputSchema).max(10_000),
+});
+
+/** Conversion preview/apply request. */
+export const conversionRequestSchema = z.strictObject({
+  dramaId: z.uuid(),
+  mode: z.enum(['preview', 'apply']),
+  targetStructureType: conversionStructureTypeSchema,
+  strategy: conversionStrategySchema.optional(),
+  fingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  snapshotId: z.uuid().optional(),
+  distribution: conversionDistributionSchema.optional(),
+});
+
+export type ConversionStructureType = z.infer<typeof conversionStructureTypeSchema>;
+export type ConversionStrategy = z.infer<typeof conversionStrategySchema>;
+export type SnapshotStatus = z.infer<typeof snapshotStatusSchema>;
+export type ConversionSeasonInput = z.infer<typeof conversionSeasonInputSchema>;
+export type ConversionAssignmentInput = z.infer<typeof conversionAssignmentInputSchema>;
+export type ConversionDistributionInput = z.infer<typeof conversionDistributionSchema>;
+export type ConversionRequest = z.infer<typeof conversionRequestSchema>;
+
+/** Parse a conversion request, throwing a REST-safe validation error on failure. */
+export function parseConversionRequest(input: unknown): ConversionRequest {
+  return parseOrThrow(conversionRequestSchema, input);
+}
+
+/** Parsed season row inside a stored conversion snapshot. */
+export const snapshotSeasonPayloadSchema = z.strictObject({
+  id: z.uuid(),
+  title: z.string().trim().min(1).max(100),
+  position: z.number().int().nullable(),
+  publication_status: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+/** Parsed episode row inside a stored conversion snapshot. */
+export const snapshotEpisodePayloadSchema = z.strictObject({
+  id: z.uuid(),
+  season_id: z.uuid().nullable(),
+  episode_number: z.number().int().nullable(),
+  position: z.number().int().nullable(),
+  title: z.string(),
+});
+
+/** Exact structure payload stored before a season-based → flat conversion. */
+export const snapshotPayloadSchema = z.strictObject({
+  seasons: z.array(snapshotSeasonPayloadSchema),
+  episodes: z.array(snapshotEpisodePayloadSchema),
+});
+
+export type SnapshotSeasonPayload = z.infer<typeof snapshotSeasonPayloadSchema>;
+export type SnapshotEpisodePayload = z.infer<typeof snapshotEpisodePayloadSchema>;
+export type SnapshotPayload = z.infer<typeof snapshotPayloadSchema>;

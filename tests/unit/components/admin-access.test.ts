@@ -44,7 +44,7 @@ describe('resolveAdminPageAccess', () => {
   });
 
   it.each([
-    'drama.read',
+    'drama.manage',
     'movie.read',
     'episode.read',
     'category.read',
@@ -60,6 +60,12 @@ describe('resolveAdminPageAccess', () => {
     expect(resolveAdminPageAccess(actor([permission]), '/admin')).toEqual({
       status: 'allowed',
       actor: actor([permission]),
+    });
+  });
+
+  it('forbids a drama.read-only actor now that the Dramas surface requires drama.manage', () => {
+    expect(resolveAdminPageAccess(actor(['drama.read']), '/admin')).toEqual({
+      status: 'forbidden',
     });
   });
 

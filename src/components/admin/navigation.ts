@@ -57,7 +57,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavGroup[] = [
         id: 'dramas',
         label: 'Dramas',
         href: '/admin/dramas',
-        permissions: ['drama.read'],
+        permissions: ['drama.manage'],
         implemented: true,
       },
       {

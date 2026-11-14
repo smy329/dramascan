@@ -52,7 +52,11 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     actionTimeout: 10_000,
-    navigationTimeout: 15_000,
+    // Development servers compile a route the first time it is requested. A
+    // cold admin route on a slow filesystem can take longer than the
+    // navigation timeout even though the response itself is fast, so the
+    // first request to a route is allowed to finish.
+    navigationTimeout: 45_000,
   },
   projects: [
     {

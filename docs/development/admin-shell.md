@@ -174,7 +174,7 @@ type AdminNavEntry = Readonly<{
 | Group         | Entry               | Href                       | Permissions (any of)                               | Implemented |
 | ------------- | ------------------- | -------------------------- | -------------------------------------------------- | ----------- |
 | Dashboard     | Overview            | `/admin`                   | — (admin-area access)                              | Yes         |
-| Content       | Dramas              | `/admin/dramas`            | `drama.read`                                       | No          |
+| Content       | Dramas              | `/admin/dramas`            | `drama.manage`                                     | Yes         |
 | Content       | Movies              | `/admin/movies`            | `movie.read`                                       | No          |
 | Content       | Episodes            | `/admin/episodes`          | `episode.read`                                     | No          |
 | Content       | Categories          | `/admin/categories`        | `category.read`                                    | No          |

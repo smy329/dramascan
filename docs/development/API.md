@@ -257,6 +257,55 @@ cross-origin requests.
 - No admin UI is implemented in Prompt 065. These endpoints are the control
   surface for a future movie management screen.
 
+### 3.10 Drama structure conversion (implemented, Prompt 066)
+
+These endpoints move a drama between the season-based and flat episode
+structures. Every endpoint requires `drama.manage`; authorization is enforced
+at the route entrypoint and re-checked inside the workflow. Mutations reject
+cross-origin requests.
+
+| Method | Path                          | Auth                | Permission     | Purpose                                                             | Status      |
+| ------ | ----------------------------- | ------------------- | -------------- | ------------------------------------------------------------------- | ----------- |
+| `POST` | `/admin/api/dramas/convert`   | Authenticated admin | `drama.manage` | Preview a conversion, or apply a previously previewed one            | Implemented |
+
+The body always carries `mode` (`preview` or `apply`), the target
+`targetStructureType` (`flat` or `season_based`), and the optional `strategy`
+(`convert` or `restore_snapshot`) and `distribution`.
+
+- `mode: "preview"` returns the planned seasons and episodes, the affected
+  counts, any warnings, and a `fingerprint` — a SHA-256 hash of the planned
+  structure. It changes nothing.
+- `mode: "apply"` requires the `fingerprint` returned by the preview. The
+  fingerprint must still match the current structure; a mismatch returns `409
+  conflict` and nothing changes. The apply runs in a serializable transaction
+  with the drama row locked, and the resulting `newFingerprint` is returned.
+- Season→flat merges the seasons into one ordered episode sequence and
+  renumbers it sequentially. It stores an exact snapshot of the previous
+  season structure first, so the conversion can be reversed.
+- Flat→season requires the full distribution map: `seasons` (each with a
+  `key`, a `title`, and an optional `position`) and `assignments` (each with an
+  `episodeId` and a `seasonKey`). Every active episode must be assigned
+  exactly once; unknown, duplicate, trashed, and foreign assignments return
+  `400 validation_error`. Omitting the distribution synthesizes a single
+  Season 1 holding every active episode.
+- When an available snapshot exists, the request must state `strategy`:
+  `restore_snapshot` restores the previous structure exactly and rejects any
+  distribution, `convert` supersedes the snapshot and applies a new
+  distribution. Omitting the strategy returns `400`.
+- A snapshot can only be restored while the current flat structure still
+  matches the fingerprint recorded at conversion time. Any later episode
+  addition, trash, restore, reorder, renumber, or reassignment returns `409`;
+  the snapshot is kept and the drama is unchanged.
+- Episode ids, titles, descriptions, publication status, and video sources are
+  never rewritten, so per-user viewing records keep pointing at the same
+  episodes. Trashed seasons and episodes are ignored and left untouched.
+- Errors use the standard `{ error: { code, message, fieldErrors?, requestId } }`
+  envelope. Unauthenticated requests return `401`, insufficient permissions
+  return `403`, an invalid request returns `400`, and a stale fingerprint, an
+  unrestorable snapshot, or a serialization conflict returns `409`.
+- The admin pages `/admin/dramas` and `/admin/dramas/[id]/convert` use the
+  same workflow through Server Actions; they are not separate REST endpoints.
+
 ---
 
 ## 4. Server Action Catalog
@@ -273,6 +322,7 @@ Server Actions are application operations, not REST endpoints. They are document
 | Content reports         | Submit a content report                                                          | Authenticated, rate-limited                      | Planned |
 | Notifications           | Update preferences, mark read/unread, manage push subscription                   | Own notifications                                | Planned |
 | Content administration  | Create/update/publish/unpublish/trash/restore content, seasons, episodes, movies | `drama.*`, `episode.*`, `movie.*`                | Planned |
+| Drama structure conversion | Preview and apply a season-based ↔ flat conversion, restore a structure snapshot | `drama.manage`                                   | Implemented |
 | Source replacement      | Replace an episode or movie source after preview and confirmation                | `episode.manage`, `movie.manage`                                                | Planned |
 | Taxonomy administration | Create/update/delete categories and platforms                                    | `category.*`, `platform.*`                       | Planned |
 | Moderation              | Resolve content reports, remove reviews                                          | `review.manage`              | Planned |

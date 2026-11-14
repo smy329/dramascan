@@ -55,12 +55,18 @@ describe('hasAdminAreaAccess', () => {
 
   it('grants Super Admin and operational permissions', () => {
     expect(hasAdminAreaAccess(actor([], true))).toBe(true);
-    expect(hasAdminAreaAccess(actor(['drama.read']))).toBe(true);
+    expect(hasAdminAreaAccess(actor(['drama.manage']))).toBe(true);
     expect(hasAdminAreaAccess(actor(['analytics.read']))).toBe(true);
   });
 
   it('denies authenticated actors with no admin-area permission', () => {
     expect(hasAdminAreaAccess(actor())).toBe(false);
+  });
+
+  it('denies an actor whose only permission is drama.read', () => {
+    // The Dramas admin surface requires `drama.manage`, so `drama.read`
+    // alone opens no admin surface and must not grant area access.
+    expect(hasAdminAreaAccess(actor(['drama.read']))).toBe(false);
   });
 });
 
@@ -76,11 +82,15 @@ describe('filterAdminNavigation', () => {
     expect(filterAdminNavigation(ADMIN_NAVIGATION, current)).toEqual([]);
   });
 
-  it('shows the implemented dashboard and content groups to an actor with drama.read', () => {
-    expect(filterAdminNavigation(ADMIN_NAVIGATION, actor(['drama.read'])).map((g) => g.id)).toEqual([
-      'dashboard',
-      'content',
-    ]);
+  it('shows the implemented dashboard and content groups to an actor with drama.manage', () => {
+    expect(
+      filterAdminNavigation(ADMIN_NAVIGATION, actor(['drama.manage'])).map((g) => g.id)
+    ).toEqual(['dashboard', 'content']);
+  });
+
+  it('hides the Dramas entry from an actor holding only drama.read', () => {
+    expect(entryById('dramas')?.permissions).toEqual(['drama.manage']);
+    expect(filterAdminNavigation(ADMIN_NAVIGATION, actor(['drama.read']))).toEqual([]);
   });
 
   it('applies any-of permissions and empties groups with no visible entries', () => {

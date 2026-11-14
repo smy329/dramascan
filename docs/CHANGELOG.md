@@ -2,6 +2,62 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [0.9.0] - 2026-11-15
+
+### feat: drama structure conversion (Prompt 066, D-029)
+
+Administrators can now move a drama between the season-based and flat episode
+structures through a previewed, transactional conversion that keeps episode
+identity, viewing records, and metadata intact and can be reversed from an
+exact snapshot.
+
+- `src/modules/content/conversion.ts` (new): pure domain rules — canonical
+  ordering (season position → episode position → episode number → created at →
+  id, with seasonless episodes last), season→flat and flat→season plan
+  builders, distribution validation, the SHA-256 structure fingerprint, and
+  snapshot payload build/parse. The fingerprint covers the structure only
+  (season title/position/publication state and the episode
+  season/number/position assignment); episode titles, descriptions,
+  publication status, and video sources are excluded.
+- `src/modules/content/validation.ts`: conversion request, distribution, and
+  snapshot schemas. Unknown, duplicate, trashed, or foreign assignments are
+  rejected, and every active episode must be assigned exactly once.
+- `src/modules/content/schema.ts` + `drizzle/0005_yielding_mimic.sql` (new):
+  `structure_conversion_snapshots` stores the pre-conversion season/episode
+  payload, the post-conversion fingerprint, and the snapshot status
+  (`available` | `restored` | `superseded`), with a partial unique index that
+  allows at most one `available` snapshot per drama. Snapshots are never
+  deleted.
+- `src/workflows/admin/conversion.ts` (new): the conversion workflow —
+  `drama.manage` authorization, the admin list/context reads, the preview, and
+  the apply. The apply runs in a serializable transaction with the drama row
+  locked `FOR UPDATE`, verifies the preview fingerprint, writes or supersedes
+  the snapshot in the same transaction, and maps PostgreSQL `40001`/`23505` to
+  `409`.
+- `src/app/admin/api/dramas/convert/route.ts` (new): `POST` with
+  `mode: "preview"` returns the plan and fingerprint; `mode: "apply"` requires
+  that fingerprint. Unauthenticated requests return `401`, a missing
+  `drama.manage` returns `403`, an invalid request returns `400`, and a stale
+  fingerprint or an unrestorable snapshot returns `409`.
+- `src/workflows/admin/conversion-actions.ts` (new): `previewDramaConversion`
+  and `applyDramaConversion` Server Actions returning the standard
+  `ActionResult` union; the admin panel calls the same workflow as the API.
+- `src/lib/contracts/drama-conversion.ts` (new): the client-safe DTOs and the
+  distribution schema, so `components/**` never imports the content module.
+- `src/app/admin/dramas/` and `src/components/admin/dramas/drama-conversion-panel.tsx`
+  (new): a minimal admin listing (`/admin/dramas`) and conversion page
+  (`/admin/dramas/[id]/convert`) with preview, confirmation dialog, and a
+  flat→season distribution editor. No create/edit/delete/publish controls.
+- `src/components/admin/navigation.ts`: the Dramas entry now requires
+  `drama.manage`, so a link is never shown to an actor the list would reject.
+- Tests: `tests/unit/modules/content/conversion.test.ts` (17 cases),
+  `tests/integration/content/conversion.integration.test.ts` (22 cases),
+  `tests/integration/content/conversion-api.integration.test.ts` (7 cases),
+  `tests/unit/components/drama-conversion-panel.test.tsx` (4 cases), and
+  `tests/e2e/admin-dramas.spec.ts` (4 cases) covering ordering, renumbering,
+  snapshot lifecycle, fingerprint staleness, strategy selection, authorization,
+  and the browser workflow.
+
 ## [0.8.0] - 2026-11-14
 
 ### feat: standalone movie creation and editing (Prompt 065, D-028)

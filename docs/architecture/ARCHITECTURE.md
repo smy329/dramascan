@@ -346,11 +346,11 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 ### 6.3 `content` — Content management
 
 - **Purpose:** dramas, seasons, episodes, standalone movies, hierarchy, taxonomies, similar dramas, publication state, Trash/restore, structure conversion, episode ordering/moving, information pages, SEO overrides, slug history/redirects, sitemap eligibility, image asset metadata, direct MP4 source URL storage and syntax validation.
-- **Owns:** `dramas`, `seasons`, `episodes`, `movies`, `categories`, `platforms`, `drama_categories`, `drama_platforms`, `movie_categories`, `movie_platforms`, `similar_dramas`, `information_pages`, `content_slug_history`, `content_seo`, `content_assets`, `sitemap_exclusions`; the `video_source_url` columns on episodes and movies.
+- **Owns:** `dramas`, `seasons`, `episodes`, `movies`, `categories`, `platforms`, `drama_categories`, `drama_platforms`, `movie_categories`, `movie_platforms`, `similar_dramas`, `information_pages`, `content_slug_history`, `content_seo`, `content_assets`, `sitemap_exclusions`, `structure_conversion_snapshots`; the `video_source_url` columns on episodes and movies.
 - **Public API:** public detail/card/list queries with visibility enforcement, admin list queries, create/update/delete/restore/purge services, publish/unpublish, bulk publication, reorder/move, conversion, similar-drama management, slug resolution and redirect lookup, availability assertions, playback-source lookup with availability enforcement, taxonomy CRUD.
 - **Depends on:** `authorization`, `auth`, platform.
 - **Not responsible for:** playback progress, watch history, ratings/reviews, view counts, notifications, moderation records, image file I/O (files live on disk; this module stores metadata and paths).
-- **Boundary notes:** publication workflows are invoked through `workflows/publish-content`, not by other modules. Public queries never return unpublished or trashed content. Watch queries obtain the source URL through `playback`, not from a general details query.
+- **Boundary notes:** publication workflows are invoked through `workflows/publish-content`, not by other modules. Public queries never return unpublished or trashed content. Watch queries obtain the source URL through `playback`, not from a general details query. Drama structure conversion (season-based ↔ flat) is sequenced by `workflows/admin/conversion`, which owns the transaction, the `FOR UPDATE` lock, the preview fingerprint check, and the snapshot lifecycle; the `content` module supplies the pure ordering, plan, fingerprint, and snapshot-payload rules.
 
 ### 6.4 `users` — User profile and bookmarks
 

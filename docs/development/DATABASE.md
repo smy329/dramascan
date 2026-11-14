@@ -233,6 +233,7 @@ Migration tooling and practices are defined in `CONVENTIONS.md` §10. Database-s
 - `drizzle/0001_pale_earthquake.sql` adds login monitoring (`login_attempts`) and session activity.
 - `drizzle/0002_information_page_footer_links.sql` adds `information_pages.position`, the active-row slug uniqueness index, the partial footer index, and the six-row information-page seed (forward-only; the seed is idempotent and preserves administrator edits).
 - `drizzle/0003_needy_infant_terrible.sql` adds one partial index, `idx_users_active_created_at`, for the admin user listing (Prompt 051). Reversible: `DROP INDEX idx_users_active_created_at;` — the index is the migration's only statement, so the rollback restores `0002` exactly (the `CREATE INDEX` is not `CONCURRENTLY`, so neither is this drop). See §6.1 for the queries it serves, the queries it does not serve, and the measured plans.
+- `drizzle/0005_yielding_mimic.sql` adds `structure_conversion_snapshots`, the drama structure-conversion snapshot table (Prompt 066). Reversible: `DROP TABLE structure_conversion_snapshots;` — the table has no dependents, so the rollback restores `0004` exactly. The migration is forward-only in practice: dropping the table discards the snapshots, and a drama that was converted season-based → flat cannot be restored to its previous season structure afterwards.
 - `npm run db:generate` creates the next numbered migration from schema changes; `npm run db:migrate` applies pending migrations. `npm run db:push` is local-only and must never be used against production.
 - Integration tests build the isolated `_test` database from this same migration chain in `tests/global-setup.ts`, so a broken migration fails CI.
 - Applied migrations are never edited.
@@ -263,6 +264,7 @@ This catalog is filled in as tables are implemented. Each entry records the tabl
 | movie_platforms     | content      Movie–platform many-to-many | ✅ Implemented |
 | similar_dramas      | content      Similarity recommendations | ✅ Implemented |
 | information_pages   | content      Legal/information pages and footer configuration | ✅ Implemented |
+| structure_conversion_snapshots | content | Pre-conversion season structure snapshots for drama structure conversion | ✅ Implemented |
 | content_slug_history| content      Slug change history        | ✅ Implemented |
 | content_seo         | content      SEO metadata per content  | ✅ Implemented |
 | content_assets      | content      Media/assets per content  | ✅ Implemented |
@@ -424,6 +426,33 @@ or episode. Its single direct video source lives on the same row.
 | Workflow API | `src/workflows/admin/movies.ts` (`createMovie`, `updateMovie`); requires `movie.manage`. Slug changes append `content_slug_history` rows with `content_type = 'movie'`. |
 | Admin API | `POST /admin/api/movies`, `PUT /admin/api/movies`; requires `movie.manage` and same-origin mutations. |
 | Validation | `src/modules/content/validation.ts` (`createMovieSchema`, `updateMovieSchema`, `movieVideoSourceSchema`, `moviePublicationStatusSchema`). Updates are full-payload replaces. |
+
+### 8.4 Drama structure conversion snapshots (Prompt 066)
+
+`structure_conversion_snapshots` is owned by the `content` module. It records the
+season structure of a drama before a season-based → flat conversion so the
+conversion can be reversed. Snapshots are history: they are superseded or
+marked restored, never deleted.
+
+| Item | Detail |
+| ---- | ------ |
+| Purpose | Exact pre-conversion season/episode structure for one drama, plus the fingerprint of the structure that resulted from the conversion. |
+| Primary key | `id uuid` (`uuidv7()` default). |
+| Key columns | `drama_id`, `source_structure_type` (`season_based`), `target_structure_type` (`flat`), `season_data` (`jsonb`), `episode_data` (`jsonb`), `post_conversion_fingerprint` (text), `status` (`available` \| `restored` \| `superseded`), `restored_at`, `superseded_at`. |
+| Timestamps / soft delete | `created_at`, `updated_at` (`timestamptz`). Snapshots are not soft-deleted; the `status` column carries the lifecycle. |
+| Constraints | `ck_structure_conversion_snapshots_status` — status is one of `available`, `restored`, `superseded`. `ck_structure_conversion_snapshots_direction` — the snapshot direction is always season-based → flat. |
+| Relationships | `fk_structure_conversion_snapshots_drama_id` → `dramas.id` `ON DELETE CASCADE` (the first deliberate foreign key in the content hierarchy). `idx_structure_conversion_snapshots_drama_id` supports the per-drama lookup. |
+| Uniqueness | `uq_structure_conversion_snapshots_drama_id_available` — partial unique index on `drama_id WHERE status = 'available'`, so at most one restorable snapshot exists per drama. Superseding and restoring are part of the conversion transaction. |
+| Migration | `drizzle/0005_yielding_mimic.sql`. |
+| Workflow API | `src/workflows/admin/conversion.ts` (`previewConversion`, `applyConversion`); requires `drama.manage`. The apply runs in a serializable transaction with the drama row locked `FOR UPDATE`. |
+| Admin API | `POST /admin/api/dramas/convert`; requires `drama.manage` and same-origin mutations. |
+| Validation | `src/modules/content/validation.ts` (`conversionRequestSchema`, `conversionDistributionSchema`, snapshot payload schemas) and `src/modules/content/conversion.ts` (ordering, plans, fingerprint, snapshot payload build/parse). |
+
+Restoring a snapshot re-applies the stored season rows, episode season
+assignment, episode numbers, and positions only. Episode titles,
+descriptions, publication status, and video sources are never restored from a
+snapshot, and viewing records are never touched. A snapshot is restorable only
+while the current flat structure still matches `post_conversion_fingerprint`.
 
 ---
 

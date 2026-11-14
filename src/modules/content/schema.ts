@@ -23,13 +23,20 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { primaryKeyConstraint, uuidPrimaryKey } from '@/platform/db/schema-helpers';
+import {
+  checkConstraint,
+  foreignKeyConstraint,
+  indexOn,
+  primaryKeyConstraint,
+  uuidPrimaryKey,
+} from '@/platform/db/schema-helpers';
 
 // Helper: standard columns for mutable entities
 const created = timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
@@ -105,6 +112,49 @@ export const movies = pgTable(
     uniqueIndex('uq_movies_slug_active')
       .on(table.slug)
       .where(sql`${table.deleted_at} is null`),
+  ]
+);
+
+// ----- structure conversion snapshots -----
+// One exact season structure snapshot is stored before every season-based → flat
+// conversion. Only one row per drama may be `available`; historical rows are kept
+// for audit. `season_data`/`episode_data` are structure payloads, not arbitrary
+// metadata: episode IDs, season membership, episode numbers, positions, season
+// titles, positions, and publication states needed to restore the structure.
+export const structureConversionSnapshots = pgTable(
+  'structure_conversion_snapshots',
+  {
+    id: uuidPrimaryKey(),
+    drama_id: uuid('drama_id').notNull(),
+    source_structure_type: text('source_structure_type').notNull().default('season_based'),
+    target_structure_type: text('target_structure_type').notNull().default('flat'),
+    season_data: jsonb('season_data').notNull(),
+    episode_data: jsonb('episode_data').notNull(),
+    post_conversion_fingerprint: text('post_conversion_fingerprint').notNull(),
+    status: text('status').notNull().default('available'),
+    restored_at: timestamp('restored_at', { withTimezone: true, mode: 'date' }),
+    superseded_at: timestamp('superseded_at', { withTimezone: true, mode: 'date' }),
+    created_at: created,
+    updated_at: updated,
+  },
+  table => [
+    foreignKeyConstraint('structure_conversion_snapshots', table.drama_id, dramas.id, {
+      onDelete: 'cascade',
+    }),
+    checkConstraint(
+      'structure_conversion_snapshots',
+      'status',
+      sql`${table.status} in ('available', 'restored', 'superseded')`
+    ),
+    checkConstraint(
+      'structure_conversion_snapshots',
+      'direction',
+      sql`${table.source_structure_type} = 'season_based' and ${table.target_structure_type} = 'flat'`
+    ),
+    indexOn('structure_conversion_snapshots', table.drama_id),
+    uniqueIndex('uq_structure_conversion_snapshots_drama_id_available')
+      .on(table.drama_id)
+      .where(sql`${table.status} = 'available'`),
   ]
 );
 
