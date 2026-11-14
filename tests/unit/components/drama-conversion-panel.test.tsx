@@ -8,6 +8,14 @@ const actionMocks = vi.hoisted(() => ({
   apply: vi.fn(),
 }));
 
+const routerMocks = vi.hoisted(() => ({
+  refresh: vi.fn(),
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: routerMocks.refresh }),
+}));
+
 vi.mock('@/workflows/admin/conversion-actions', () => ({
   previewDramaConversion: actionMocks.preview,
   applyDramaConversion: actionMocks.apply,
@@ -84,6 +92,7 @@ function seasonPlan(): ConversionPlanDto {
 beforeEach(() => {
   actionMocks.preview.mockReset();
   actionMocks.apply.mockReset();
+  routerMocks.refresh.mockReset();
 });
 
 afterEach(cleanup);
@@ -93,7 +102,13 @@ describe('season-based drama conversion', () => {
     actionMocks.preview.mockResolvedValue({ ok: true, data: flatPlan() });
     actionMocks.apply.mockResolvedValue({
       ok: true,
-      data: { plan: flatPlan(), newFingerprint: 'c'.repeat(64) },
+      data: {
+        ...flatPlan(),
+        applied: true,
+        newFingerprint: 'c'.repeat(64),
+        snapshotId: '44444444-4444-7444-8444-444444444444',
+        snapshotStatus: 'available',
+      },
     });
 
     render(
@@ -232,13 +247,90 @@ describe('flat drama conversion', () => {
 
     const restore = screen.getByLabelText(/Restore previous structure/) as HTMLInputElement;
     const convert = screen.getByLabelText(/Create new seasons/) as HTMLInputElement;
+    const previewButton = screen.getByRole('button', { name: 'Preview conversion' });
 
-    expect(restore.checked).toBe(true);
+    // No strategy is pre-selected: restoring the previous structure must be a
+    // deliberate choice, not the default outcome of opening the page.
+    expect(restore.checked).toBe(false);
     expect(convert.checked).toBe(false);
+    expect((previewButton as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.click(convert);
 
     expect((screen.getByLabelText(/Create new seasons/) as HTMLInputElement).checked).toBe(true);
+    expect((previewButton as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByLabelText('Season title')).toBeTruthy();
+  });
+
+  it('rejects an invalid distribution before sending a preview request', async () => {
+    render(
+      <DramaConversionPanel
+        dramaId="aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa"
+        dramaTitle="Test Drama"
+        currentStructureType="flat"
+        episodes={EPISODES}
+        hasAvailableSnapshot={false}
+      />
+    );
+
+    const title = screen.getByLabelText('Season title') as HTMLInputElement;
+    fireEvent.change(title, { target: { value: '   ' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview conversion' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('season title');
+    expect(actionMocks.preview).not.toHaveBeenCalled();
+  });
+
+  it('clears the preview and shows the new structure after a conversion is applied', async () => {
+    actionMocks.preview.mockResolvedValue({ ok: true, data: flatPlan() });
+    actionMocks.apply.mockResolvedValue({
+      ok: true,
+      data: {
+        ...flatPlan(),
+        applied: true,
+        newFingerprint: 'c'.repeat(64),
+        snapshotId: '44444444-4444-7444-8444-444444444444',
+        snapshotStatus: 'available',
+      },
+    });
+
+    render(
+      <DramaConversionPanel
+        dramaId="aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa"
+        dramaTitle="Test Drama"
+        currentStructureType="season_based"
+        episodes={EPISODES}
+        hasAvailableSnapshot={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview conversion' }));
+
+    await screen.findByText('Episode 1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm conversion' }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Convert' }));
+
+    await screen.findByText('Conversion applied.');
+
+    // The preview is stale once the conversion is applied: the plan is cleared
+    // and a new preview is required before another conversion.
+    expect(screen.getByText('No preview yet. Build a preview before confirming a conversion.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Confirm conversion' }) as HTMLButtonElement).disabled).toBe(
+      true
+    );
+
+    // The panel now describes the converted structure.
+    expect(screen.getByText(/Current structure: Flat/)).toBeTruthy();
+    expect(screen.getByText(/Converting changes it to season-based/)).toBeTruthy();
+
+    // The server component is refreshed so the episode rows and the snapshot
+    // state come from the database again.
+    expect(routerMocks.refresh).toHaveBeenCalledTimes(1);
   });
 });

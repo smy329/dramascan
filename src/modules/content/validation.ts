@@ -40,6 +40,28 @@ export function parseCreateDramaInput(input: unknown): CreateDramaInput {
   return parseOrThrow(createDramaSchema, input);
 }
 
+/**
+ * Drama update schema.
+ *
+ * `structure_type` is deliberately not defaulted here. A metadata update must
+ * never move a drama between the season-based and flat structures: changing
+ * the structure is the conversion workflow's job (`D-029`), because it has to
+ * renumber episodes and store a restorable snapshot. An update may repeat the
+ * stored value, but a different value is rejected as a conflict.
+ */
+export const updateDramaSchema = createDramaSchema
+  .omit({ structure_type: true })
+  .extend({
+    structure_type: z.enum(['flat', 'season_based']).optional(),
+  });
+
+export type UpdateDramaInput = z.infer<typeof updateDramaSchema>;
+
+/** Parse a drama update, throwing a REST-safe validation error on failure. */
+export function parseUpdateDramaInput(input: unknown): UpdateDramaInput {
+  return parseOrThrow(updateDramaSchema, input);
+}
+
 /** Shared parse-or-throw helper. */
 export function parseOrThrow<T>(schema: z.ZodType<T>, input: unknown): T {
   const parsed = schema.safeParse(input);

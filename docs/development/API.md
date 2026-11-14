@@ -278,7 +278,12 @@ The body always carries `mode` (`preview` or `apply`), the target
 - `mode: "apply"` requires the `fingerprint` returned by the preview. The
   fingerprint must still match the current structure; a mismatch returns `409
   conflict` and nothing changes. The apply runs in a serializable transaction
-  with the drama row locked, and the resulting `newFingerprint` is returned.
+  with the drama row locked.
+- The apply response is the preview plan shape plus `applied: true`,
+  `newFingerprint`, `snapshotId`, and `snapshotStatus`
+  (`available` | `restored` | `superseded` | `null`):
+  `{ "data": { ...plan, "applied": true, "newFingerprint": "…",
+  "snapshotId": "uuid|null", "snapshotStatus": "available|null" } }`.
 - Season→flat merges the seasons into one ordered episode sequence and
   renumbers it sequentially. It stores an exact snapshot of the previous
   season structure first, so the conversion can be reversed.
@@ -293,16 +298,25 @@ The body always carries `mode` (`preview` or `apply`), the target
   distribution, `convert` supersedes the snapshot and applies a new
   distribution. Omitting the strategy returns `400`.
 - A snapshot can only be restored while the current flat structure still
-  matches the fingerprint recorded at conversion time. Any later episode
-  addition, trash, restore, reorder, renumber, or reassignment returns `409`;
-  the snapshot is kept and the drama is unchanged.
+  matches the fingerprint recorded at conversion time. Any change to the
+  active structure — an episode added, trashed, restored, reordered, renumbered,
+  or reassigned — returns `409`; the snapshot is kept and the drama is
+  unchanged. The rule is fingerprint equality, so a change that returns the
+  structure to the recorded fingerprint leaves the snapshot restorable. A
+  corrupted stored snapshot payload is a server error (`500`), not a conflict.
 - Episode ids, titles, descriptions, publication status, and video sources are
   never rewritten, so per-user viewing records keep pointing at the same
-  episodes. Trashed seasons and episodes are ignored and left untouched.
+  episodes. Trashed seasons and episodes are ignored and left untouched. An
+  episode attached to a non-active season is treated as seasonless: it stays
+  in the flat sequence instead of being dropped.
+- The drama's `structure_type` is not part of the ordinary drama update. A
+  drama update may repeat the stored value; a different value returns `409`
+  and points at this endpoint. A missing drama returns `404`.
 - Errors use the standard `{ error: { code, message, fieldErrors?, requestId } }`
   envelope. Unauthenticated requests return `401`, insufficient permissions
-  return `403`, an invalid request returns `400`, and a stale fingerprint, an
-  unrestorable snapshot, or a serialization conflict returns `409`.
+  return `403`, an invalid request — including a malformed JSON body — returns
+  `400`, and a stale fingerprint, an unrestorable snapshot, or a serialization
+  conflict returns `409`.
 - The admin pages `/admin/dramas` and `/admin/dramas/[id]/convert` use the
   same workflow through Server Actions; they are not separate REST endpoints.
 

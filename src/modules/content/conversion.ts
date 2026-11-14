@@ -147,16 +147,22 @@ function orderEpisodes(
 /**
  * Order a season-based structure: seasons by position, episodes within each
  * season by position/number, and seasonless episodes after every season.
+ *
+ * An episode whose season is not an active season has no place in the active
+ * structure, so it is ordered with the seasonless episodes. Dropping it would
+ * leave an episode out of the flat sequence, out of the snapshot, and out of
+ * the post-conversion fingerprint.
  */
 export function orderSeasonStructure(
   seasons: readonly ConversionSeasonState[],
   episodes: readonly ConversionEpisodeState[]
 ): { seasons: ConversionSeasonState[]; episodes: ConversionEpisodeState[] } {
   const orderedSeasons = orderSeasons(seasons);
+  const activeSeasonIds = new Set(orderedSeasons.map(season => season.id));
   const bySeason = new Map<string, ConversionEpisodeState[]>();
 
   for (const episode of episodes) {
-    if (episode.seasonId === null) {
+    if (episode.seasonId === null || !activeSeasonIds.has(episode.seasonId)) {
       continue;
     }
     const group = bySeason.get(episode.seasonId) ?? [];
@@ -167,7 +173,11 @@ export function orderSeasonStructure(
   const seasonOrdered = orderedSeasons.flatMap(season =>
     orderEpisodes(bySeason.get(season.id) ?? [])
   );
-  const seasonless = orderEpisodes(episodes.filter(episode => episode.seasonId === null));
+  const seasonless = orderEpisodes(
+    episodes.filter(
+      episode => episode.seasonId === null || !activeSeasonIds.has(episode.seasonId)
+    )
+  );
 
   return {
     seasons: orderedSeasons,
@@ -521,6 +531,7 @@ export function buildSnapshotPayload(
   episodes: readonly ConversionEpisodeState[]
 ): SnapshotPayload {
   const ordered = orderSeasonStructure(seasons, episodes);
+  const activeSeasonIds = new Set(ordered.seasons.map(season => season.id));
 
   return {
     seasons: ordered.seasons.map(
@@ -536,7 +547,13 @@ export function buildSnapshotPayload(
     episodes: ordered.episodes.map(
       (episode): SnapshotEpisodePayload => ({
         id: episode.id,
-        season_id: episode.seasonId,
+        // A stored season id always refers to a season in the same payload.
+        // An episode attached to an inactive season is stored as seasonless,
+        // because that season is not restored and would dangle otherwise.
+        season_id:
+          episode.seasonId !== null && activeSeasonIds.has(episode.seasonId)
+            ? episode.seasonId
+            : null,
         episode_number: episode.episodeNumber,
         position: episode.position,
         title: episode.title,

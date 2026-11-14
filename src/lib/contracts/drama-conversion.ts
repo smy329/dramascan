@@ -69,10 +69,17 @@ export type ConversionPlanDto = {
   warnings: string[];
 };
 
-/** Result of an applied conversion. */
-export type ConversionApplyResultDto = {
-  plan: ConversionPlanDto;
+/**
+ * Result of an applied conversion.
+ *
+ * The apply response is the plan shape plus the applied marker, the new
+ * structure fingerprint, and the snapshot lifecycle fields.
+ */
+export type ConversionApplyResultDto = ConversionPlanDto & {
+  applied: true;
   newFingerprint: string;
+  snapshotId: string | null;
+  snapshotStatus: SnapshotStatusDto | null;
 };
 
 /** One season in the administrator-supplied distribution map. */

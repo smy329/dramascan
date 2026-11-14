@@ -475,6 +475,18 @@ No other same-layer imports are allowed. Adding one requires a recorded decision
 - Any module → `app` or `workflows`.
 - Any import of `modules/<name>/<anything other than index.ts>`.
 
+**Recorded exception — admin content workflows write content tables directly
+(D-029).** The admin content workflows
+(`src/workflows/admin/{dramas,seasons,episodes,movies,conversion}.ts`) write
+the `content` module's tables inside their own transaction instead of calling a
+content-module service for every statement. A structure conversion renumbers
+episodes, trashes seasons, and writes a snapshot atomically; splitting that
+across module APIs would break the single transaction. The domain rules stay in
+`modules/content` (`src/modules/content/conversion.ts`), and the workflow owns
+only the sequencing, the authorization check, and the transaction boundary. Any
+new workflow outside the admin content area must keep calling each module's
+public API.
+
 ---
 
 ## 8. Inter-Module Communication and Orchestration
@@ -499,6 +511,11 @@ A **workflow** is a thin application-layer function in `src/workflows/` that coo
 - is invoked by a Server Action, route handler, or maintenance script — never by a module.
 
 Workflows are not a general abstraction. A single-module operation stays in that module's service. A workflow exists only when coordination is genuinely required.
+
+**Recorded exception (D-029).** The admin content workflows
+(`src/workflows/admin/{dramas,seasons,episodes,movies,conversion}.ts`) write
+the `content` module's tables directly inside their own transaction, because
+one mutation must change several content tables atomically (see §7.2).
 
 ### 8.3 Workflow catalog (initial)
 

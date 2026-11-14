@@ -65,10 +65,7 @@ export async function applyDramaConversion(
     requirePermission(actor, 'drama.manage');
 
     const result = await applyConversion(actor, withDramaId(dramaId, input));
-    const data: ConversionApplyResultDto = {
-      plan: result.plan,
-      newFingerprint: result.newFingerprint,
-    };
+    const data: ConversionApplyResultDto = result;
 
     return { ok: true, data };
   } catch (error) {

@@ -1,16 +1,19 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useId, useMemo, useState, type JSX } from 'react';
 
 import { ConfirmationDialog } from '@/components/dialogs/confirmation-dialog';
 import { ConsequenceList } from '@/components/dialogs/consequence-list';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type {
-  ConversionPlanDto,
-  ConversionRequestDto,
-  ConversionStrategyDto,
-  ConversionStructureTypeDto,
+import {
+  conversionDistributionSchema,
+  type ConversionDistributionDto,
+  type ConversionPlanDto,
+  type ConversionRequestDto,
+  type ConversionStrategyDto,
+  type ConversionStructureTypeDto,
 } from '@/lib/contracts/drama-conversion';
 
 import {
@@ -76,6 +79,36 @@ function formatNumber(value: number | null): string {
 }
 
 /**
+ * Turn a distribution schema failure into an administrator-facing message.
+ *
+ * The server validates the authoritative payload; this only keeps the editor
+ * honest before a request is sent.
+ */
+function formatDistributionError(error: { issues: ReadonlyArray<{ path: PropertyKey[] }> }): string {
+  const issue = error.issues[0];
+
+  if (!issue) {
+    return 'The season distribution is invalid.';
+  }
+
+  const path = issue.path.map(part => String(part)).join('.');
+
+  if (path.includes('title')) {
+    return 'The season title must not be empty.';
+  }
+
+  if (path.includes('key')) {
+    return 'Each season needs a key.';
+  }
+
+  if (path.includes('episodeId') || path.includes('seasonKey')) {
+    return 'Every episode must be assigned to exactly one season.';
+  }
+
+  return 'The season distribution is invalid.';
+}
+
+/**
  * Interactive structure conversion panel.
  *
  * The panel never decides whether a conversion is allowed: it collects the
@@ -91,11 +124,22 @@ export function DramaConversionPanel({
   episodes,
   hasAvailableSnapshot,
 }: DramaConversionPanelProps): JSX.Element {
-  const targetStructureType: ConversionStructureTypeDto =
-    currentStructureType === 'season_based' ? 'flat' : 'season_based';
+  const router = useRouter();
 
-  const [strategy, setStrategy] = useState<ConversionStrategyDto>(
-    hasAvailableSnapshot ? 'restore_snapshot' : 'convert'
+  // The current structure and the snapshot state are local because the panel
+  // stays mounted after a conversion: the applied result is known, and the
+  // server component is refreshed for the episode rows.
+  const [currentStructure, setCurrentStructure] =
+    useState<ConversionStructureTypeDto>(currentStructureType);
+  const [snapshotAvailable, setSnapshotAvailable] = useState(hasAvailableSnapshot);
+
+  const targetStructureType: ConversionStructureTypeDto =
+    currentStructure === 'season_based' ? 'flat' : 'season_based';
+
+  // `null` means "no strategy chosen yet". A flat drama with a restorable
+  // snapshot must state the strategy explicitly, so no option is preselected.
+  const [strategy, setStrategy] = useState<ConversionStrategyDto | null>(
+    hasAvailableSnapshot ? null : 'convert'
   );
   const [seasons, setSeasons] = useState<SeasonDraft[]>(defaultSeasons);
   const [assignments, setAssignments] = useState<DraftAssignment[]>(() =>
@@ -112,7 +156,52 @@ export function DramaConversionPanel({
   const planId = useId();
 
   const isFlatTarget = targetStructureType === 'flat';
+  const requiresStrategyChoice = !isFlatTarget && snapshotAvailable;
   const needsDistribution = !isFlatTarget && strategy === 'convert';
+  const isPreviewDisabled =
+    isPreviewing || isApplying || requiresStrategyChoice && strategy === null;
+  /**
+   * Build the distribution payload and check it against the client-safe
+   * contract before a request is sent.
+   */
+  function buildDistribution():
+    | { ok: true; value: ConversionDistributionDto }
+    | { ok: false; message: string } {
+    const distribution: ConversionDistributionDto = {
+      seasons: seasons.map(season => ({
+        key: season.key,
+        title: season.title,
+        position: season.position,
+      })),
+      assignments: assignments.map(assignment => ({
+        episodeId: assignment.episodeId,
+        seasonKey: assignment.seasonKey,
+      })),
+    };
+
+    const parsed = conversionDistributionSchema.safeParse(distribution);
+
+    if (!parsed.success) {
+      return { ok: false, message: formatDistributionError(parsed.error) };
+    }
+
+    const seasonKeys = new Set(parsed.data.seasons.map(season => season.key));
+    const assignedEpisodeIds = new Set(
+      parsed.data.assignments
+        .filter(assignment => seasonKeys.has(assignment.seasonKey))
+        .map(assignment => assignment.episodeId)
+    );
+    const unassigned = episodes.filter(episode => !assignedEpisodeIds.has(episode.id));
+
+    if (unassigned.length > 0) {
+      return {
+        ok: false,
+        message: 'Every episode must be assigned to exactly one season.',
+      };
+    }
+
+    return { ok: true, value: parsed.data };
+  }
 
   function buildRequest(mode: 'preview' | 'apply'): ConversionRequestDto {
     const request: ConversionRequestDto = {
@@ -121,20 +210,16 @@ export function DramaConversionPanel({
     };
 
     if (!isFlatTarget) {
-      request.strategy = strategy;
+      if (strategy !== null) {
+        request.strategy = strategy;
+      }
 
       if (strategy === 'convert') {
-        request.distribution = {
-          seasons: seasons.map(season => ({
-            key: season.key,
-            title: season.title,
-            position: season.position,
-          })),
-          assignments: assignments.map(assignment => ({
-            episodeId: assignment.episodeId,
-            seasonKey: assignment.seasonKey,
-          })),
-        };
+        const distribution = buildDistribution();
+
+        if (distribution.ok) {
+          request.distribution = distribution.value;
+        }
       }
     }
 
@@ -146,6 +231,21 @@ export function DramaConversionPanel({
   }
 
   async function handlePreview(): Promise<void> {
+    if (requiresStrategyChoice && strategy === null) {
+      setErrorMessage('Choose how this conversion should proceed.');
+      return;
+    }
+
+    if (needsDistribution) {
+      const distribution = buildDistribution();
+
+      if (!distribution.ok) {
+        setErrorMessage(distribution.message);
+        setPlan(null);
+        return;
+      }
+    }
+
     setIsPreviewing(true);
     setErrorMessage(null);
     setAppliedFingerprint(null);
@@ -180,9 +280,23 @@ export function DramaConversionPanel({
       return;
     }
 
+    // The applied plan describes the structure before the conversion. The
+    // page now shows the converted structure, and a new preview is required
+    // before anything else can be applied.
+    const nextStructure = result.data.targetStructureType;
+    const nextSnapshotAvailable =
+      nextStructure === 'flat' && result.data.snapshotStatus === 'available';
+
     setIsConfirmOpen(false);
-    setPlan(result.data.plan);
+    setPlan(null);
+    setCurrentStructure(nextStructure);
+    setSnapshotAvailable(nextSnapshotAvailable);
+    setStrategy(nextSnapshotAvailable ? null : 'convert');
     setAppliedFingerprint(result.data.newFingerprint);
+
+    // Re-read the server component so the episode rows and the snapshot state
+    // come from the database again.
+    router.refresh();
   }
 
   function handleAddSeason(): void {
@@ -290,12 +404,12 @@ export function DramaConversionPanel({
           Convert “{dramaTitle}”
         </h1>
         <p id={descriptionId} className="mt-1 text-sm text-muted-foreground">
-          Current structure: {currentStructureType === 'season_based' ? 'Season-based' : 'Flat'}.
+          Current structure: {currentStructure === 'season_based' ? 'Season-based' : 'Flat'}.
           Converting changes it to {isFlatTarget ? 'flat' : 'season-based'}.
         </p>
       </div>
 
-      {!isFlatTarget && hasAvailableSnapshot ?
+      {!isFlatTarget && snapshotAvailable ?
         <fieldset className="rounded-xl border border-border p-4">
           <legend className="px-1 text-sm font-medium text-foreground">Strategy</legend>
           <div className="mt-2 space-y-2">
@@ -425,7 +539,7 @@ export function DramaConversionPanel({
        : null}
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" onClick={handlePreview} disabled={isPreviewing || isApplying}>
+        <Button type="button" onClick={handlePreview} disabled={isPreviewDisabled}>
           {isPreviewing ? 'Building preview…' : 'Preview conversion'}
         </Button>
         <Button

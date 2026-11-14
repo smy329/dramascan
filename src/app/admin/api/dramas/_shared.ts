@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { requirePermission, type ActorContext } from '@/modules/authorization';
-import { AppError, AuthorizationError, InternalError } from '@/platform/errors';
+import { AppError, AuthorizationError, InternalError, ValidationError } from '@/platform/errors';
 import { mapErrorToRest } from '@/platform/Http';
 import { createRequestLogger, generateRequestId } from '@/platform/logging';
 
@@ -47,8 +47,23 @@ export function assertSameOrigin(request: Request): void {
   }
 }
 
-export function readJsonBody(request: Request): Promise<unknown> {
-  return request.json();
+/**
+ * Read and parse a JSON request body.
+ *
+ * A malformed body is a client error, not a server failure: the JSON parse
+ * error is mapped to a `ValidationError` so the route answers `400` instead of
+ * `500`.
+ */
+export async function readJsonBody(request: Request): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new ValidationError('The request body must be valid JSON.');
+    }
+
+    throw error;
+  }
 }
 
 export function jsonResponse(

@@ -896,28 +896,40 @@ plan that was computed against a structure that has since changed.
 1. **Both directions are supported, drama→movie is not.** Season→flat merges
    the seasons into one ordered episode sequence and renumbers it
    sequentially; flat→season creates the seasons an administrator defines.
-   Converting a drama into a standalone movie stays a future task.
+   Converting a drama into a standalone movie stays a future task. The drama's
+   structure type changes only through this workflow: the ordinary drama
+   update may repeat the stored value, but a different value is rejected with
+   `409` and points at the conversion endpoint.
 2. **Episode identity and viewing records are never rewritten.** Episode ids,
    titles, descriptions, publication status, and video sources survive both
    directions, so `playback_progress`, `watched_state`, `watch_history`, and
    `bookmarks` continue to point at the same episodes.
 3. **The canonical season→flat ordering is deterministic:** season position,
    then episode position, then episode number, then creation time, then id.
-   Episodes without a season are ordered after season-assigned episodes.
+   Episodes without a season are ordered after season-assigned episodes. An
+   episode attached to a season that is not active has no place in the active
+   structure, so it is treated as seasonless: it stays in the flat sequence,
+   is stored in the snapshot with `season_id = null`, and is never dropped.
 4. **Every conversion is previewed before it is applied.** The preview returns
    a SHA-256 fingerprint of the structure it planned; the apply must echo that
    fingerprint, and a mismatch is rejected with `409`. The apply runs in a
    serializable transaction with the drama row locked `FOR UPDATE`, and
-   PostgreSQL `40001`/`23505` are mapped to `409`.
+   PostgreSQL `40001`/`23505` are mapped to `409`. The apply response is the
+   plan shape plus `applied: true`, `newFingerprint`, `snapshotId`, and
+   `snapshotStatus`.
 5. **The season→flat direction stores an exact snapshot before it runs.** The
    snapshot keeps the season and episode structure needed to restore it.
    Restoring re-applies the snapshot's season rows, episode season assignment,
    episode numbers, and positions only — never titles, descriptions, sources,
-   or viewing data. A snapshot is restorable only while the current flat
-   structure still matches the fingerprint recorded at conversion time; any
-   later episode addition, trash, restore, reorder, renumber, or reassignment
-   makes the snapshot unrestorable and the restore is rejected with `409`. The
-   snapshot is kept in that case.
+   or viewing data. A snapshot is restorable only while the current active
+   structure still matches the fingerprint recorded at conversion time. Any
+   change to the active structure — an episode added, trashed, restored,
+   reordered, renumbered, or reassigned — changes that fingerprint and the
+   restore is rejected with `409`; the snapshot is kept in that case. The rule
+   is fingerprint equality, not a change counter: a change that returns the
+   structure to the recorded fingerprint (for example adding an episode and
+   moving it to Trash again) leaves the snapshot restorable. A corrupted stored
+   snapshot payload is a server error (`500`), never a stale-state conflict.
 6. **One `available` snapshot per drama, history is never deleted.** A partial
    unique index enforces the single available snapshot. Converting again
    supersedes the previous snapshot in the same transaction as the conversion;
@@ -938,7 +950,19 @@ plan that was computed against a structure that has since changed.
    server-side on every entrypoint. The admin surface deliberately has no
    create, edit, delete, or publish controls. The navigation's Dramas entry
    uses `drama.manage` so it never links to a page the actor would be
-   rejected from.
+   rejected from. When a snapshot can be restored, the panel presents the
+   strategy choice without a preselected option and refuses to preview until
+   the administrator chooses one.
+10. **The admin content workflows write the content tables directly.** The
+    admin workflows (`src/workflows/admin/{dramas,seasons,episodes,movies,conversion}.ts`)
+    write `content` rows inside their own transaction instead of calling a
+    content-module service for every statement. A conversion renumbers
+    episodes, trashes seasons, and writes a snapshot atomically; splitting
+    that across module APIs would break the single transaction. The domain
+    rules stay in `modules/content`, and the workflow owns only the
+    sequencing, the authorization check, and the transaction boundary. This
+    is a recorded exception to the "workflow calls module APIs" rule
+    (`ARCHITECTURE.md` §7.2, §8.2).
 
 **Consequences:**
 
@@ -952,6 +976,9 @@ plan that was computed against a structure that has since changed.
   than a silent partial conversion; the administrator must preview again.
 - Converting a drama to a movie remains unimplemented and is not implied by
   this decision.
+- The admin content workflows set a precedent for admin mutations that span
+  several content tables; a new workflow in that area may follow it, but the
+  exception is recorded here rather than left implicit.
 
 ---
 

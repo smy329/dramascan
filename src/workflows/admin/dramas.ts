@@ -13,7 +13,7 @@ import {
   drama_platforms as dramaPlatforms,
   dramas,
 } from '@/modules/content/schema';
-import { createDramaSchema, parseOrThrow } from '@/modules/content/validation';
+import { createDramaSchema, parseOrThrow, updateDramaSchema } from '@/modules/content/validation';
 
 /** Permission key for drama management. */
 const MANAGE_PERMISSION = 'drama.manage';
@@ -93,7 +93,7 @@ export async function updateDrama(
   requirePermission(actor, MANAGE_PERMISSION);
 
   const parsedId = parseOrThrow(z.uuid(), dramaId);
-  const parsed = parseOrThrow(createDramaSchema, input);
+  const parsed = parseOrThrow(updateDramaSchema, input);
 
   // Check for duplicate slug (excluding the current drama)
   const [conflict] = await db
@@ -118,13 +118,31 @@ export async function updateDrama(
     };
   }
 
-  // Track slug change history if the slug is being changed
+  // Read the current row: the slug history needs the old slug, and the
+  // structure type may only be repeated, never changed (D-029). Moving a
+  // drama between structures belongs to the conversion workflow, which
+  // renumbers the episodes and stores a restorable snapshot.
   const [oldDrama] = await db
-    .select({ slug: dramas.slug })
+    .select({ slug: dramas.slug, structureType: dramas.structure_type })
     .from(dramas)
     .where(eq(dramas.id, parsedId));
 
-  if (oldDrama && oldDrama.slug !== parsed.slug) {
+  if (!oldDrama) {
+    return { ok: false, error: new NotFoundError('Drama not found.') };
+  }
+
+  if (parsed.structure_type !== undefined && parsed.structure_type !== oldDrama.structureType) {
+    return {
+      ok: false,
+      error: {
+        code: 'conflict',
+        message:
+          'The drama structure cannot be changed here. Use the structure conversion endpoint.',
+      },
+    };
+  }
+
+  if (oldDrama.slug !== parsed.slug) {
     await db.insert(contentSlugHistory).values({
       content_type: 'drama',
       content_id: parsedId,
@@ -140,7 +158,6 @@ export async function updateDrama(
       slug: parsed.slug,
       description: parsed.description,
       status: parsed.status,
-      structure_type: parsed.structure_type,
       poster: parsed.poster,
       banner: parsed.banner,
       updated_at: new Date(),

@@ -324,7 +324,8 @@ export type ContentTables =
   | typeof content_slug_history
   | typeof content_seo
   | typeof content_assets
-  | typeof sitemap_exclusions;
+  | typeof sitemap_exclusions
+  | typeof structureConversionSnapshots;
 
 export type ContentSchema =
   | typeof dramas
@@ -342,6 +343,7 @@ export type ContentSchema =
   | typeof content_slug_history
   | typeof content_seo
   | typeof content_assets
-  | typeof sitemap_exclusions;
+  | typeof sitemap_exclusions
+  | typeof structureConversionSnapshots;
 
 export {};

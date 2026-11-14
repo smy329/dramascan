@@ -23,7 +23,7 @@ vi.hoisted(() => {
 
 vi.mock('server-only', () => ({}));
 
-import { and, eq, inArray, isNull, like } from 'drizzle-orm';
+import { and, eq, inArray, isNull, like, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import type { ActorContext } from '@/modules/authorization';
@@ -33,12 +33,13 @@ import {
   seasons,
   structureConversionSnapshots,
 } from '@/modules/content/schema';
-import { playback_progress } from '@/modules/users/schema';
+import { playback_progress, watched_state, watch_history, bookmarks } from '@/modules/users/schema';
 import { computeStructureFingerprint } from '@/modules/content/conversion';
 import {
   AuthenticationError,
   AuthorizationError,
   ConflictError,
+  InternalError,
   NotFoundError,
   ValidationError,
 } from '@/platform/errors';
@@ -154,6 +155,9 @@ async function cleanupTestContent(): Promise<void> {
   }
 
   await db.delete(playback_progress).where(inArray(playback_progress.content_id, ids));
+  await db.delete(watched_state).where(inArray(watched_state.content_id, ids));
+  await db.delete(watch_history).where(inArray(watch_history.content_id, ids));
+  await db.delete(bookmarks).where(inArray(bookmarks.content_id, ids));
   await db.delete(episodes).where(inArray(episodes.drama_id, ids));
   await db.delete(seasons).where(inArray(seasons.drama_id, ids));
   await db
@@ -176,15 +180,47 @@ async function activeSeasonRows(dramaId: string) {
     .where(and(eq(seasons.drama_id, dramaId), isNull(seasons.deleted_at)));
 }
 
+/**
+ * Install a trigger that fails every episode update of one drama.
+ *
+ * The trigger is scoped to the drama so parallel test files are unaffected.
+ */
+async function installEpisodeUpdateFailure(dramaId: string): Promise<void> {
+  await db.execute(sql.raw(`
+    CREATE OR REPLACE FUNCTION it_fail_episode_update() RETURNS trigger AS $$
+    BEGIN
+      RAISE EXCEPTION 'injected conversion failure';
+    END;
+    $$ LANGUAGE plpgsql;
+  `));
+
+  await db.execute(sql.raw(`
+    CREATE TRIGGER it_fail_episode_update_trigger
+    BEFORE UPDATE ON episodes
+    FOR EACH ROW
+    WHEN (OLD.drama_id = '${dramaId}'::uuid)
+    EXECUTE FUNCTION it_fail_episode_update();
+  `));
+}
+
+async function removeEpisodeUpdateFailure(): Promise<void> {
+  await db.execute(
+    sql.raw('DROP TRIGGER IF EXISTS it_fail_episode_update_trigger ON episodes;')
+  );
+  await db.execute(sql.raw('DROP FUNCTION IF EXISTS it_fail_episode_update();'));
+}
+
 beforeEach(async () => {
   await cleanupTestContent();
 });
 
 afterEach(async () => {
+  await removeEpisodeUpdateFailure();
   await cleanupTestContent();
 });
 
 afterAll(async () => {
+  await removeEpisodeUpdateFailure();
   await cleanupTestContent();
   await closePool();
 });
@@ -372,6 +408,51 @@ describe('season-based → flat', () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
+  it('rolls back every write when the conversion fails after writing', async () => {
+    const drama = await insertDrama('rollback');
+    const season = await insertSeason(drama.id, 'Season 1', 0);
+    const episode = await insertEpisode(drama.id, season.id, 'E1', 1, 0);
+
+    const plan = await previewConversion(managerActor, {
+      dramaId: drama.id,
+      mode: 'preview',
+      targetStructureType: 'flat',
+    });
+
+    // The failure happens after the snapshot was written and while the
+    // episodes are renumbered: the whole transaction must roll back.
+    await installEpisodeUpdateFailure(drama.id);
+
+    await expect(
+      applyConversion(managerActor, {
+        dramaId: drama.id,
+        mode: 'apply',
+        targetStructureType: 'flat',
+        fingerprint: plan.fingerprint,
+      })
+    ).rejects.toThrow();
+
+    const [dramaRow] = await db.select().from(dramas).where(eq(dramas.id, drama.id));
+    expect(dramaRow?.structure_type).toBe('season_based');
+
+    const [episodeRow] = await db
+      .select()
+      .from(episodes)
+      .where(eq(episodes.id, episode.id));
+    expect(episodeRow).toMatchObject({
+      season_id: season.id,
+      episode_number: 1,
+      position: 0,
+    });
+
+    const seasonRows = await db.select().from(seasons).where(eq(seasons.drama_id, drama.id));
+    expect(seasonRows).toHaveLength(1);
+    expect(seasonRows[0]?.deleted_at).toBeNull();
+
+    // The snapshot was written before the failure: it must not survive.
+    expect(await snapshotRows(drama.id)).toHaveLength(0);
+  });
+
   it('leaves trashed seasons and episodes untouched', async () => {
     const drama = await insertDrama('trashed');
     const activeSeason = await insertSeason(drama.id, 'Season 1', 0);
@@ -385,6 +466,17 @@ describe('season-based → flat', () => {
       .update(seasons)
       .set({ deleted_at: new Date('2026-01-01T00:00:00.000Z') })
       .where(eq(seasons.id, trashedSeason.id));
+
+    // Capture the trashed rows in full: every column must be identical
+    // afterwards, not only the fields the conversion is known to touch.
+    const [seasonBefore] = await db
+      .select()
+      .from(seasons)
+      .where(eq(seasons.id, trashedSeason.id));
+    const [episodeBefore] = await db
+      .select()
+      .from(episodes)
+      .where(eq(episodes.id, trashedEpisode.id));
 
     const plan = await previewConversion(managerActor, {
       dramaId: drama.id,
@@ -402,23 +494,13 @@ describe('season-based → flat', () => {
       .select()
       .from(seasons)
       .where(eq(seasons.id, trashedSeason.id));
-    expect(trashedSeasonRow).toMatchObject({
-      title: 'Season Trashed',
-      position: 1,
-      deleted_at: new Date('2026-01-01T00:00:00.000Z'),
-    });
+    expect(trashedSeasonRow).toEqual(seasonBefore);
 
     const [trashedEpisodeRow] = await db
       .select()
       .from(episodes)
       .where(eq(episodes.id, trashedEpisode.id));
-    expect(trashedEpisodeRow).toMatchObject({
-      title: 'E2',
-      season_id: trashedSeason.id,
-      episode_number: 99,
-      position: 7,
-      deleted_at: new Date('2026-01-01T00:00:00.000Z'),
-    });
+    expect(trashedEpisodeRow).toEqual(episodeBefore);
 
     const snapshots = await snapshotRows(drama.id);
     const seasonData = snapshots[0]?.season_data as unknown[];
@@ -426,6 +508,122 @@ describe('season-based → flat', () => {
     expect(seasonData).toHaveLength(1);
     expect(episodeData).toHaveLength(1);
     expect(episodeData[0]?.id).toBe(activeEpisode.id);
+  });
+
+  it('keeps an episode that is attached to a trashed season in the flat sequence', async () => {
+    const drama = await insertDrama('orphan');
+    const activeSeason = await insertSeason(drama.id, 'Season 1', 0);
+    const trashedSeason = await insertSeason(drama.id, 'Season Trashed', 1);
+    const activeEpisode = await insertEpisode(drama.id, activeSeason.id, 'E1', 1, 0);
+    const orphanEpisode = await insertEpisode(drama.id, trashedSeason.id, 'E2', 5, 1);
+
+    await db
+      .update(seasons)
+      .set({ deleted_at: new Date('2026-01-01T00:00:00.000Z') })
+      .where(eq(seasons.id, trashedSeason.id));
+
+    const plan = await previewConversion(managerActor, {
+      dramaId: drama.id,
+      mode: 'preview',
+      targetStructureType: 'flat',
+    });
+
+    // The orphan is part of the sequence, after the season-assigned episode.
+    expect(plan.counts.activeEpisodes).toBe(2);
+    expect(plan.episodes.map(episode => episode.id)).toEqual([activeEpisode.id, orphanEpisode.id]);
+
+    await applyConversion(managerActor, {
+      dramaId: drama.id,
+      mode: 'apply',
+      targetStructureType: 'flat',
+      fingerprint: plan.fingerprint,
+    });
+
+    const rows = await db
+      .select({
+        id: episodes.id,
+        seasonId: episodes.season_id,
+        episodeNumber: episodes.episode_number,
+        position: episodes.position,
+      })
+      .from(episodes)
+      .where(eq(episodes.drama_id, drama.id));
+
+    expect(rows.find(row => row.id === orphanEpisode.id)).toEqual({
+      id: orphanEpisode.id,
+      seasonId: null,
+      episodeNumber: 2,
+      position: 1,
+    });
+
+    // The snapshot captures the orphan as seasonless, so the stored payload
+    // never references a season it does not contain.
+    const snapshots = await snapshotRows(drama.id);
+    const episodeData = snapshots[0]?.episode_data as Array<{
+      id: string;
+      season_id: string | null;
+    }>;
+    expect(episodeData.find(row => row.id === orphanEpisode.id)?.season_id).toBeNull();
+  });
+
+  it('leaves every viewing record and bookmark untouched', async () => {
+    const drama = await insertDrama('viewing-records');
+    const season = await insertSeason(drama.id, 'Season 1', 0);
+    const episode = await insertEpisode(drama.id, season.id, 'E1', 1, 0);
+    const userId = '11111111-1111-7111-8111-111111111111';
+
+    await db.insert(playback_progress).values({
+      user_id: userId,
+      content_type: 'drama',
+      content_id: drama.id,
+      episode_id: episode.id,
+      position: 120,
+      duration: 2400,
+      completed: false,
+    });
+    await db.insert(watched_state).values({
+      user_id: userId,
+      content_type: 'drama',
+      content_id: drama.id,
+      episode_id: episode.id,
+      watched_minutes: 120,
+      threshold_met: true,
+    });
+    await db.insert(watch_history).values({
+      user_id: userId,
+      content_type: 'drama',
+      content_id: drama.id,
+      episode_id: episode.id,
+      watch_duration: 120,
+      session_id: 'session-1',
+    });
+    await db.insert(bookmarks).values({
+      user_id: userId,
+      content_type: 'drama',
+      content_id: drama.id,
+    });
+
+    const progressBefore = await db.select().from(playback_progress);
+    const watchedBefore = await db.select().from(watched_state);
+    const historyBefore = await db.select().from(watch_history);
+    const bookmarksBefore = await db.select().from(bookmarks);
+
+    const plan = await previewConversion(managerActor, {
+      dramaId: drama.id,
+      mode: 'preview',
+      targetStructureType: 'flat',
+    });
+    await applyConversion(managerActor, {
+      dramaId: drama.id,
+      mode: 'apply',
+      targetStructureType: 'flat',
+      fingerprint: plan.fingerprint,
+    });
+
+    expect(await db.select().from(playback_progress)).toEqual(progressBefore);
+    expect(await db.select().from(watched_state)).toEqual(watchedBefore);
+    expect(await db.select().from(watch_history)).toEqual(historyBefore);
+    expect(await db.select().from(bookmarks)).toEqual(bookmarksBefore);
   });
 });
 
@@ -594,6 +792,31 @@ describe('flat → season-based', () => {
     const [dramaRow] = await db.select().from(dramas).where(eq(dramas.id, drama.id));
     expect(dramaRow?.structure_type).toBe('flat');
     expect(await activeSeasonRows(drama.id)).toHaveLength(0);
+  });
+
+  it('reports a corrupted snapshot as a server error, not a stale state', async () => {
+    const drama = await insertDrama('corrupt-snapshot', 'flat');
+    const episode = await insertEpisode(drama.id, null, 'E1', 1, 0);
+
+    // A snapshot row whose payload does not match the stored contract.
+    await db.insert(structureConversionSnapshots).values({
+      drama_id: drama.id,
+      source_structure_type: 'season_based',
+      target_structure_type: 'flat',
+      season_data: [{ id: 'not-a-uuid', title: 'Broken' }],
+      episode_data: [{ id: episode.id, season_id: null, episode_number: 1, position: 0 }],
+      post_conversion_fingerprint: 'a'.repeat(64),
+      status: 'available',
+    });
+
+    await expect(
+      previewConversion(managerActor, {
+        dramaId: drama.id,
+        mode: 'preview',
+        targetStructureType: 'season_based',
+        strategy: 'restore_snapshot',
+      })
+    ).rejects.toBeInstanceOf(InternalError);
   });
 
   it('requires an explicit strategy when a snapshot is available', async () => {
@@ -1045,6 +1268,12 @@ describe('admin reads', () => {
 
   it('returns NotFoundError for a missing drama', async () => {
     await expect(loadConversionContext(managerActor, randomUUID())).rejects.toBeInstanceOf(
+      NotFoundError
+    );
+  });
+
+  it('returns NotFoundError for a malformed drama id', async () => {
+    await expect(loadConversionContext(managerActor, 'not-a-uuid')).rejects.toBeInstanceOf(
       NotFoundError
     );
   });

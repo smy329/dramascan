@@ -92,6 +92,20 @@ describe('orderSeasonStructure', () => {
       'b',
     ]);
   });
+
+  it('treats an episode attached to an inactive season as seasonless', () => {
+    const seasons = [season('01', { position: 0 })];
+    const episodes = [
+      episode('01', { seasonId: '01', position: 0, episodeNumber: 1 }),
+      episode('02', { seasonId: 'missing', position: 0, episodeNumber: 1 }),
+      episode('03', { seasonId: null, position: 0, episodeNumber: 1 }),
+    ];
+
+    const ordered = orderSeasonStructure(seasons, episodes);
+
+    // The orphan is not dropped: it is ordered with the seasonless episodes.
+    expect(ordered.episodes.map(row => row.id)).toEqual(['01', '02', '03']);
+  });
 });
 
 describe('computeStructureFingerprint', () => {
@@ -385,6 +399,27 @@ describe('snapshot payload', () => {
     };
 
     expect(() => parseSnapshotPayload(unknownSeason)).toThrow(ValidationError);
+  });
+
+  it('records an episode attached to an inactive season as seasonless', () => {
+    const seasonId = '11111111-1111-7111-8111-111111111111';
+    const episodeOne = '22222222-2222-7222-8222-222222222222';
+    const episodeTwo = '33333333-3333-7333-8333-333333333333';
+
+    const payload = buildSnapshotPayload(
+      [season(seasonId, { position: 0 })],
+      [
+        episode(episodeOne, { seasonId, episodeNumber: 1, position: 0 }),
+        episode(episodeTwo, { seasonId: '44444444-4444-7444-8444-444444444444', episodeNumber: 2, position: 1 }),
+      ]
+    );
+
+    // The stored payload must satisfy the snapshot invariant: a stored
+    // season id always refers to a season in the same payload.
+    const parsed = parseSnapshotPayload(payload);
+
+    expect(parsed.episodes.map(row => row.id)).toEqual([episodeOne, episodeTwo]);
+    expect(parsed.episodes.find(row => row.id === episodeTwo)?.season_id).toBeNull();
   });
 });
 

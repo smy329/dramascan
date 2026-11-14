@@ -135,7 +135,15 @@ async function cleanup(): Promise<void> {
 }
 
 type ApiBody = {
-  data: { fingerprint: string; targetStructureType: string };
+  data: {
+    fingerprint: string;
+    targetStructureType: string;
+    applied?: boolean;
+    newFingerprint?: string;
+    snapshotId?: string | null;
+    snapshotStatus?: string | null;
+    episodes?: Array<{ id: string }>;
+  };
   error: { code: string; message: string };
 };
 
@@ -188,7 +196,41 @@ describe('POST /admin/api/dramas/convert', () => {
     expect(row?.structure_type).toBe('season_based');
   });
 
-  it('applies with a valid fingerprint and rejects a stale one with 409', async () => {
+  it('applies a valid fingerprint and returns the applied plan', async () => {
+    const drama = await insertDrama('apply-success');
+    const season = await insertSeason(drama.id);
+    const episode = await insertEpisode(drama.id, season.id);
+
+    const preview = await post({
+      dramaId: drama.id,
+      mode: 'preview',
+      targetStructureType: 'flat',
+    });
+
+    expect(preview.status).toBe(200);
+
+    const applied = await post({
+      dramaId: drama.id,
+      mode: 'apply',
+      targetStructureType: 'flat',
+      fingerprint: preview.body.data.fingerprint,
+    });
+
+    expect(applied.status).toBe(200);
+    // The apply response is the plan shape plus the applied marker, the new
+    // fingerprint, and the snapshot lifecycle fields.
+    expect(applied.body.data.applied).toBe(true);
+    expect(applied.body.data.newFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(applied.body.data.snapshotStatus).toBe('available');
+    expect(typeof applied.body.data.snapshotId).toBe('string');
+    expect(applied.body.data.targetStructureType).toBe('flat');
+    expect(applied.body.data.episodes?.map(row => row.id)).toEqual([episode.id]);
+
+    const [row] = await db.select().from(dramas).where(eq(dramas.id, drama.id));
+    expect(row?.structure_type).toBe('flat');
+  });
+
+  it('rejects a stale fingerprint with 409 and writes nothing', async () => {
     const drama = await insertDrama('apply');
     const season = await insertSeason(drama.id);
     const episode = await insertEpisode(drama.id, season.id);
@@ -242,6 +284,31 @@ describe('POST /admin/api/dramas/convert', () => {
     });
 
     expect(status).toBe(400);
+  });
+
+  it('rejects a malformed request body with 400', async () => {
+    const response = await POST(
+      new Request('http://localhost:3000/admin/api/dramas/convert', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{ not json',
+      })
+    );
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as ApiBody;
+    expect(body.error.code).toBe('validation_error');
+  });
+
+  it('rejects a missing drama with 404', async () => {
+    const { status, body } = await post({
+      dramaId: '00000000-0000-7000-8000-000000000000',
+      mode: 'preview',
+      targetStructureType: 'flat',
+    });
+
+    expect(status).toBe(404);
+    expect(body.error.code).toBe('not_found');
   });
 
   it('rejects anonymous callers with 401', async () => {

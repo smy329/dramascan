@@ -125,10 +125,14 @@ test.describe('admin drama conversion', () => {
       await expect(page.getByText('Conversion applied.')).toBeVisible();
 
       // The drama is flat now and an available snapshot exists, so the page
-      // offers the explicit strategy choice.
+      // offers the explicit strategy choice. No option is preselected.
       await page.reload();
       await expect(page.getByText(/Current structure: Flat/)).toBeVisible();
-      await expect(page.getByLabel(/Restore previous structure/)).toBeChecked();
+      await expect(page.getByLabel(/Restore previous structure/)).not.toBeChecked();
+      await expect(page.getByLabel(/Create new seasons/)).not.toBeChecked();
+      await expect(page.getByRole('button', { name: 'Preview conversion' })).toBeDisabled();
+
+      await page.getByLabel(/Restore previous structure/).check();
 
       await page.getByRole('button', { name: 'Preview conversion' }).click();
       await expect(page.getByRole('cell', { name: 'Episode 1.1' })).toBeVisible();

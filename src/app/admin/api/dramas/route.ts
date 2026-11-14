@@ -20,6 +20,12 @@ import {
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+/** HTTP status per drama-update error code. */
+const UPDATE_ERROR_STATUS: Record<string, number> = {
+  conflict: 409,
+  not_found: 404,
+};
+
 export async function GET(request: Request): Promise<Response> {
   const { requestId, logger } = beginAdminRequest(request);
 
@@ -107,9 +113,15 @@ export async function PUT(request: Request): Promise<Response> {
     }
 
     if (result.error && typeof result.error === 'object' && 'code' in result.error) {
+      // A structure-type change is a conflict, not a validation failure: the
+      // caller must use the conversion endpoint instead. A missing drama
+      // stays a 404.
+      const code = typeof result.error.code === 'string' ? result.error.code : '';
+      const status = UPDATE_ERROR_STATUS[code] ?? 400;
+
       return jsonResponse(
         { ok: false, error: result.error },
-        400,
+        status,
         requestId
       );
     }

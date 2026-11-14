@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { resolveActor } from '@/modules/authorization';
-import { ValidationError } from '@/platform/errors';
+import { InternalError, ValidationError } from '@/platform/errors';
 import { applyConversion, previewConversion } from '@/workflows/admin/conversion';
 
 import {
@@ -38,8 +38,19 @@ function requestMode(body: unknown): 'preview' | 'apply' {
   });
 }
 
+/** The drama id of a request body, for error context only. */
+function requestDramaId(body: unknown): string | undefined {
+  if (typeof body === 'object' && body !== null && 'dramaId' in body) {
+    const dramaId = (body as { dramaId?: unknown }).dramaId;
+    return typeof dramaId === 'string' ? dramaId : undefined;
+  }
+
+  return undefined;
+}
+
 export async function POST(request: Request): Promise<Response> {
   const { requestId, logger } = beginAdminRequest(request);
+  let body: unknown;
 
   try {
     assertSameOrigin(request);
@@ -47,7 +58,7 @@ export async function POST(request: Request): Promise<Response> {
     const actor = await resolveActor();
     authorizeDramaAdmin(actor);
 
-    const body = await readJsonBody(request);
+    body = await readJsonBody(request);
     const mode = requestMode(body);
     const result =
       mode === 'apply'
@@ -56,6 +67,15 @@ export async function POST(request: Request): Promise<Response> {
 
     return jsonResponse({ data: result }, 200, requestId);
   } catch (error) {
+    // A corrupted stored snapshot is a server failure, not a client mistake:
+    // log it with the drama context before the generic 500 is returned.
+    if (error instanceof InternalError) {
+      logger.error(
+        { err: error, event: 'dramas.conversion_internal_error', dramaId: requestDramaId(body) },
+        'Admin conversion request failed'
+      );
+    }
+
     return errorResponse(error, requestId, logger);
   }
 }

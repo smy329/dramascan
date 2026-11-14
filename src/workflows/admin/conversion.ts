@@ -4,7 +4,7 @@ import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { requirePermission, type ActorContext } from '@/modules/authorization';
-import { ConflictError, NotFoundError, ValidationError } from '@/platform/errors';
+import { ConflictError, InternalError, NotFoundError, ValidationError } from '@/platform/errors';
 
 import { z } from 'zod';
 import {
@@ -57,8 +57,15 @@ export type ConversionContext = {
   availableSnapshot: SnapshotRow | null;
 };
 
-export type ConversionApplyResult = {
-  plan: ConversionPlan;
+/**
+ * The result of an applied conversion.
+ *
+ * The apply response is the plan shape plus the applied marker, the new
+ * structure fingerprint, and the snapshot lifecycle fields, so a client can
+ * read the resulting structure without a second request.
+ */
+export type ConversionApplyResult = ConversionPlan & {
+  applied: true;
   newFingerprint: string;
   snapshotId: string | null;
   snapshotStatus: SnapshotStatus | null;
@@ -235,12 +242,20 @@ export async function loadConversionContext(
 ): Promise<ConversionContext> {
   requirePermission(actor, MANAGE_PERMISSION);
 
-  const parsedId = z.uuid().parse(dramaId);
+  // A malformed id is a missing drama, not a server error: the page turns the
+  // not-found error into a 404 instead of a 500.
+  const parsedId = z.uuid().safeParse(dramaId);
+
+  if (!parsedId.success) {
+    throw new NotFoundError('Drama not found.');
+  }
+
+  const parsedDramaId = parsedId.data;
 
   const [drama] = await db
     .select()
     .from(dramas)
-    .where(and(eq(dramas.id, parsedId), isNull(dramas.deleted_at)));
+    .where(and(eq(dramas.id, parsedDramaId), isNull(dramas.deleted_at)));
 
   if (!drama) {
     throw new NotFoundError('Drama not found.');
@@ -251,9 +266,9 @@ export async function loadConversionContext(
   }
 
   const [seasonRows, episodeRows, availableSnapshot] = await Promise.all([
-    readActiveSeasonsTx(db, parsedId),
-    readActiveEpisodesTx(db, parsedId),
-    readAvailableSnapshotTx(db, parsedId),
+    readActiveSeasonsTx(db, parsedDramaId),
+    readActiveEpisodesTx(db, parsedDramaId),
+    readAvailableSnapshotTx(db, parsedDramaId),
   ]);
 
   return {
@@ -313,7 +328,9 @@ export async function listConversionCandidates(
     )
     .where(and(...conditions))
     .groupBy(dramas.id)
-    .orderBy(orderBy)
+    // The id is a stable tiebreaker: without it, two dramas with the same
+    // title could move between pages (CONVENTIONS §6.3).
+    .orderBy(orderBy, asc(dramas.id))
     .limit(query.pageSize)
     .offset(offset);
 
@@ -378,14 +395,24 @@ function resolveStrategy(
   return { strategy: 'convert', snapshot: null };
 }
 
-function parseStoredSnapshot(snapshot: SnapshotRow): SnapshotPayload | null {
+/**
+ * Parse a stored snapshot payload.
+ *
+ * A malformed payload is corrupted stored data, not a stale structure: it is
+ * a server error, and it must never be reported as an ordinary conflict or
+ * silently restored.
+ */
+function parseStoredSnapshot(snapshot: SnapshotRow): SnapshotPayload {
   try {
     return parseSnapshotPayload({
       seasons: snapshot.season_data,
       episodes: snapshot.episode_data,
     });
-  } catch {
-    return null;
+  } catch (error) {
+    throw new InternalError(
+      'The stored conversion snapshot is invalid.',
+      error instanceof Error ? error : undefined
+    );
   }
 }
 
@@ -396,14 +423,6 @@ async function checkSnapshotRestorable(
   state: ConversionStructureState
 ): Promise<{ restorable: boolean; reason: string | null; payload: SnapshotPayload | null }> {
   const payload = parseStoredSnapshot(snapshot);
-
-  if (!payload) {
-    return {
-      restorable: false,
-      reason: 'The stored snapshot is invalid. A new distribution conversion is required.',
-      payload: null,
-    };
-  }
 
   if (snapshot.post_conversion_fingerprint !== computeStructureFingerprint(state)) {
     return {
@@ -510,8 +529,9 @@ export async function previewConversion(
   if (strategy === 'restore_snapshot' && snapshot) {
     const restorable = await checkSnapshotRestorable(db, context.drama.id, snapshot, state);
     const payload = restorable.payload;
+
     if (!payload) {
-      throw new ConflictError(restorable.reason ?? 'The stored snapshot is invalid.');
+      throw new ConflictError(restorable.reason ?? 'The stored snapshot cannot be restored.');
     }
 
     return buildRestoreSnapshotPlan(
@@ -736,7 +756,8 @@ async function applyFlat(
     .where(eq(dramas.id, dramaId));
 
   return {
-    plan,
+    ...plan,
+    applied: true,
     newFingerprint: postFingerprint,
     snapshotId: snapshot.id,
     snapshotStatus: 'available',
@@ -818,7 +839,8 @@ async function applySeasonConvert(
   });
 
   return {
-    plan,
+    ...plan,
+    applied: true,
     newFingerprint: computeStructureFingerprint({
       dramaId,
       structureType: 'season_based',
@@ -844,7 +866,6 @@ async function applyRestore(
       restorable.reason ?? 'The snapshot is stale. A new distribution conversion is required.'
     );
   }
-
   const payload = restorable.payload;
   const plan = buildRestoreSnapshotPlan(
     state,
@@ -919,7 +940,8 @@ async function applyRestore(
   });
 
   return {
-    plan,
+    ...plan,
+    applied: true,
     newFingerprint: computeStructureFingerprint({
       dramaId,
       structureType: 'season_based',

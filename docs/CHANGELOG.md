@@ -2,6 +2,55 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [0.9.1] - 2026-11-15
+
+### fix: harden the drama structure conversion contract (Prompt 066 review pass)
+
+Hardened Prompt 066 after a code review. The conversion itself is unchanged;
+the contract around it is now explicit and enforced.
+
+- `src/modules/content/validation.ts` + `src/workflows/admin/dramas.ts`:
+  the ordinary drama update no longer writes `structure_type`. An omitted
+  value preserves the stored structure, a repeated value is accepted, and a
+  different value is rejected with `409` and points at the conversion
+  endpoint. The structure changes only through the conversion workflow.
+- `src/app/admin/api/dramas/route.ts`: the drama update maps its error codes
+  to the right status — `409` for a structure conflict, `404` for a missing
+  drama, `400` for anything else.
+- `src/modules/content/conversion.ts`: an episode attached to a non-active
+  season is treated as seasonless instead of being dropped from the flat
+  sequence, the snapshot, and the fingerprint. The stored snapshot payload
+  never references a season it does not contain.
+- `src/workflows/admin/conversion.ts`: a corrupted stored snapshot payload is
+  an internal error (`500`), logged with the drama context, instead of being
+  reported as a stale-state conflict (`409`).
+- `src/workflows/admin/conversion.ts` + `src/app/admin/api/dramas/convert/route.ts`
+  + `src/workflows/admin/conversion-actions.ts` + `src/lib/contracts/drama-conversion.ts`:
+  the apply response is the plan shape plus `applied: true`,
+  `newFingerprint`, `snapshotId`, and `snapshotStatus`.
+- `src/app/admin/api/dramas/_shared.ts`: a malformed JSON request body is a
+  `400 validation_error` instead of a `500`.
+- `src/app/admin/dramas/[id]/convert/page.tsx` + `src/workflows/admin/conversion.ts`:
+  a malformed drama id in the URL is a `404`, not a `500`.
+- `src/components/admin/dramas/drama-conversion-panel.tsx`: the strategy
+  choice has no preselected option and the preview is refused until the
+  administrator chooses one; the distribution editor is checked against the
+  client-side contract before a request is sent; an applied conversion clears
+  the stale preview, shows the converted structure, and refreshes the server
+  component.
+- `src/workflows/admin/conversion.ts`: the drama list sorts by `dramas.id` as
+  a stable tiebreaker, so pagination cannot repeat or skip a row.
+- `src/modules/content/schema.ts`: `structure_conversion_snapshots` is part of
+  the `ContentTables`/`ContentSchema` unions.
+- Tests: `tests/integration/content/dramas.integration.test.ts` (new, 4
+  cases), `tests/unit/app/admin-drama-convert-page.test.tsx` (new, 3 cases),
+  plus new cases in the conversion unit, integration, REST, and component
+  suites — including a trigger-based rollback test that fails the conversion
+  after its first write and proves the whole transaction is rolled back.
+- Docs: D-029 (structure guard, orphan episodes, fingerprint-equality rule,
+  corrupted snapshot, apply response shape, workflow exception), `API.md`,
+  `ARCHITECTURE.md` §7.2/§8.2, and `PROJECT_STATUS.md`.
+
 ## [0.9.0] - 2026-11-15
 
 ### feat: drama structure conversion (Prompt 066, D-029)
