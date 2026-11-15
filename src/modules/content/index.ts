@@ -57,3 +57,20 @@ export type {
   PublicationAction,
   PublicationRequest,
 } from './validation';
+
+export {
+  PUBLICATION_STATUSES,
+  evaluatePublicationEligibility,
+  evaluatePublicAvailability,
+  isPublicationReadySource,
+  normalizePublicationStatus,
+} from './publication';
+
+export type {
+  AvailabilityBlocker,
+  AvailabilityParent,
+  PublicAvailability,
+  PublicationEligibility,
+  PublicationEligibilityReason,
+  PublicationStatus,
+} from './publication';
