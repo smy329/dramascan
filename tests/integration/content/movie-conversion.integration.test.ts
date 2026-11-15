@@ -81,7 +81,7 @@ import {
   previewMovieConversion,
 } from '@/workflows/admin/movie-conversion';
 
-const SLUG_PREFIX = 'it-mcon-';
+const SLUG_PREFIX = 'it-mconv-wf-';
 const HTTPS_SOURCE = 'https://media.example.com/episodes/seasons-of-glass.mp4';
 
 const anonymousActor: ActorContext = {
@@ -621,6 +621,17 @@ describe('previewMovieConversion', () => {
     expect(await testMovieIds([drama.id])).toHaveLength(0);
   });
 
+  it('previews a draft movie when the published episode has no source', async () => {
+    const drama = await insertDrama('preview-draft-downgrade');
+    await insertEpisode(drama.id, { video_source: null });
+
+    const plan = await previewMovieConversion(managerActor, { dramaId: drama.id, mode: 'preview' });
+
+    expect(plan.movie.publicationStatus).toBe('draft');
+    expect(plan.warnings).toHaveLength(1);
+    expect(plan.warnings[0]).toMatch(/draft/i);
+  });
+
   it('rejects a drama without exactly one active episode', async () => {
     const empty = await insertDrama('preview-empty');
     const two = await insertDrama('preview-two');
@@ -1048,6 +1059,28 @@ describe('applyMovieConversion', () => {
       .where(eq(movies.converted_from_drama_id, drama.id));
     expect(movieRows).toHaveLength(1);
     expect(movieRows[0]?.id).toBe(first.movieId);
+  });
+
+  it('creates a draft movie when the published episode has no source', async () => {
+    const drama = await insertDrama('apply-draft-downgrade');
+    await insertEpisode(drama.id, { video_source: null });
+    const plan = await previewMovieConversion(managerActor, {
+      dramaId: drama.id,
+      mode: 'preview',
+    });
+
+    const result = await applyMovieConversion(managerActor, {
+      dramaId: drama.id,
+      mode: 'apply',
+      fingerprint: plan.fingerprint,
+    });
+
+    expect(result.applied).toBe(true);
+    expect(result.movie.publicationStatus).toBe('draft');
+
+    const [movie] = await db.select().from(movies).where(eq(movies.id, result.movieId));
+    expect(movie?.publication_status).toBe('draft');
+    expect(movie?.video_source).toBeNull();
   });
 
   it('rejects a stale fingerprint after the drama changes', async () => {

@@ -639,7 +639,14 @@ describe('flat → season-based', () => {
       targetStructureType: 'season_based',
     });
     expect(plan.seasons).toEqual([
-      { key: 'season-1', id: null, title: 'Season 1', position: 0, episodeCount: 2 },
+      {
+        key: 'season-1',
+        id: null,
+        title: 'Season 1',
+        position: 0,
+        episodeCount: 2,
+        publicationStatus: 'draft',
+      },
     ]);
 
     const result = await applyConversion(managerActor, {
@@ -701,8 +708,8 @@ describe('flat → season-based', () => {
     });
 
     expect(plan.seasons).toEqual([
-      { key: 's1', id: null, title: 'First', position: 0, episodeCount: 2 },
-      { key: 's2', id: null, title: 'Second', position: 1, episodeCount: 1 },
+      { key: 's1', id: null, title: 'First', position: 0, episodeCount: 2, publicationStatus: 'draft' },
+      { key: 's2', id: null, title: 'Second', position: 1, episodeCount: 1, publicationStatus: 'draft' },
     ]);
 
     await applyConversion(managerActor, {

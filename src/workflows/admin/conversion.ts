@@ -819,7 +819,7 @@ async function applySeasonConvert(
     id: keyToId.get(plannedSeason.key) ?? '',
     title: plannedSeason.title,
     position: plannedSeason.position,
-    publicationStatus: null,
+    publicationStatus: plannedSeason.publicationStatus,
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
   }));
@@ -922,7 +922,7 @@ async function applyRestore(
     id: season.id,
     title: season.title,
     position: season.position,
-    publicationStatus: season.publication_status,
+    publicationStatus: normalizePublicationStatus(season.publication_status),
     createdAt: season.created_at,
     updatedAt: now.toISOString(),
   }));

@@ -330,10 +330,35 @@ describe('buildSeasonConversionPlan', () => {
     );
 
     expect(plan.seasons).toEqual([
-      { key: 's1', id: null, title: 'Season 1', position: 0, episodeCount: 2 },
+      { key: 's1', id: null, title: 'Season 1', position: 0, episodeCount: 2, publicationStatus: 'draft' },
     ]);
     expect(plan.episodes.map(row => row.toEpisodeNumber)).toEqual([4, 5]);
     expect(plan.counts.seasonsCreated).toBe(1);
+  });
+
+  it('plans new seasons as drafts instead of null publication states', () => {
+    const plan = buildSeasonConversionPlan(
+      state({
+        structureType: 'flat',
+        seasons: [],
+        episodes: [episode('e1', { position: 0, episodeNumber: 1 })],
+      }),
+      {
+        seasons: [{ key: 's1', title: 'Season 1', position: 0 }],
+        assignments: [{ episodeId: 'e1', seasonKey: 's1' }],
+      }
+    );
+
+    expect(plan.seasons).toEqual([
+      {
+        key: 's1',
+        id: null,
+        title: 'Season 1',
+        position: 0,
+        episodeCount: 1,
+        publicationStatus: 'draft',
+      },
+    ]);
   });
 });
 
@@ -452,6 +477,37 @@ describe('buildRestoreSnapshotPlan', () => {
       toEpisodeNumber: 7,
       toPosition: 3,
       fromEpisodeNumber: 1,
+    });
+  });
+
+  it('normalizes legacy snapshot season publication states to draft', () => {
+    const plan = buildRestoreSnapshotPlan(
+      state({ structureType: 'season_based' }),
+      {
+        id: 'snapshot-1',
+        status: 'available',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        payload: {
+          seasons: [
+            {
+              id: '11111111-1111-7111-8111-111111111111',
+              title: 'Season 1',
+              position: 0,
+              publication_status: 'ongoing',
+              created_at: '2026-01-01T00:00:00.000Z',
+              updated_at: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+          episodes: [],
+        },
+      },
+      true
+    );
+
+    expect(plan.seasons).toHaveLength(1);
+    expect(plan.seasons[0]).toMatchObject({
+      key: '11111111-1111-7111-8111-111111111111',
+      publicationStatus: 'draft',
     });
   });
 });

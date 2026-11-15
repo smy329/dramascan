@@ -43,7 +43,7 @@ import type { ActorContext } from '@/modules/authorization';
 import { dramas, episodes, movies, seasons } from '@/modules/content/schema';
 import { closePool } from '@/platform/db/pool';
 
-const SLUG_PREFIX = 'it-mcon-api-';
+const SLUG_PREFIX = 'it-mconv-api-';
 
 const anonymousActor: ActorContext = {
   userId: null,
@@ -141,7 +141,7 @@ type ApiBody = {
     applied?: boolean;
     movieId?: string;
     fingerprint: string;
-    movie: { title: string; slug: string; convertedFromDramaId: string };
+    movie: { title: string; slug: string; convertedFromDramaId: string; publicationStatus: string };
   };
   error: { code: string; message: string };
 };
@@ -216,6 +216,34 @@ describe('POST /admin/api/dramas/convert-to-movie', () => {
 
     const [dramaRow] = await db.select().from(dramas).where(eq(dramas.id, drama.id));
     expect(dramaRow?.deleted_at).not.toBeNull();
+  });
+
+  it('previews a draft movie when the published episode has no source', async () => {
+    const drama = await insertDrama('preview-draft');
+    await insertEpisode(drama.id, { video_source: null });
+
+    const { status, body } = await post({ dramaId: drama.id, mode: 'preview' });
+
+    expect(status).toBe(200);
+    expect(body.data.movie).toMatchObject({ publicationStatus: 'draft' });
+  });
+
+  it('applies a draft movie when the published episode has no source', async () => {
+    const drama = await insertDrama('apply-draft');
+    await insertEpisode(drama.id, { video_source: null });
+
+    const preview = await post({ dramaId: drama.id, mode: 'preview' });
+    expect(preview.status).toBe(200);
+
+    const applied = await post({
+      dramaId: drama.id,
+      mode: 'apply',
+      fingerprint: preview.body.data.fingerprint,
+    });
+
+    expect(applied.status).toBe(200);
+    expect(applied.body.data.applied).toBe(true);
+    expect(applied.body.data.movie).toMatchObject({ publicationStatus: 'draft' });
   });
 
   it('returns 409 for a drama without exactly one active episode', async () => {

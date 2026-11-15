@@ -137,6 +137,21 @@ describe('computeMovieConversionFingerprint', () => {
       computeMovieConversionFingerprint(state())
     );
   });
+
+  it('uses the effective publication status in the fingerprint', () => {
+    const downgraded = state({
+      publicationStatus: 'published',
+      episode: { ...state().episode, videoSource: null },
+    });
+    const explicitDraft = state({
+      publicationStatus: 'draft',
+      episode: { ...state().episode, videoSource: null },
+    });
+
+    expect(computeMovieConversionFingerprint(downgraded)).toBe(
+      computeMovieConversionFingerprint(explicitDraft)
+    );
+  });
 });
 
 describe('buildMovieConversionPlan', () => {
@@ -175,6 +190,33 @@ describe('buildMovieConversionPlan', () => {
       { id: '0198f3a2-0000-7000-8000-0000000000b1', name: 'Web' },
     ]);
     expect(plan.relationships).toMatchObject({ ratings: 4, reviews: 2, watchHistory: 9 });
+    expect(plan.warnings).toEqual([]);
+  });
+
+  it('downgrades a published drama to a draft movie when the episode source is missing', () => {
+    const plan = buildMovieConversionPlan(
+      state({ publicationStatus: 'published', episode: { ...state().episode, videoSource: null } }),
+      relationships()
+    );
+
+    expect(plan.movie.publicationStatus).toBe('draft');
+    expect(plan.warnings).toHaveLength(1);
+    expect(plan.warnings[0]).toMatch(/draft/i);
+  });
+
+  it('downgrades a published drama to a draft movie when the episode source is not publication ready', () => {
+    const plan = buildMovieConversionPlan(
+      state({ publicationStatus: 'published', episode: { ...state().episode, videoSource: 'http://media.example.com/episodes/glass.mp4' } }),
+      relationships()
+    );
+
+    expect(plan.movie.publicationStatus).toBe('draft');
+  });
+
+  it('keeps a published drama published when the episode source is publication ready', () => {
+    const plan = buildMovieConversionPlan(state(), relationships());
+
+    expect(plan.movie.publicationStatus).toBe('published');
     expect(plan.warnings).toEqual([]);
   });
 

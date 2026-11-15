@@ -9,6 +9,8 @@
  */
 import { createHash } from 'node:crypto';
 
+import { isPublicationReadySource, normalizePublicationStatus } from './publication';
+
 /** Publication states a standalone movie can store. */
 export type MovieConversionPublicationStatus = 'draft' | 'published' | 'unpublished';
 
@@ -96,24 +98,50 @@ export type MovieConversionApplyResult = MovieConversionPlan & {
 /**
  * Resolve the movie publication state from the drama's stored value.
  *
- * The drama column is unconstrained text; anything that is not a movie state
- * becomes `draft` so a conversion can never accidentally publish content.
+ * The drama column is unconstrained text, so anything that is not a movie
+ * state becomes `draft` and keeps a warning naming the legacy value. This is
+ * the canonical normalization shared with the publication module.
  */
 export function resolveMoviePublicationStatus(value: string | null): {
   status: MovieConversionPublicationStatus;
   warning: string | null;
 } {
-  if (value === 'draft' || value === 'published' || value === 'unpublished') {
-    return { status: value, warning: null };
+  const status = normalizePublicationStatus(value) as MovieConversionPublicationStatus;
+
+  if (value === null || value === status) {
+    return { status, warning: null };
   }
 
-  if (value === null) {
-    return { status: 'draft', warning: null };
+  return {
+    status,
+    warning: `The drama publication state "${value}" has no movie equivalent; the movie is created as a draft.`,
+  };
+}
+
+/**
+ * Resolve the effective movie publication state for a conversion.
+ *
+ * A mapped `published` drama becomes a `draft` movie when the episode source is
+ * missing or not publication ready, so a conversion can never publish content
+ * without a usable source.
+ */
+export function resolveMovieConversionPublication(state: MovieConversionState): {
+  status: MovieConversionPublicationStatus;
+  warning: string | null;
+} {
+  const publication = resolveMoviePublicationStatus(state.publicationStatus);
+
+  if (publication.status !== 'published') {
+    return publication;
+  }
+
+  if (isPublicationReadySource(state.episode.videoSource)) {
+    return publication;
   }
 
   return {
     status: 'draft',
-    warning: `The drama publication state "${value}" has no movie equivalent; the movie is created as a draft.`,
+    warning: 'The episode source is not publication ready; the movie is created as a draft.',
   };
 }
 
@@ -126,7 +154,7 @@ export function resolveMoviePublicationStatus(value: string | null): {
  * playback source.
  */
 export function computeMovieConversionFingerprint(state: MovieConversionState): string {
-  const { status } = resolveMoviePublicationStatus(state.publicationStatus);
+  const { status } = resolveMovieConversionPublication(state);
   const payload = {
     dramaId: state.dramaId,
     title: state.title,
@@ -155,7 +183,7 @@ export function buildMovieConversionPlan(
   state: MovieConversionState,
   relationships: MovieConversionRelationshipCounts
 ): MovieConversionPlan {
-  const publication = resolveMoviePublicationStatus(state.publicationStatus);
+  const publication = resolveMovieConversionPublication(state);
   const warnings = publication.warning ? [publication.warning] : [];
 
   return {

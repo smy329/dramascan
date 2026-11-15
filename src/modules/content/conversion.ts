@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 
 import { ValidationError } from '@/platform/errors';
 
+import { normalizePublicationStatus, type PublicationStatus } from './publication';
 import {
   parseOrThrow,
   snapshotPayloadSchema,
@@ -59,6 +60,8 @@ export type ConversionPlanSeason = {
   title: string;
   position: number;
   episodeCount: number;
+  /** Publication state the planned season will carry once created. */
+  publicationStatus: PublicationStatus;
 };
 
 export type ConversionPlanEpisode = {
@@ -403,6 +406,7 @@ export function buildSeasonConversionPlan(
       title: season.title,
       position: season.position,
       episodeCount: episodeCountBySeason.get(season.key) ?? 0,
+      publicationStatus: 'draft',
     })),
     episodes: ordered.map(episode =>
       planEpisode(episode, {
@@ -488,6 +492,7 @@ export function buildRestoreSnapshotPlan(
       title: season.title,
       position: season.position ?? 0,
       episodeCount: (episodesBySeason.get(season.id) ?? []).length,
+      publicationStatus: normalizePublicationStatus(season.publication_status),
     })),
     episodes: orderedEpisodes.map(snapshotEpisode => {
       const current = currentById.get(snapshotEpisode.id);

@@ -26,7 +26,6 @@ import {
   buildMovieConversionPlan,
   computeMovieConversionFingerprint,
   episodeCountConflictMessage,
-  resolveMoviePublicationStatus,
   type MovieConversionApplyResult,
   type MovieConversionAssociation,
   type MovieConversionPlan,
@@ -581,7 +580,7 @@ export async function applyMovieConversion(
           );
         }
 
-        const publication = resolveMoviePublicationStatus(drama.publication_status);
+        const publication = { status: plan.movie.publicationStatus };
         const now = new Date();
 
         const [movie] = await tx
