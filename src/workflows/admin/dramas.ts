@@ -70,6 +70,7 @@ export async function createDrama(
       description: parsed.description,
       status: parsed.status,
       structure_type: parsed.structure_type,
+      visibility: parsed.visibility,
       poster: parsed.poster,
       banner: parsed.banner,
       created_at: new Date(),
@@ -160,6 +161,7 @@ export async function updateDrama(
       status: parsed.status,
       poster: parsed.poster,
       banner: parsed.banner,
+      visibility: parsed.visibility,
       updated_at: new Date(),
     })
     .where(and(eq(dramas.id, parsedId), isNull(dramas.deleted_at)))
@@ -320,6 +322,7 @@ function toDrama(row: typeof dramas.$inferSelect) {
     description: row.description,
     status: row.status,
     structure_type: row.structure_type,
+    visibility: row.visibility,
     poster: row.poster,
     banner: row.banner,
     publicationStatus,

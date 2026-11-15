@@ -78,6 +78,11 @@ export function parsePublicationRequest(input: unknown): PublicationRequest {
   return parseOrThrow(publicationRequestSchema, input);
 }
 
+/** Drama visibility modes. */
+export const dramaVisibilitySchema = z.enum(['coming_soon', 'hidden']);
+
+export type DramaVisibility = z.infer<typeof dramaVisibilitySchema>;
+
 /** Drama create/edit schema with full metadata support. */
 export const createDramaSchema = z.strictObject({
   title: z.string().trim().min(1).max(200),
@@ -85,6 +90,7 @@ export const createDramaSchema = z.strictObject({
   description: z.string().optional(),
   status: dramaStatusSchema.default('ongoing'),
   structure_type: z.enum(['flat', 'season_based']).default('season_based'),
+  visibility: dramaVisibilitySchema.default('coming_soon'),
   // `null` clears an image; omitted fields are also stored as null.
   poster: z.string().url().nullable().default(null),
   banner: z.string().url().nullable().default(null),
@@ -114,6 +120,7 @@ export const updateDramaSchema = createDramaSchema
   .omit({ structure_type: true })
   .extend({
     structure_type: z.enum(['flat', 'season_based']).optional(),
+    visibility: dramaVisibilitySchema.optional(),
   });
 
 export type UpdateDramaInput = z.infer<typeof updateDramaSchema>;

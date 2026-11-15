@@ -89,6 +89,13 @@ export const ADMIN_NAVIGATION: readonly AdminNavGroup[] = [
         implemented: false,
       },
       {
+        id: 'similar-dramas',
+        label: 'Similar Dramas',
+        href: '/admin/dramas/[id]/similar-dramas',
+        permissions: ['similar-drama.manage'],
+        implemented: true,
+      },
+      {
         id: 'platforms',
         label: 'Platforms',
         href: '/admin/platforms',

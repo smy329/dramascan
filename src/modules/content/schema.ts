@@ -68,6 +68,7 @@ export const dramas = pgTable(
     status: text('status'),
     publication_status: publicationStatusColumn(),
     structure_type: text('structure_type').notNull().default('season_based'),
+    visibility: text('visibility').default('coming_soon'),
     created_at: created,
     updated_at: updated,
     deleted_at: deleted,
