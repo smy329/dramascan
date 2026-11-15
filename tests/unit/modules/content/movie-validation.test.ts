@@ -25,8 +25,9 @@ describe('movie video source', () => {
   it.each([
     'https://example.com/movie.mp4',
     'https://cdn.example.com/path/to/movie.mp4?token=abc',
+    'https://cdn.example.com/path/to/movie.MP4#t=10',
     'https://example.com:8443/movie.mp4',
-  ])('accepts absolute HTTPS URL %s', url => {
+  ])('accepts publication-ready URL %s', url => {
     expect(movieVideoSourceSchema.safeParse(url).success).toBe(true);
   });
 
@@ -37,6 +38,9 @@ describe('movie video source', () => {
     ['example.com/movie.mp4', 'missing scheme'],
     ['ftp://example.com/movie.mp4', 'non-HTTPS scheme'],
     ['javascript:alert(1)', 'script scheme'],
+    ['https://user:pass@example.com/movie.mp4', 'embedded credentials'],
+    ['https://example.com/movie.mov', 'unsupported extension'],
+    ['https://example.com/movie', 'missing extension'],
     ['', 'empty'],
   ])('rejects %s (%s)', url => {
     expect(movieVideoSourceSchema.safeParse(url).success).toBe(false);
@@ -48,7 +52,7 @@ describe('movie video source', () => {
   });
 });
 
-describe('movie publication status', () => {
+describe('movie publication status schema', () => {
   it('accepts the three stored states', () => {
     for (const status of ['draft', 'published', 'unpublished']) {
       expect(moviePublicationStatusSchema.safeParse(status).success).toBe(true);
@@ -61,7 +65,7 @@ describe('movie publication status', () => {
 });
 
 describe('createMovieSchema', () => {
-  it('applies metadata defaults for a minimal movie', () => {
+  it('applies metadata defaults for a minimal movie and never sets publication state', () => {
     const parsed = createMovieSchema.parse(validMovie());
 
     expect(parsed).toEqual({
@@ -69,11 +73,11 @@ describe('createMovieSchema', () => {
       slug: 'midnight-signal',
       poster: null,
       banner: null,
-      publication_status: 'draft',
       video_source: null,
       categories: [],
       platforms: [],
     });
+    expect(parsed).not.toHaveProperty('publication_status');
   });
 
   it('accepts full metadata, a nullable video source, and UUID associations', () => {
@@ -82,7 +86,6 @@ describe('createMovieSchema', () => {
         description: 'A standalone feature film.',
         poster: 'https://img.example.com/poster.jpg',
         banner: 'https://img.example.com/banner.jpg',
-        publication_status: 'published',
         video_source: HTTPS_SOURCE,
         categories: [VALID_CATEGORY],
         platforms: [VALID_PLATFORM],
@@ -92,17 +95,16 @@ describe('createMovieSchema', () => {
     expect(parsed.description).toBe('A standalone feature film.');
     expect(parsed.poster).toBe('https://img.example.com/poster.jpg');
     expect(parsed.banner).toBe('https://img.example.com/banner.jpg');
-    expect(parsed.publication_status).toBe('published');
     expect(parsed.video_source).toBe(HTTPS_SOURCE);
     expect(parsed.categories).toEqual([VALID_CATEGORY]);
     expect(parsed.platforms).toEqual([VALID_PLATFORM]);
   });
 
   it.each(['draft', 'published', 'unpublished'] as const)(
-    'accepts publication status %s',
+    'rejects publication status %s on create',
     status => {
       expect(createMovieSchema.safeParse(validMovie({ publication_status: status })).success).toBe(
-        true
+        false
       );
     }
   );
@@ -136,6 +138,13 @@ describe('createMovieSchema', () => {
     );
   });
 
+  it('rejects a non-.mp4 video source', () => {
+    expect(
+      createMovieSchema.safeParse(validMovie({ video_source: 'https://example.com/movie.mov' }))
+        .success
+    ).toBe(false);
+  });
+
   it('rejects an HTTP video source', () => {
     expect(
       createMovieSchema.safeParse(validMovie({ video_source: 'http://example.com/movie.mp4' }))
@@ -151,20 +160,24 @@ describe('createMovieSchema', () => {
 });
 
 describe('movie parse helpers', () => {
-  it('returns parsed create input', () => {
+  it('returns parsed create input without publication state', () => {
     const parsed = parseCreateMovieInput(validMovie());
 
     expect(parsed.slug).toBe('midnight-signal');
-    expect(parsed.publication_status).toBe('draft');
+    expect(parsed).not.toHaveProperty('publication_status');
+  });
+
+  it('rejects publication status on update input', () => {
+    expect(() =>
+      parseUpdateMovieInput(validMovie({ publication_status: 'unpublished', video_source: null }))
+    ).toThrow(ValidationError);
   });
 
   it('parses update input with the same full-payload contract', () => {
-    const parsed = parseUpdateMovieInput(
-      validMovie({ publication_status: 'unpublished', video_source: null })
-    );
+    const parsed = parseUpdateMovieInput(validMovie({ video_source: HTTPS_SOURCE }));
 
-    expect(parsed.publication_status).toBe('unpublished');
-    expect(parsed.video_source).toBeNull();
+    expect(parsed.video_source).toBe(HTTPS_SOURCE);
+    expect(parsed).not.toHaveProperty('publication_status');
   });
 
   it('throws a field-keyed ValidationError with REST-safe details', () => {
@@ -178,7 +191,7 @@ describe('movie parse helpers', () => {
     }
   });
 
-  it('throws when the video source is not HTTPS', () => {
+  it('throws when the video source is not publication-ready', () => {
     expect(() =>
       parseCreateMovieInput(validMovie({ video_source: 'http://example.com/movie.mp4' }))
     ).toThrow(ValidationError);

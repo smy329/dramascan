@@ -189,7 +189,6 @@ export async function createMovie(actor: ActorContext, input: unknown): Promise<
           description: parsed.description ?? null,
           poster: parsed.poster,
           banner: parsed.banner,
-          publication_status: parsed.publication_status,
           video_source: parsed.video_source,
           created_at: new Date(),
           updated_at: new Date(),
@@ -270,7 +269,6 @@ export async function updateMovie(
           description: parsed.description ?? null,
           poster: parsed.poster,
           banner: parsed.banner,
-          publication_status: parsed.publication_status,
           video_source: parsed.video_source,
           updated_at: new Date(),
         })

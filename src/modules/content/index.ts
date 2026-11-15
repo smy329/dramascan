@@ -39,3 +39,21 @@ export {
 } from './information-pages';
 
 export type { AdminInformationPageList } from './information-pages';
+
+export {
+  PUBLICATION_REQUEST_LIMIT,
+  publicationStatusSchema,
+  publicationContentTypeSchema,
+  publicationActionSchema,
+  publicationRequestSchema,
+  publicationReadyVideoSourceSchema,
+  moviePublicationStatusSchema,
+  movieVideoSourceSchema,
+  parsePublicationRequest,
+} from './validation';
+
+export type {
+  PublicationContentType,
+  PublicationAction,
+  PublicationRequest,
+} from './validation';

@@ -8,7 +8,7 @@ import { NotFoundError } from '@/platform/errors';
 
 import { z } from 'zod';
 import { episodes, dramas, seasons } from '@/modules/content/schema';
-import { parseOrThrow, parseCreateEpisodeInput } from '@/modules/content/validation';
+import { parseOrThrow, parseCreateEpisodeInput, publicationReadyVideoSourceSchema } from '@/modules/content/validation';
 
 /** Permission key for episode management. */
 const MANAGE_PERMISSION = 'episode.manage';
@@ -103,7 +103,6 @@ export async function createEpisode(
       description: parsed.description,
       episode_number: episodeNumber,
       position: parsed.position,
-      publication_status: parsed.publication_status,
       video_source: parsed.video_source,
       created_at: new Date(),
       updated_at: new Date(),
@@ -423,9 +422,8 @@ export async function updateEpisode(
     description: z.string().optional(),
     episode_number: z.coerce.number().int().min(1).optional(),
     position: z.coerce.number().int().min(0).optional(),
-    publication_status: z.enum(['ongoing', 'completed']).optional(),
     season_id: z.string().uuid().optional(),
-    video_source: z.string().url().optional(),
+    video_source: publicationReadyVideoSourceSchema.optional(),
   });
 
   const parsed = parseOrThrow(episodeSchema, input);
@@ -475,7 +473,6 @@ export async function updateEpisode(
       description: parsed.description,
       episode_number: parsed.episode_number,
       position: parsed.position,
-      publication_status: parsed.publication_status,
       season_id: parsed.season_id,
       video_source: parsed.video_source,
       updated_at: new Date(),
@@ -520,17 +517,8 @@ export async function replaceEpisodeVideoSource(
 ): Promise<{ ok: true; episode: ReturnType<typeof toEpisode> } | { ok: false; error: unknown }> {
   requirePermission(actor, MANAGE_PERMISSION);
 
-  // Validate URL syntax and HTTPS scheme
-  const urlSchema = z.string().url().refine((url) => {
-    try {
-      new URL(url);
-      return url.startsWith('https:');
-    } catch {
-      return false;
-    }
-  });
-
-  const parsedUrl = parseOrThrow(urlSchema, newVideoSource);
+  // Validate URL syntax, HTTPS scheme, credentials, and the .mp4 path format.
+  const parsedUrl = parseOrThrow(publicationReadyVideoSourceSchema, newVideoSource);
 
   // Check episode exists
   const [episode] = await db

@@ -17,6 +17,67 @@ const slugSchema = z
 /** Drama status enum. */
 export const dramaStatusSchema = z.enum(['ongoing', 'completed']);
 
+/**
+ * Canonical publication vocabulary for every content type.
+ *
+ * `trashed` is a view derived from `deleted_at`, never a stored value.
+ */
+export const publicationStatusSchema = z.enum(['draft', 'published', 'unpublished']);
+
+/** Publication target of a manual publish/unpublish request. */
+export const publicationContentTypeSchema = z.enum(['drama', 'season', 'episode', 'movie']);
+
+/** Manual publication action. */
+export const publicationActionSchema = z.enum(['publish', 'unpublish']);
+
+/** Maximum number of items a single bulk publication request may carry. */
+export const PUBLICATION_REQUEST_LIMIT = 200;
+
+/**
+ * Publication-ready direct media URL.
+ *
+ * The server never fetches, proxies, or probes the URL: this validates syntax,
+ * scheme, credentials, and the `.mp4` path format only. A matching suffix is
+ * not proof that the remote resource is a playable MP4; the admin preview
+ * remains responsible for actual playback verification.
+ */
+export const publicationReadyVideoSourceSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2048)
+  .refine(
+    value => {
+      let url: URL;
+      try {
+        url = new URL(value);
+      } catch {
+        return false;
+      }
+
+      if (url.protocol !== 'https:') return false;
+      if (url.username !== '' || url.password !== '') return false;
+      return url.pathname.toLowerCase().endsWith('.mp4');
+    },
+    'Video source must be an absolute HTTPS URL whose path ends in .mp4.'
+  );
+
+/** Bulk publish/unpublish request. Malformed ids are reported per item. */
+export const publicationRequestSchema = z.strictObject({
+  contentType: publicationContentTypeSchema,
+  action: publicationActionSchema,
+  ids: z.array(z.string().trim().min(1)).min(1).max(PUBLICATION_REQUEST_LIMIT),
+});
+
+export type PublicationContentType = z.infer<typeof publicationContentTypeSchema>;
+export type PublicationAction = z.infer<typeof publicationActionSchema>;
+export type PublicationRequest = z.infer<typeof publicationRequestSchema>;
+
+/** Parse a bulk publication request, throwing a REST-safe validation error. */
+export function parsePublicationRequest(input: unknown): PublicationRequest {
+  return parseOrThrow(publicationRequestSchema, input);
+}
+
 /** Drama create/edit schema with full metadata support. */
 export const createDramaSchema = z.strictObject({
   title: z.string().trim().min(1).max(200),
@@ -82,19 +143,15 @@ export function parseOrThrow<T>(schema: z.ZodType<T>, input: unknown): T {
   return parsed.data;
 }
 
-/** Episode status enum. */
-export const episodeStatusSchema = z.enum(['ongoing', 'completed']);
-
 /** Episode create schema with minimal metadata. */
 export const createEpisodeSchema = z.strictObject({
   title: z.string().trim().min(1).max(200),
   description: z.string().optional(),
   episode_number: z.coerce.number().int().min(1).optional(),
   position: z.coerce.number().int().min(0).default(0),
-  publication_status: episodeStatusSchema.default('ongoing'),
   season_id: z.string().uuid().optional(),
   drama_id: z.string().uuid(),
-  video_source: z.string().url().optional(),
+  video_source: publicationReadyVideoSourceSchema.optional(),
 });
 
 export type CreateEpisodeInput = z.infer<typeof createEpisodeSchema>;
@@ -113,25 +170,15 @@ export function parseCreateEpisodeInput(input: unknown): CreateEpisodeInput {
  */
 
 /** Stored movie publication states. `trashed` is a view, not a stored state. */
-export const moviePublicationStatusSchema = z.enum(['draft', 'published', 'unpublished']);
+export const moviePublicationStatusSchema = publicationStatusSchema;
 
 /**
  * Administrator-supplied direct media URL. The URL is stored and handed to the
  * viewer's browser; the server never fetches, proxies, or validates the file
- * itself, so only syntax and the HTTPS scheme are enforced here.
+ * itself, so only syntax, scheme, credentials, and the `.mp4` path format are
+ * enforced here.
  */
-export const movieVideoSourceSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(2048)
-  .refine(value => {
-    try {
-      return new URL(value).protocol === 'https:';
-    } catch {
-      return false;
-    }
-  }, 'Video source must be an absolute HTTPS URL.');
+export const movieVideoSourceSchema = publicationReadyVideoSourceSchema;
 
 /** Movie create/edit schema. Update replaces the full payload. */
 export const createMovieSchema = z.strictObject({
@@ -140,7 +187,6 @@ export const createMovieSchema = z.strictObject({
   description: z.string().max(20_000).optional(),
   poster: z.string().url().nullable().default(null),
   banner: z.string().url().nullable().default(null),
-  publication_status: moviePublicationStatusSchema.default('draft'),
   video_source: movieVideoSourceSchema.nullable().default(null),
   categories: z.array(z.uuid()).max(100).default([]),
   platforms: z.array(z.uuid()).max(100).default([]),
