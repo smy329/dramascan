@@ -43,6 +43,7 @@ export type AdminMovie = {
   banner: string | null;
   publicationStatus: string | null;
   videoSource: string | null;
+  publiclyAvailable: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -57,6 +58,7 @@ function toMovie(row: typeof movies.$inferSelect): AdminMovie {
     banner: row.banner,
     publicationStatus: row.publication_status,
     videoSource: row.video_source,
+    publiclyAvailable: row.publication_status === 'published' && row.deleted_at === null,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };

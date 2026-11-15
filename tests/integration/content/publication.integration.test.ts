@@ -28,7 +28,7 @@ import { eq, inArray, like } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import type { ActorContext } from '@/modules/authorization';
-import { AuthorizationError } from '@/platform/errors';
+import { AuthorizationError, ValidationError } from '@/platform/errors';
 import { closePool } from '@/platform/db/pool';
 import {
   dramas,
@@ -37,6 +37,8 @@ import {
   seasons,
 } from '@/modules/content/schema';
 import { updatePublication } from '@/workflows/admin/publication';
+import { listSeasons } from '@/workflows/admin/seasons';
+import { listEpisodes } from '@/workflows/admin/episodes';
 
 const VALID_SOURCE = 'https://media.example.com/episodes/only.mp4';
 
@@ -404,5 +406,54 @@ describe('publication workflows', () => {
         ids: [dramaId],
       })
     ).rejects.toBeInstanceOf(AuthorizationError);
+  });
+
+  it('lists seasons with ancestor-gated public availability', async () => {
+    const draftDramaId = await insertDrama('draft');
+    const draftSeasonId = await insertSeason(draftDramaId, 'published');
+    const publishedDramaId = await insertDrama('published');
+    const publishedSeasonId = await insertSeason(publishedDramaId, 'published');
+
+    const listed = await listSeasons(managerActor, draftDramaId);
+    expect(listed.ok).toBe(true);
+    expect(listed.seasons).toHaveLength(1);
+    expect(listed.seasons[0]).toMatchObject({
+      id: draftSeasonId,
+      publicationStatus: 'published',
+      publiclyAvailable: false,
+    });
+
+    const publishedListed = await listSeasons(managerActor, publishedDramaId);
+    expect(publishedListed.ok).toBe(true);
+    expect(publishedListed.seasons).toHaveLength(1);
+    expect(publishedListed.seasons[0]).toMatchObject({
+      id: publishedSeasonId,
+      publicationStatus: 'published',
+      publiclyAvailable: true,
+    });
+  });
+
+  it('lists episodes with ancestor-gated public availability', async () => {
+    const dramaId = await insertDrama('draft');
+    const seasonId = await insertSeason(dramaId, 'published');
+    const episodeId = await insertEpisode(dramaId, seasonId, 'published', VALID_SOURCE);
+
+    const listed = await listEpisodes(managerActor, dramaId, { publication_status: 'published' });
+
+    expect(listed.ok).toBe(true);
+    expect(listed.episodes).toHaveLength(1);
+    expect(listed.episodes[0]).toMatchObject({
+      id: episodeId,
+      publicationStatus: 'published',
+      publiclyAvailable: false,
+    });
+  });
+
+  it('rejects a legacy episode publication status filter', async () => {
+    const dramaId = await insertDrama('draft');
+
+    await expect(listEpisodes(managerActor, dramaId, { publication_status: 'ongoing' })).rejects.toBeInstanceOf(
+      ValidationError
+    );
   });
 });

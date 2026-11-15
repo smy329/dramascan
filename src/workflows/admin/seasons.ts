@@ -6,6 +6,8 @@ import { db } from '@/db/client';
 import { requirePermission, type ActorContext } from '@/modules/authorization';
 import { NotFoundError } from '@/platform/errors';
 
+import { evaluatePublicAvailability } from '@/modules/content/publication';
+
 import { z } from 'zod';
 import { seasons, episodes, dramas } from '@/modules/content/schema';
 import { parseOrThrow } from '@/modules/content/validation';
@@ -151,14 +153,26 @@ export async function listSeasons(
   const total = Number(totalRow?.total ?? 0);
 
   const rows = await db
-    .select()
+    .select({ season: seasons, drama: dramas })
     .from(seasons)
+    .innerJoin(dramas, eq(seasons.drama_id, dramas.id))
     .where(and(eq(seasons.drama_id, parsedDramaId), isNull(seasons.deleted_at)))
     .orderBy(seasons.position);
 
   return {
     ok: true,
-    seasons: rows.map(toSeason),
+    seasons: rows.map(row => ({
+      ...toSeason(row.season),
+      publiclyAvailable: evaluatePublicAvailability({
+        contentType: 'season',
+        publicationStatus: (row.season.publication_status ?? 'draft') as 'draft' | 'published' | 'unpublished',
+        deleted: row.season.deleted_at !== null,
+        parentDrama: {
+          publicationStatus: (row.drama.publication_status ?? 'draft') as 'draft' | 'published' | 'unpublished',
+          deleted: row.drama.deleted_at !== null,
+        },
+      }).publiclyAvailable,
+    })),
     total,
   };
 }

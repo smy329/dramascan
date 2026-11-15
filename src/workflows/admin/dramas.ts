@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, asc, count, desc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { requirePermission, type ActorContext } from '@/modules/authorization';
@@ -226,12 +226,19 @@ export async function listDramas(
 
   const offset = (query.page - 1) * query.pageSize;
 
-  // Build WHERE conditions
-  const whereConditions: any[] = [isNull(dramas.deleted_at)];
+  // Build WHERE conditions: default is non-deleted; `trashed` selects the
+  // soft-deleted view; draft/published/unpublished filter the publication state.
+  const whereConditions: any[] = [];
 
-  // Status filter
-  if (query.status) {
-    whereConditions.push(eq(dramas.status, query.status));
+  if (query.status === 'trashed') {
+    whereConditions.push(isNotNull(dramas.deleted_at));
+  } else {
+    whereConditions.push(isNull(dramas.deleted_at));
+
+    // Status filter operates on the canonical publication vocabulary.
+    if (query.status) {
+      whereConditions.push(eq(dramas.publication_status, query.status));
+    }
   }
 
   // Search filter (title or slug)
@@ -251,7 +258,12 @@ export async function listDramas(
   const total = Number(totalRow?.total ?? 0);
 
   // Build ORDER BY
-  const sortColumn = query.sort === 'title' ? dramas.title : query.sort === 'status' ? dramas.status : dramas.created_at;
+  const sortColumn =
+    query.sort === 'title'
+      ? dramas.title
+      : query.sort === 'status'
+        ? dramas.publication_status
+        : dramas.created_at;
   const sortOrder = query.order === 'desc' ? desc : asc;
   const orderBy = sortOrder(sortColumn);
 
@@ -299,6 +311,8 @@ export async function deleteDrama(
 }
 
 function toDrama(row: typeof dramas.$inferSelect) {
+  const publicationStatus = row.publication_status;
+
   return {
     id: row.id,
     title: row.title,
@@ -308,6 +322,8 @@ function toDrama(row: typeof dramas.$inferSelect) {
     structure_type: row.structure_type,
     poster: row.poster,
     banner: row.banner,
+    publicationStatus,
+    publiclyAvailable: publicationStatus === 'published' && row.deleted_at === null,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };

@@ -138,7 +138,7 @@ export async function seedDrama(options = {}) {
             'insert the seeded episode',
             target,
             `INSERT INTO episodes (id, drama_id, season_id, title, episode_number, position, publication_status, video_source, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, 'ongoing', $7, now(), now())`,
+             VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7, now(), now())`,
             [
               episodeId,
               id,

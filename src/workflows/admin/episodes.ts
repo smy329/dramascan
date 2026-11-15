@@ -9,6 +9,7 @@ import { NotFoundError } from '@/platform/errors';
 import { z } from 'zod';
 import { episodes, dramas, seasons } from '@/modules/content/schema';
 import { parseOrThrow, parseCreateEpisodeInput, publicationReadyVideoSourceSchema } from '@/modules/content/validation';
+import { evaluatePublicAvailability } from '@/modules/content/publication';
 
 /** Permission key for episode management. */
 const MANAGE_PERMISSION = 'episode.manage';
@@ -389,8 +390,10 @@ export async function listEpisodes(
 
   // Fetch episodes with pagination
   const rows = await db
-    .select()
+    .select({ episode: episodes, drama: dramas, season: seasons })
     .from(episodes)
+    .innerJoin(dramas, eq(episodes.drama_id, dramas.id))
+    .leftJoin(seasons, eq(episodes.season_id, seasons.id))
     .where(and(...whereConditions))
     .limit(pageSize)
     .offset(offset)
@@ -400,7 +403,24 @@ export async function listEpisodes(
 
   return {
     ok: true,
-    episodes: rows.map(toEpisode),
+    episodes: rows.map(row => ({
+      ...toEpisode(row.episode),
+      publiclyAvailable: evaluatePublicAvailability({
+        contentType: 'episode',
+        publicationStatus: (row.episode.publication_status ?? 'draft') as 'draft' | 'published' | 'unpublished',
+        deleted: row.episode.deleted_at !== null,
+        parentDrama: {
+          publicationStatus: (row.drama.publication_status ?? 'draft') as 'draft' | 'published' | 'unpublished',
+          deleted: row.drama.deleted_at !== null,
+        },
+        parentSeason: row.season
+          ? {
+              publicationStatus: (row.season.publication_status ?? 'draft') as 'draft' | 'published' | 'unpublished',
+              deleted: row.season.deleted_at !== null,
+            }
+          : null,
+      }).publiclyAvailable,
+    })),
     total,
     page,
     pageSize,
@@ -576,7 +596,7 @@ const listEpisodesQuerySchema = z
       .optional(),
     order: z.enum(['asc', 'desc']).optional(),
     search: z.string().trim().optional(),
-    publication_status: z.enum(['ongoing', 'completed']).optional(),
+    publication_status: z.enum(['draft', 'published', 'unpublished']).optional(),
   })
   .refine(
     (data) => Object.keys(data).length > 0,

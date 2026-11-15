@@ -81,7 +81,7 @@ import {
   previewMovieConversion,
 } from '@/workflows/admin/movie-conversion';
 
-const SLUG_PREFIX = 'it-movie-conv-';
+const SLUG_PREFIX = 'it-mcon-';
 const HTTPS_SOURCE = 'https://media.example.com/episodes/seasons-of-glass.mp4';
 
 const anonymousActor: ActorContext = {

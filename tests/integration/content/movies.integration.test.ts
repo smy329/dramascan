@@ -390,3 +390,49 @@ describe('updateMovie', () => {
     );
   });
 });
+
+describe('publication state', () => {
+  it('defaults new movies to draft and exposes derived availability', async () => {
+    const created = await createMovie(managerActor, movieInput());
+    expect(created.publicationStatus).toBe('draft');
+    expect(created.publiclyAvailable).toBe(false);
+
+    await db
+      .update(movies)
+      .set({ publication_status: 'published', updated_at: new Date() })
+      .where(eq(movies.id, created.id));
+
+    const published = await updateMovie(managerActor, created.id, {
+      title: created.title,
+      slug: created.slug,
+      video_source: HTTPS_SOURCE,
+      categories: [],
+      platforms: [],
+    });
+
+    expect(published.publicationStatus).toBe('published');
+    expect(published.publiclyAvailable).toBe(true);
+
+    await db
+      .update(movies)
+      .set({ publication_status: 'unpublished', updated_at: new Date() })
+      .where(eq(movies.id, created.id));
+
+    const unpublished = await updateMovie(managerActor, created.id, {
+      title: created.title,
+      slug: created.slug,
+      video_source: HTTPS_SOURCE,
+      categories: [],
+      platforms: [],
+    });
+
+    expect(unpublished.publicationStatus).toBe('unpublished');
+    expect(unpublished.publiclyAvailable).toBe(false);
+  });
+
+  it('rejects a create payload containing publication_status', async () => {
+    await expect(createMovie(managerActor, movieInput({ publication_status: 'published' }))).rejects.toBeInstanceOf(
+      ValidationError
+    );
+  });
+});
