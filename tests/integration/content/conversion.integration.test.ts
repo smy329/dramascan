@@ -130,7 +130,7 @@ async function insertEpisode(
       title,
       episode_number: episodeNumber,
       position,
-      publication_status: 'ongoing',
+      publication_status: 'draft',
       video_source: null,
       ...overrides,
     })

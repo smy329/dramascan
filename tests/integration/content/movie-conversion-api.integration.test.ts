@@ -43,7 +43,7 @@ import type { ActorContext } from '@/modules/authorization';
 import { dramas, episodes, movies, seasons } from '@/modules/content/schema';
 import { closePool } from '@/platform/db/pool';
 
-const SLUG_PREFIX = 'it-movie-conv-api-';
+const SLUG_PREFIX = 'it-mcon-api-';
 
 const anonymousActor: ActorContext = {
   userId: null,

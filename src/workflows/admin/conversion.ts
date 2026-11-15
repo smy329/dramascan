@@ -28,6 +28,7 @@ import {
   type ConversionSeasonState,
   type ConversionStructureState,
 } from '@/modules/content/conversion';
+import { normalizePublicationStatus } from '@/modules/content/publication';
 import {
   parseConversionRequest,
   type ConversionRequest,
@@ -885,7 +886,7 @@ async function applyRestore(
         deleted_at: null,
         title: season.title,
         position: season.position,
-        publication_status: season.publication_status,
+        publication_status: normalizePublicationStatus(season.publication_status),
         updated_at: now,
       })
       .where(and(eq(seasons.id, season.id), eq(seasons.drama_id, dramaId)));

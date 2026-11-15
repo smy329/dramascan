@@ -196,7 +196,7 @@ describe('createMovie', () => {
     expect(row?.deleted_at).toBeNull();
   });
 
-  it('persists full metadata, a published state, and an HTTPS video source', async () => {
+  it('persists full metadata with a publication-ready HTTPS video source and defaults to draft', async () => {
     const movie = await createMovie(
       managerActor,
       movieInput({
@@ -204,7 +204,6 @@ describe('createMovie', () => {
         description: 'A standalone feature film.',
         poster: 'https://img.example.com/poster.jpg',
         banner: 'https://img.example.com/banner.jpg',
-        publication_status: 'published',
         video_source: HTTPS_SOURCE,
       })
     );
@@ -212,7 +211,7 @@ describe('createMovie', () => {
     expect(movie.description).toBe('A standalone feature film.');
     expect(movie.poster).toBe('https://img.example.com/poster.jpg');
     expect(movie.banner).toBe('https://img.example.com/banner.jpg');
-    expect(movie.publicationStatus).toBe('published');
+    expect(movie.publicationStatus).toBe('draft');
     expect(movie.videoSource).toBe(HTTPS_SOURCE);
   });
 
@@ -297,7 +296,6 @@ describe('updateMovie', () => {
       description: 'Updated description.',
       poster: 'https://img.example.com/new-poster.jpg',
       banner: null,
-      publication_status: 'unpublished',
       video_source: HTTPS_SOURCE,
       categories: [categoryB],
       platforms: [platformB],
@@ -307,7 +305,7 @@ describe('updateMovie', () => {
     expect(updated.description).toBe('Updated description.');
     expect(updated.poster).toBe('https://img.example.com/new-poster.jpg');
     expect(updated.banner).toBeNull();
-    expect(updated.publicationStatus).toBe('unpublished');
+    expect(updated.publicationStatus).toBe('draft');
     expect(updated.videoSource).toBe(HTTPS_SOURCE);
 
     expect(await categoryIdsFor(created.id)).toEqual([categoryB]);

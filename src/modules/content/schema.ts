@@ -43,49 +43,73 @@ const created = timestamp('created_at', { withTimezone: true }).notNull().defaul
 const updated = timestamp('updated_at', { withTimezone: true }).notNull().defaultNow();
 const deleted = timestamp('deleted_at', { withTimezone: true });
 
+// Canonical publication vocabulary, shared by every content table.
+const publicationStatusColumn = () =>
+  text('publication_status').notNull().default('draft');
+
+function publicationStatusConstraint(table: string, column: { name: string }) {
+  return checkConstraint(
+    table,
+    'publication_status',
+    sql`${column} in ('draft', 'published', 'unpublished')`
+  );
+}
+
 // ----- dramas -----
-export const dramas = pgTable('dramas', {
-  id: uuidPrimaryKey(),
-  title: text('title').notNull(),
-  slug: text('slug').notNull(),
-  description: text('description'),
-  poster: text('poster'),
-  banner: text('banner'),
-  status: text('status'),
-  publication_status: text('publication_status'),
-  structure_type: text('structure_type').notNull().default('season_based'),
-  created_at: created,
-  updated_at: updated,
-  deleted_at: deleted,
-});
+export const dramas = pgTable(
+  'dramas',
+  {
+    id: uuidPrimaryKey(),
+    title: text('title').notNull(),
+    slug: text('slug').notNull(),
+    description: text('description'),
+    poster: text('poster'),
+    banner: text('banner'),
+    status: text('status'),
+    publication_status: publicationStatusColumn(),
+    structure_type: text('structure_type').notNull().default('season_based'),
+    created_at: created,
+    updated_at: updated,
+    deleted_at: deleted,
+  },
+  table => [publicationStatusConstraint('dramas', table.publication_status)]
+);
 
 // ----- seasons -----
-export const seasons = pgTable('seasons', {
-  id: uuidPrimaryKey(),
-  drama_id: uuid('drama_id').notNull(),
-  title: text('title').notNull(),
-  position: integer('position'),
-  publication_status: text('publication_status'),
-  created_at: created,
-  updated_at: updated,
-  deleted_at: deleted,
-});
+export const seasons = pgTable(
+  'seasons',
+  {
+    id: uuidPrimaryKey(),
+    drama_id: uuid('drama_id').notNull(),
+    title: text('title').notNull(),
+    position: integer('position'),
+    publication_status: publicationStatusColumn(),
+    created_at: created,
+    updated_at: updated,
+    deleted_at: deleted,
+  },
+  table => [publicationStatusConstraint('seasons', table.publication_status)]
+);
 
 // ----- episodes -----
-export const episodes = pgTable('episodes', {
-  id: uuidPrimaryKey(),
-  drama_id: uuid('drama_id').notNull(),
-  season_id: uuid('season_id'),
-  title: text('title').notNull(),
-  description: text('description'),
-  episode_number: integer('episode_number'),
-  position: integer('position'),
-  publication_status: text('publication_status'),
-  video_source: text('video_source'),
-  created_at: created,
-  updated_at: updated,
-  deleted_at: deleted,
-});
+export const episodes = pgTable(
+  'episodes',
+  {
+    id: uuidPrimaryKey(),
+    drama_id: uuid('drama_id').notNull(),
+    season_id: uuid('season_id'),
+    title: text('title').notNull(),
+    description: text('description'),
+    episode_number: integer('episode_number'),
+    position: integer('position'),
+    publication_status: publicationStatusColumn(),
+    video_source: text('video_source'),
+    created_at: created,
+    updated_at: updated,
+    deleted_at: deleted,
+  },
+  table => [publicationStatusConstraint('episodes', table.publication_status)]
+);
 
 // ----- movies -----
 // A standalone movie is its own content type: it has no drama, season, or
@@ -100,7 +124,7 @@ export const movies = pgTable(
     description: text('description'),
     poster: text('poster'),
     banner: text('banner'),
-    publication_status: text('publication_status'),
+    publication_status: publicationStatusColumn(),
     video_source: text('video_source'),
     // Permanent provenance for a drama → movie conversion. The source drama is
     // soft-deleted, never removed, and this reference blocks its permanent
@@ -111,6 +135,7 @@ export const movies = pgTable(
     deleted_at: deleted,
   },
   table => [
+    publicationStatusConstraint('movies', table.publication_status),
     // Slugs must stay unique among active movies. Soft-deleted rows keep their
     // slug so Trash/restore cannot silently collide with a live movie.
     uniqueIndex('uq_movies_slug_active')
