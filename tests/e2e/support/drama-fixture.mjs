@@ -35,6 +35,7 @@ loadLocalEnv();
  * @property {number} [seasonCount]
  * @property {number} [episodesPerSeason]
  * @property {boolean} [withEpisodes]
+ * @property {string} [episodeVideoSource]
  */
 
 function databaseFailure(operation, target) {
@@ -83,6 +84,7 @@ export async function seedDrama(options = {}) {
     seasonCount = 1,
     episodesPerSeason = 2,
     withEpisodes = true,
+    episodeVideoSource = null,
   } = options;
 
   const { target, client } = requireTestClient();
@@ -135,8 +137,8 @@ export async function seedDrama(options = {}) {
             client,
             'insert the seeded episode',
             target,
-            `INSERT INTO episodes (id, drama_id, season_id, title, episode_number, position, publication_status, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, 'ongoing', now(), now())`,
+            `INSERT INTO episodes (id, drama_id, season_id, title, episode_number, position, publication_status, video_source, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, 'ongoing', $7, now(), now())`,
             [
               episodeId,
               id,
@@ -144,6 +146,7 @@ export async function seedDrama(options = {}) {
               `Episode ${seasonIndex + 1}.${episodeIndex + 1}`,
               episodeIndex + 1,
               episodeIndex,
+              episodeVideoSource,
             ]
           );
         }
@@ -180,6 +183,50 @@ export async function removeDrama(fixture) {
     await run(client, 'begin the transaction', target, 'BEGIN');
 
     try {
+      // A drama converted to a movie keeps a provenance FK from movies, and
+      // ratings/reviews point at the movie. Remove those first so the seeded
+      // drama and everything derived from it can be deleted.
+      await run(
+        client,
+        'delete the converted movie join rows',
+        target,
+        `DELETE FROM movie_categories
+         WHERE movie_id IN (SELECT id FROM movies WHERE converted_from_drama_id = $1)`,
+        [fixture.id]
+      );
+      await run(
+        client,
+        'delete the converted movie platform rows',
+        target,
+        `DELETE FROM movie_platforms
+         WHERE movie_id IN (SELECT id FROM movies WHERE converted_from_drama_id = $1)`,
+        [fixture.id]
+      );
+      await run(
+        client,
+        'delete the converted movie ratings',
+        target,
+        `DELETE FROM ratings
+         WHERE drama_id = $1
+            OR movie_id IN (SELECT id FROM movies WHERE converted_from_drama_id = $1)`,
+        [fixture.id]
+      );
+      await run(
+        client,
+        'delete the converted movie reviews',
+        target,
+        `DELETE FROM reviews
+         WHERE drama_id = $1
+            OR movie_id IN (SELECT id FROM movies WHERE converted_from_drama_id = $1)`,
+        [fixture.id]
+      );
+      await run(
+        client,
+        'delete the converted movie',
+        target,
+        'DELETE FROM movies WHERE converted_from_drama_id = $1',
+        [fixture.id]
+      );
       await run(client, 'delete the seeded episodes', target, 'DELETE FROM episodes WHERE drama_id = $1', [
         fixture.id,
       ]);

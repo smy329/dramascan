@@ -234,6 +234,7 @@ Migration tooling and practices are defined in `CONVENTIONS.md` §10. Database-s
 - `drizzle/0002_information_page_footer_links.sql` adds `information_pages.position`, the active-row slug uniqueness index, the partial footer index, and the six-row information-page seed (forward-only; the seed is idempotent and preserves administrator edits).
 - `drizzle/0003_needy_infant_terrible.sql` adds one partial index, `idx_users_active_created_at`, for the admin user listing (Prompt 051). Reversible: `DROP INDEX idx_users_active_created_at;` — the index is the migration's only statement, so the rollback restores `0002` exactly (the `CREATE INDEX` is not `CONCURRENTLY`, so neither is this drop). See §6.1 for the queries it serves, the queries it does not serve, and the measured plans.
 - `drizzle/0005_yielding_mimic.sql` adds `structure_conversion_snapshots`, the drama structure-conversion snapshot table (Prompt 066). Reversible: `DROP TABLE structure_conversion_snapshots;` — the table has no dependents, so the rollback restores `0004` exactly. The migration is forward-only in practice: dropping the table discards the snapshots, and a drama that was converted season-based → flat cannot be restored to its previous season structure afterwards.
+- `drizzle/0006_cute_kabuki.sql` makes `ratings.drama_id` and `reviews.drama_id` nullable, adds their `movie_id` columns and exactly-one CHECK constraints, adds `movies.converted_from_drama_id` with its FK and partial unique index, and replaces the per-target unique/lookup indexes (Prompt 067). Reversible with the inverse statements after moving every row back to a drama target; no column or row is dropped.
 - `npm run db:generate` creates the next numbered migration from schema changes; `npm run db:migrate` applies pending migrations. `npm run db:push` is local-only and must never be used against production.
 - Integration tests build the isolated `_test` database from this same migration chain in `tests/global-setup.ts`, so a broken migration fails CI.
 - Applied migrations are never edited.
@@ -427,6 +428,8 @@ or episode. Its single direct video source lives on the same row.
 | Admin API | `POST /admin/api/movies`, `PUT /admin/api/movies`; requires `movie.manage` and same-origin mutations. |
 | Validation | `src/modules/content/validation.ts` (`createMovieSchema`, `updateMovieSchema`, `movieVideoSourceSchema`, `moviePublicationStatusSchema`). Updates are full-payload replaces. |
 
+Prompt 067 adds the nullable provenance column `converted_from_drama_id`; see §8.5.
+
 ### 8.4 Drama structure conversion snapshots (Prompt 066)
 
 `structure_conversion_snapshots` is owned by the `content` module. It records the
@@ -453,6 +456,48 @@ assignment, episode numbers, and positions only. Episode titles,
 descriptions, publication status, and video sources are never restored from a
 snapshot, and viewing records are never touched. A snapshot is restorable only
 while the current flat structure still matches `post_conversion_fingerprint`.
+
+### 8.5 Drama→movie conversion (Prompt 067)
+
+A drama with exactly one active episode can be converted into a standalone
+movie. The conversion creates a new `movies` row with a new UUID, copies the
+content identity and the single episode's video source, moves the content
+relationships, and soft-deletes the source drama, its seasons, and its
+episodes in the same transaction. The drama UUID is never reused.
+
+| Item | Detail |
+| ---- | ------ |
+| Provenance column | `movies.converted_from_drama_id uuid NULL`. |
+| Provenance FK | `fk_movies_converted_from_drama_id` → `dramas.id` `ON DELETE RESTRICT`, so a movie blocks permanent deletion of its source drama. |
+| Provenance uniqueness | `uq_movies_converted_from_drama_id` — partial unique index where the column is not null; one drama converts at most once. |
+| Eligibility | Exactly one active episode (`episodes.deleted_at IS NULL`). Zero or more than one is a `409`; trashed episodes and seasons are excluded and left untouched. An already converted drama is permanently ineligible. |
+| Slug | Copied verbatim. `uq_movies_slug_active` rejects a collision with another active movie (`409`); the slug is never auto-suffixed. |
+| Publication state | `draft`, `published`, and `unpublished` carry over; any other stored value becomes `draft` with a preview warning. |
+| Source lifecycle | `dramas`, `seasons`, and `episodes` are soft-deleted (`deleted_at`/`updated_at` set). No hard delete occurs; the source remains for audit and future Trash lifecycle work. |
+| User state | `bookmarks`, `playback_progress`, `watched_state`, and `watch_history` move to the movie. Progress and watched-state `episode_id` become `NULL`; `watch_history.episode_id` is preserved as historical fact. |
+| Metadata | `content_slug_history`, `content_seo`, `content_assets`, notifications, admin notifications, content view events, playback analytics events, and daily aggregates move to the movie. `similar_dramas` and `structure_conversion_snapshots` are untouched. |
+| Null types | Only rows with `content_type = 'drama'` are rewritten in polymorphic tables; rows with a `NULL` type are not guessed. |
+| Migration | `drizzle/0006_cute_kabuki.sql`. |
+| Workflow API | `src/workflows/admin/movie-conversion.ts` (`loadMovieConversionContext`, `previewMovieConversion`, `applyMovieConversion`); requires `drama.manage`. Apply uses a serializable transaction with the drama and its active episodes locked `FOR UPDATE` and verifies a SHA-256 fingerprint before any write. |
+| Admin API | `POST /admin/api/dramas/convert-to-movie`; requires `drama.manage` and same-origin mutations. |
+| Admin page | `/admin/dramas/[id]/convert-to-movie`; the `/admin/dramas` listing shows the action only when `activeEpisodes === 1`. |
+| Validation | `src/modules/content/validation.ts` (`movieConversionRequestSchema`) and `src/modules/content/movie-conversion.ts` (plan, publication mapping, fingerprint). |
+
+`ratings` and `reviews` are now dual-target tables (D-020):
+
+| Item | Detail |
+| ---- | ------ |
+| Target columns | `drama_id uuid NULL`, `movie_id uuid NULL`. |
+| Exactly-one CHECK | `ck_ratings_target` / `ck_reviews_target` require exactly one non-null target. |
+| FKs | `fk_*_drama_id` → `dramas.id`, `fk_*_movie_id` → `movies.id` (cross-module FKs in SQL). |
+| Uniqueness | `uq_ratings_user_id_drama_id_active` / `uq_ratings_user_id_movie_id_active` (soft delete aware) and `uq_reviews_user_id_drama_id` / `uq_reviews_user_id_movie_id` (reviews have no soft delete). |
+| Lookup indexes | `idx_ratings_drama_id`, `idx_ratings_movie_id`, `idx_reviews_drama_id`, `idx_reviews_movie_id`. |
+| Conversion write | One `UPDATE` per table sets `movie_id` and clears `drama_id`, preserving moderation state, timestamps, and soft-delete flags. `review_reactions` and `review_reports` reference `review_id` only and follow their review untouched. |
+
+The reviews, users, notifications, and analytics modules export narrow
+content-ownership services that accept the workflow's transaction; the
+workflow does not write their tables directly. The conversion itself is
+one-way; no movie→drama path exists.
 
 ---
 

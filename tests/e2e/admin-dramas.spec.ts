@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type BrowserContext } from '@playwright/test';
 
 import { adminSession } from './support/admin-session.mjs';
 import { removeDrama, seedDrama } from './support/drama-fixture.mjs';
@@ -176,6 +176,132 @@ test.describe('admin drama conversion', () => {
       expect(response?.status()).toBe(404);
       await expect(page.getByRole('heading', { name: 'Dramas' })).toHaveCount(0);
     } finally {
+      await adminSession.remove(session.userId);
+    }
+  });
+});
+
+test.describe('admin drama → movie conversion', () => {
+  async function signIn(context: BrowserContext, email: string) {
+    const session = await adminSession.seed({ email });
+    await context.addCookies([
+      {
+        name: session.cookieName,
+        value: session.cookieValue,
+        url: 'http://localhost:3000',
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
+    ]);
+    return session;
+  }
+
+  test('offers the movie conversion only for a single-episode drama', async ({ context, page }) => {
+    const session = await signIn(context, 'e2e-movie-conv-list@example.com');
+    const eligible = await seedDrama({
+      title: 'E2E Single Episode Drama',
+      structureType: 'flat',
+      seasonCount: 1,
+      episodesPerSeason: 1,
+    });
+    const ineligible = await seedDrama({
+      title: 'E2E Multi Episode Drama',
+      structureType: 'flat',
+      seasonCount: 1,
+      episodesPerSeason: 2,
+    });
+
+    try {
+      await page.goto('/admin/dramas?search=E2E%20Single%20Episode%20Drama');
+      await expect(
+        page
+          .getByRole('row', { name: new RegExp(eligible.title) })
+          .getByRole('link', { name: 'Convert to movie' })
+      ).toBeVisible();
+
+      await page.goto('/admin/dramas?search=E2E%20Multi%20Episode%20Drama');
+      await expect(
+        page.getByRole('row', { name: new RegExp(ineligible.title) })
+      ).toBeVisible();
+      await expect(
+        page
+          .getByRole('row', { name: new RegExp(ineligible.title) })
+          .getByRole('link', { name: 'Convert to movie' })
+      ).toHaveCount(0);
+    } finally {
+      await removeDrama(ineligible);
+      await removeDrama(eligible);
+      await adminSession.remove(session.userId);
+    }
+  });
+
+  test('previews the resulting movie and applies the conversion', async ({ context, page }) => {
+    const session = await signIn(context, 'e2e-movie-conv-apply@example.com');
+    const drama = await seedDrama({
+      title: 'E2E Converted To Movie',
+      structureType: 'flat',
+      seasonCount: 1,
+      episodesPerSeason: 1,
+      episodeVideoSource: 'https://media.example.com/e2e/only-episode.mp4',
+    });
+
+    try {
+      // Warm the route so a cold Turbopack compile cannot race the client-side
+      // transition; the link click below is what the test verifies.
+      await page.request.get(`/admin/dramas/${drama.id}/convert-to-movie`);
+
+      await page.goto('/admin/dramas?search=E2E%20Converted%20To%20Movie');
+      await page
+        .getByRole('row', { name: new RegExp(drama.title) })
+        .getByRole('link', { name: 'Convert to movie' })
+        .click();
+
+      await expect(page).toHaveURL(new RegExp(`/admin/dramas/${drama.id}/convert-to-movie`));
+      await expect(page.getByRole('heading', { name: /Convert .* to a movie/ })).toBeVisible();
+      await expect(page.getByText(/currently has 1 active episode\./)).toBeVisible();
+
+      await page.getByRole('button', { name: 'Preview conversion' }).click();
+
+      await expect(page.getByText(drama.slug)).toBeVisible();
+      await expect(page.getByText('https://media.example.com/e2e/only-episode.mp4')).toBeVisible();
+      await expect(page.getByText('Ratings: None')).toBeVisible();
+
+      await page.getByRole('button', { name: 'Convert to movie' }).click();
+
+      const dialog = page.getByRole('alertdialog');
+      await expect(dialog).toBeVisible();
+      await expect(dialog).toContainText('The movie keeps the drama');
+      await dialog.getByRole('button', { name: 'Convert to movie' }).click();
+
+      await expect(
+        page.getByText(`“${drama.title}” was created as a standalone movie.`)
+      ).toBeVisible();
+
+      // The drama moved to Trash, so the active list no longer offers it.
+      await page.goto('/admin/dramas?search=E2E%20Converted%20To%20Movie');
+      await expect(page.getByRole('cell', { name: drama.title })).toHaveCount(0);
+    } finally {
+      await removeDrama(drama);
+      await adminSession.remove(session.userId);
+    }
+  });
+
+  test('explains why a multi-episode drama cannot be converted', async ({ context, page }) => {
+    const session = await signIn(context, 'e2e-movie-conv-ineligible@example.com');
+    const drama = await seedDrama({
+      title: 'E2E Ineligible Movie Drama',
+      structureType: 'flat',
+      seasonCount: 1,
+      episodesPerSeason: 2,
+    });
+
+    try {
+      await page.goto(`/admin/dramas/${drama.id}/convert-to-movie`);
+
+      await expect(page.getByRole('alert')).toContainText('2 active episodes');
+      await expect(page.getByRole('button', { name: 'Preview conversion' })).toHaveCount(0);
+    } finally {
+      await removeDrama(drama);
       await adminSession.remove(session.userId);
     }
   });

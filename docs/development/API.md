@@ -320,6 +320,59 @@ The body always carries `mode` (`preview` or `apply`), the target
 - The admin pages `/admin/dramas` and `/admin/dramas/[id]/convert` use the
   same workflow through Server Actions; they are not separate REST endpoints.
 
+### 3.11 Drama → standalone movie conversion (implemented, Prompt 067)
+
+Converts a drama with exactly one active episode into a standalone movie. The
+endpoint requires `drama.manage`; authorization is enforced at the route
+entrypoint and re-checked inside the workflow. Mutations reject cross-origin
+requests.
+
+| Method | Path                                        | Auth                | Permission     | Purpose                                                       | Status      |
+| ------ | ------------------------------------------- | ------------------- | -------------- | ------------------------------------------------------------- | ----------- |
+| `POST` | `/admin/api/dramas/convert-to-movie`        | Authenticated admin | `drama.manage` | Preview the resulting movie, or apply a previously previewed one | Implemented |
+
+Body:
+
+```json
+{ "dramaId": "uuid", "mode": "preview | apply", "fingerprint": "sha256 hex (apply only)" }
+```
+
+The schema is strict; unknown fields are rejected. `mode` is required.
+
+- `mode: "preview"` returns the resulting movie, the source episode, the
+  relationship counts, warnings, and a `fingerprint`. It changes nothing.
+- `mode: "apply"` requires the preview's `fingerprint`. The apply re-runs every
+  eligibility check inside a serializable transaction after locking the drama
+  and its active episodes `FOR UPDATE`; a fingerprint mismatch, `23505`, or
+  `40001` is a `409 conflict` and nothing changes.
+- Eligibility is exactly one active episode. Zero or more than one is a `409`
+  naming the actual count. An already converted drama is a `409`; trashed
+  episodes and seasons are excluded.
+- A slug collision with another active movie is a `409` naming the slug and
+  the movie title. The slug is never auto-suffixed, and no writes occur.
+- The movie is a new row with a new UUID; `converted_from_drama_id` records
+  permanent provenance. The drama, its seasons, and its episodes are
+  soft-deleted in the same transaction, so the source stays in Trash for audit.
+- Ratings, reviews, bookmarks, playback progress, watched state, watch history,
+  notifications, and analytics move to the movie. Progress and watched-state
+  `episode_id` become `NULL`; `watch_history.episode_id` is preserved.
+  Categories and platforms move to the movie; `similar_dramas` and structure
+  snapshots are untouched.
+- Preview response:
+  `{ "data": { dramaId, fingerprint, source, movie, relationships, warnings } }`
+  where `source` carries `dramaId`, `episodeId`, `episodeTitle`,
+  `episodeNumber`, and `seasonId`, and `movie` carries `title`, `slug`,
+  `description`, `poster`, `banner`, `publicationStatus`, `videoSource`,
+  `convertedFromDramaId`, `categories`, and `platforms`.
+- Apply response: the preview shape plus `applied: true` and `movieId`.
+- Errors use the standard `{ error: { code, message, fieldErrors?, requestId } }`
+  envelope: `401` unauthenticated, `403` insufficient permission, `404` missing
+  drama, `400` invalid request (including a malformed JSON body), `409`
+  ineligibility/slug conflict/stale fingerprint/concurrent change, `500`
+  unexpected failure.
+- The page `/admin/dramas/[id]/convert-to-movie` uses the same workflow through
+  Server Actions; it is not a separate REST endpoint.
+
 ---
 
 ## 4. Server Action Catalog
@@ -337,6 +390,7 @@ Server Actions are application operations, not REST endpoints. They are document
 | Notifications           | Update preferences, mark read/unread, manage push subscription                   | Own notifications                                | Planned |
 | Content administration  | Create/update/publish/unpublish/trash/restore content, seasons, episodes, movies | `drama.*`, `episode.*`, `movie.*`                | Planned |
 | Drama structure conversion | Preview and apply a season-based ↔ flat conversion, restore a structure snapshot | `drama.manage`                                   | Implemented |
+| Drama → movie conversion   | Preview and apply a single-episode drama conversion into a standalone movie      | `drama.manage`                                   | Implemented |
 | Source replacement      | Replace an episode or movie source after preview and confirmation                | `episode.manage`, `movie.manage`                                                | Planned |
 | Taxonomy administration | Create/update/delete categories and platforms                                    | `category.*`, `platform.*`                       | Planned |
 | Moderation              | Resolve content reports, remove reviews                                          | `review.manage`              | Planned |

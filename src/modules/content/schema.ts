@@ -102,6 +102,10 @@ export const movies = pgTable(
     banner: text('banner'),
     publication_status: text('publication_status'),
     video_source: text('video_source'),
+    // Permanent provenance for a drama → movie conversion. The source drama is
+    // soft-deleted, never removed, and this reference blocks its permanent
+    // deletion so the conversion stays traceable.
+    converted_from_drama_id: uuid('converted_from_drama_id'),
     created_at: created,
     updated_at: updated,
     deleted_at: deleted,
@@ -112,6 +116,13 @@ export const movies = pgTable(
     uniqueIndex('uq_movies_slug_active')
       .on(table.slug)
       .where(sql`${table.deleted_at} is null`),
+    foreignKeyConstraint('movies', table.converted_from_drama_id, dramas.id, {
+      onDelete: 'restrict',
+    }),
+    // One drama may be converted at most once.
+    uniqueIndex('uq_movies_converted_from_drama_id')
+      .on(table.converted_from_drama_id)
+      .where(sql`${table.converted_from_drama_id} is not null`),
   ]
 );
 

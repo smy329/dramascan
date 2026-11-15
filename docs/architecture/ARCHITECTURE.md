@@ -162,6 +162,7 @@ src/
       validation.ts
       repository.ts
       conversion.ts               # structure conversion (content-internal)
+      movie-conversion.ts         # drama → movie plan, fingerprint, publication mapping
     users/
       index.ts
       schema.ts                   # bookmarks
@@ -345,12 +346,12 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 
 ### 6.3 `content` — Content management
 
-- **Purpose:** dramas, seasons, episodes, standalone movies, hierarchy, taxonomies, similar dramas, publication state, Trash/restore, structure conversion, episode ordering/moving, information pages, SEO overrides, slug history/redirects, sitemap eligibility, image asset metadata, direct MP4 source URL storage and syntax validation.
-- **Owns:** `dramas`, `seasons`, `episodes`, `movies`, `categories`, `platforms`, `drama_categories`, `drama_platforms`, `movie_categories`, `movie_platforms`, `similar_dramas`, `information_pages`, `content_slug_history`, `content_seo`, `content_assets`, `sitemap_exclusions`, `structure_conversion_snapshots`; the `video_source_url` columns on episodes and movies.
+- **Purpose:** dramas, seasons, episodes, standalone movies, hierarchy, taxonomies, similar dramas, publication state, Trash/restore, structure conversion, drama→movie conversion, episode ordering/moving, information pages, SEO overrides, slug history/redirects, sitemap eligibility, image asset metadata, direct MP4 source URL storage and syntax validation.
+- **Owns:** `dramas`, `seasons`, `episodes`, `movies`, `categories`, `platforms`, `drama_categories`, `drama_platforms`, `movie_categories`, `movie_platforms`, `similar_dramas`, `information_pages`, `content_slug_history`, `content_seo`, `content_assets`, `sitemap_exclusions`, `structure_conversion_snapshots`, `movies.converted_from_drama_id`; the `video_source_url` columns on episodes and movies.
 - **Public API:** public detail/card/list queries with visibility enforcement, admin list queries, create/update/delete/restore/purge services, publish/unpublish, bulk publication, reorder/move, conversion, similar-drama management, slug resolution and redirect lookup, availability assertions, playback-source lookup with availability enforcement, taxonomy CRUD.
 - **Depends on:** `authorization`, `auth`, platform.
 - **Not responsible for:** playback progress, watch history, ratings/reviews, view counts, notifications, moderation records, image file I/O (files live on disk; this module stores metadata and paths).
-- **Boundary notes:** publication workflows are invoked through `workflows/publish-content`, not by other modules. Public queries never return unpublished or trashed content. Watch queries obtain the source URL through `playback`, not from a general details query. Drama structure conversion (season-based ↔ flat) is sequenced by `workflows/admin/conversion`, which owns the transaction, the `FOR UPDATE` lock, the preview fingerprint check, and the snapshot lifecycle; the `content` module supplies the pure ordering, plan, fingerprint, and snapshot-payload rules.
+- **Boundary notes:** publication workflows are invoked through `workflows/publish-content`, not by other modules. Public queries never return unpublished or trashed content. Watch queries obtain the source URL through `playback`, not from a general details query. Drama structure conversion (season-based ↔ flat) is sequenced by `workflows/admin/conversion`, which owns the transaction, the `FOR UPDATE` lock, the preview fingerprint check, and the snapshot lifecycle; the `content` module supplies the pure ordering, plan, fingerprint, and snapshot-payload rules. Drama→movie conversion is sequenced by `workflows/admin/movie-conversion`; `content` supplies the plan, publication mapping, and fingerprint, while the `reviews`, `users`, `notifications`, and `analytics` modules move their own rows through transaction-scoped ownership services.
 
 ### 6.4 `users` — User profile and bookmarks
 
@@ -477,15 +478,18 @@ No other same-layer imports are allowed. Adding one requires a recorded decision
 
 **Recorded exception — admin content workflows write content tables directly
 (D-029).** The admin content workflows
-(`src/workflows/admin/{dramas,seasons,episodes,movies,conversion}.ts`) write
+(`src/workflows/admin/{dramas,seasons,episodes,movies,conversion,movie-conversion}.ts`) write
 the `content` module's tables inside their own transaction instead of calling a
 content-module service for every statement. A structure conversion renumbers
-episodes, trashes seasons, and writes a snapshot atomically; splitting that
-across module APIs would break the single transaction. The domain rules stay in
-`modules/content` (`src/modules/content/conversion.ts`), and the workflow owns
-only the sequencing, the authorization check, and the transaction boundary. Any
-new workflow outside the admin content area must keep calling each module's
-public API.
+episodes, trashes seasons, and writes a snapshot atomically; a drama→movie
+conversion creates the movie, moves relationships, and soft-deletes the drama,
+its seasons, and its episodes atomically. Splitting that across module APIs
+would break the single transaction. The domain rules stay in
+`modules/content` (`src/modules/content/conversion.ts` and
+`movie-conversion.ts`), the other modules expose transaction-scoped ownership
+services for their own rows, and the workflow owns only the sequencing, the
+authorization check, and the transaction boundary. Any new workflow outside the
+admin content area must keep calling each module's public API.
 
 ---
 
@@ -513,15 +517,19 @@ A **workflow** is a thin application-layer function in `src/workflows/` that coo
 Workflows are not a general abstraction. A single-module operation stays in that module's service. A workflow exists only when coordination is genuinely required.
 
 **Recorded exception (D-029).** The admin content workflows
-(`src/workflows/admin/{dramas,seasons,episodes,movies,conversion}.ts`) write
+(`src/workflows/admin/{dramas,seasons,episodes,movies,conversion,movie-conversion}.ts`) write
 the `content` module's tables directly inside their own transaction, because
-one mutation must change several content tables atomically (see §7.2).
+one mutation must change several content tables atomically (see §7.2). The
+drama→movie workflow calls the `reviews`, `users`, `notifications`, and
+`analytics` ownership services with that same transaction instead of writing
+their tables.
 
 ### 8.3 Workflow catalog (initial)
 
 | Workflow                     | Modules coordinated                                        | Why it cannot live in one module                                   |
 | ---------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------ |
 | `publish-content`            | content, notifications (+ cache invalidation via platform) | Publishing writes content and creates notifications                |
+| `convert-drama-to-movie`     | content, reviews, users, notifications, analytics          | Creates a movie, reassigns every relationship, and trashes the drama atomically |
 | `replace-video-source`       | content, playback                                          | Updates the URL and resets progress atomically                     |
 | `permanently-delete-content` | content, users, playback, reviews, moderation, analytics   | Purge plus cleanup of dependent records and anonymization          |
 | `record-content-view`        | analytics, content                                         | Verifies availability, then records a deduplicated view            |

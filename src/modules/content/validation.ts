@@ -215,6 +215,25 @@ export function parseConversionRequest(input: unknown): ConversionRequest {
   return parseOrThrow(conversionRequestSchema, input);
 }
 
+// ----- drama → movie conversion ---------------------------------------------
+
+/** Preview/apply request for converting a single-episode drama into a movie. */
+export const movieConversionRequestSchema = z.strictObject({
+  dramaId: z.uuid(),
+  mode: z.enum(['preview', 'apply']),
+  fingerprint: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
+});
+
+export type MovieConversionRequest = z.infer<typeof movieConversionRequestSchema>;
+
+/** Parse a drama → movie conversion request. */
+export function parseMovieConversionRequest(input: unknown): MovieConversionRequest {
+  return parseOrThrow(movieConversionRequestSchema, input);
+}
+
 /** Parsed season row inside a stored conversion snapshot. */
 export const snapshotSeasonPayloadSchema = z.strictObject({
   id: z.uuid(),

@@ -982,6 +982,105 @@ plan that was computed against a structure that has since changed.
 
 ---
 
+## D-030 — Drama→movie conversion creates a new movie and preserves provenance
+
+**Date:** 2026-11-15
+**Status:** Approved by user (Prompt 067)
+
+**Context:** `REQUIREMENTS.md` §4.6 and §8.3 allow a drama that contains exactly
+one episode to be published as a standalone movie. Prompt 066 deliberately left
+drama→movie out of scope, and no schema relationship existed between a movie and
+the drama it came from. Reusing the drama's UUID, hard-deleting the drama, or
+leaving ratings and reviews attached to a trashed drama would break audit
+history, the exactly-one content-target rule (D-020), and future Trash
+lifecycle work.
+
+**Decision:**
+
+1. **Eligibility is exactly one active episode.** Zero or more than one active
+   episode is a `409 Conflict` naming the actual count. Trashed episodes and
+   trashed seasons are excluded and left untouched. A drama that was already
+   converted is permanently ineligible (`409`), because provenance is unique
+   and irreversible.
+2. **The movie is a new content row with a new UUID.** The drama's UUID is
+   never reused. `movies.converted_from_drama_id` is a nullable FK to
+   `dramas.id` with `ON DELETE RESTRICT` and a partial unique index where it is
+   not null, so one drama converts at most once and a movie blocks permanent
+   deletion of its source. Provenance is permanent. The movie inherits the
+   drama's `created_at`; `updated_at` is the conversion time.
+3. **Content identity is copied, not moved.** Title, slug, description, poster,
+   banner, categories, platforms, and the single episode's video source become
+   the movie's. `draft`, `published`, and `unpublished` carry over unchanged; any
+   other stored value becomes `draft` with a preview warning. The slug is
+   copied verbatim: a conflict with another active movie is a `409` that names
+   the conflicting slug and movie title, and it is never auto-suffixed. No
+   writes occur on rejection.
+4. **The drama, its seasons, and its episodes are soft-deleted in the same
+   transaction.** No hard delete occurs anywhere in the workflow, so the source
+   rows, ids, and metadata remain for audit and future Trash lifecycle
+   handling. Reverse conversion (movie→drama) is not supported.
+5. **Ratings and reviews gain a nullable `movie_id` and keep exactly one
+   target.** `drama_id` becomes nullable, `movie_id` is added, and
+   `ck_ratings_target` / `ck_reviews_target` enforce exactly one non-null target
+   per D-020. Partial unique indexes cover `(user_id, drama_id)` and
+   `(user_id, movie_id)`; content lookup indexes exist for both columns. Rows
+   are reassigned in one statement (`movie_id` set, `drama_id` cleared), so
+   nothing is left attached to the trashed drama. Reactions and reports
+   reference `review_id` only and follow their review untouched; moderation
+   state, timestamps, and soft-delete flags are preserved.
+6. **User state follows the content.** Bookmarks, playback progress, watched
+   state, and watch history move to the movie. `playback_progress.episode_id`
+   and `watched_state.episode_id` become `NULL` because the episode is trashed;
+   `watch_history.episode_id` is preserved as historical fact. Deleted rows move
+   with their `deleted_at` intact.
+7. **Polymorphic metadata moves only when it identifies the drama.** Slug
+   history, SEO, assets, notifications, admin notifications, content view
+   events, playback analytics events, and daily aggregates are rewritten from
+   `content_type = 'drama'` to `content_type = 'movie'`. Rows whose type is
+   `NULL` are not guessed. `similar_dramas` and
+   `structure_conversion_snapshots` are intentionally untouched; movie
+   recommendations are not a modelled relationship.
+8. **Preview and apply share one fingerprint rule.** The SHA-256 fingerprint
+   covers the drama fields that affect the movie, the episode id and video
+   source, and the sorted category/platform ids. It excludes relationship
+   counts and the slug-conflict lookup so concurrent viewing does not
+   invalidate a preview; the slug conflict is rechecked inside the apply and
+   enforced by the unique index. Apply requires the fingerprint and re-runs
+   every eligibility check inside a serializable transaction after locking the
+   drama and its active episodes `FOR UPDATE`; a mismatch, `23505`, or `40001`
+   is a `409`, and the transaction leaves no partial conversion.
+9. **The surface is REST plus a minimal admin page.** `POST
+   /admin/api/dramas/convert-to-movie`, the `/admin/dramas` listing, and
+   `/admin/dramas/[id]/convert-to-movie` require `drama.manage`, enforced
+   server-side at every entrypoint. The listing renders **Convert to movie**
+   only when `activeEpisodes === 1`; the page previews the resulting movie and
+   asks for explicit confirmation. Full movie management UI is out of scope.
+10. **Module ownership is preserved across the transaction.** The `reviews`,
+    `users`, `notifications`, and `analytics` modules export narrow
+    content-ownership services that accept the workflow's transaction; the
+    `content` module owns the plan and fingerprint; the workflow owns
+    authorization and the transaction boundary. This extends the D-029 admin
+    content workflow exception to `movie-conversion.ts`; it does not create a
+    general cross-module write pattern.
+
+**Consequences:**
+
+- A drama can become a movie without losing ratings, reviews, reactions,
+  bookmarks, viewing history, notifications, or analytics.
+- The source drama remains recoverable from the database for audit, but the
+  application exposes no restore path and `ON DELETE RESTRICT` prevents
+  deleting it while the movie exists.
+- `ratings` and `reviews` become dual-target tables, matching the D-020 pattern
+  already used by bookmarks and analytics; any future review query must filter
+  on the target it means.
+- The conversion is intentionally one-way. Returning the movie to a drama
+  requires a new decision and a new migration.
+- The admin content workflows now cover a cross-module conversion; the
+  transaction boundary and the narrow ownership services are the recorded
+  exception, not a precedent for arbitrary cross-module writes.
+
+---
+
 ## Decision log rules
 - A decision is added only after explicit user approval or when the specification
   establishes it.

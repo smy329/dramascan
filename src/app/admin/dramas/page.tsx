@@ -91,12 +91,22 @@ export default async function AdminDramasPage({
       header: 'Action',
       align: 'right',
       render: row =>
-        <Link
-          href={`/admin/dramas/${row.id}/convert`}
-          className="text-sm font-medium text-foreground underline underline-offset-4 hover:text-primary"
-        >
-          Convert structure
-        </Link>
+        <div className="flex flex-wrap justify-end gap-3">
+          <Link
+            href={`/admin/dramas/${row.id}/convert`}
+            className="text-sm font-medium text-foreground underline underline-offset-4 hover:text-primary"
+          >
+            Convert structure
+          </Link>
+          {row.activeEpisodes === 1 ?
+            <Link
+              href={`/admin/dramas/${row.id}/convert-to-movie`}
+              className="text-sm font-medium text-foreground underline underline-offset-4 hover:text-primary"
+            >
+              Convert to movie
+            </Link>
+          : null}
+        </div>
       ,
     },
   ];
@@ -106,7 +116,8 @@ export default async function AdminDramasPage({
       <div>
         <h1 className="font-heading text-2xl font-semibold text-foreground">Dramas</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Convert a drama between a season-based and a flat episode structure.
+          Convert a drama between a season-based and a flat episode structure, or convert a
+          single-episode drama into a standalone movie.
         </p>
       </div>
 

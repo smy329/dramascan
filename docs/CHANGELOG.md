@@ -2,6 +2,101 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [0.9.2] - 2026-11-15
+
+### feat: convert a single-episode drama into a standalone movie (Prompt 067, D-030)
+
+An administrator can now turn a drama with exactly one active episode into an
+independent movie through a previewed, fingerprinted, transactional conversion.
+The movie keeps the content identity and the user relationships, the source
+drama is retained in Trash, and the provenance link is permanent.
+
+- `src/modules/content/schema.ts`: `movies.converted_from_drama_id` (nullable,
+  FK to `dramas.id` `ON DELETE RESTRICT`, partial unique index where not null),
+  so one drama converts at most once and the source cannot be purged while the
+  movie exists.
+- `src/modules/reviews/schema.ts`: `ratings` and `reviews` become dual-target.
+  `drama_id` is nullable, `movie_id` is added, `ck_ratings_target` /
+  `ck_reviews_target` enforce exactly one target (D-020), and partial unique
+  indexes plus lookup indexes cover both columns.
+- `drizzle/0006_cute_kabuki.sql` (generated, then cross-module FKs appended
+  manually): the schema changes above. Applied to the development and `_test`
+  databases. Reversible with the inverse statements; no existing column or row
+  is dropped.
+- `src/modules/content/movie-conversion.ts` (new): destination plan,
+  publication-state mapping, eligibility messages, and the SHA-256 fingerprint
+  over the drama fields, the single episode, and the sorted association ids.
+  Relationship counts and the slug-conflict lookup are deliberately excluded so
+  concurrent viewing does not invalidate a preview; the slug is rechecked
+  inside the apply and enforced by the unique index.
+- `src/workflows/admin/movie-conversion.ts` (new): `drama.manage` on every
+  entrypoint, a page context that explains ineligibility, preview, and a
+  serializable apply that locks the drama and its active episodes `FOR UPDATE`,
+  revalidates eligibility, verifies the fingerprint before writing, and maps
+  `23505`/`40001` to `409`. The drama, seasons, and episodes are soft-deleted
+  in the same transaction. A new UUID is generated for the movie; the drama
+  UUID is never reused.
+- Relationship migration inside that transaction:
+  - `reviews` and `users` export narrow ownership services so ratings, reviews,
+    bookmarks, progress, watched state, and history are rewritten by their
+    owning module. `playback_progress.episode_id` and `watched_state.episode_id`
+    become `NULL`; `watch_history.episode_id` is preserved as history.
+  - `src/modules/notifications/content-ownership.ts` and
+    `src/modules/analytics/content-ownership.ts` (new) move notifications,
+    admin notifications, view events, playback events, and daily aggregates.
+  - `content_slug_history`, `content_seo`, `content_assets`, categories, and
+    platforms move to the movie. Only rows with `content_type = 'drama'` are
+    rewritten; `NULL` types are not guessed. `similar_dramas` and
+    `structure_conversion_snapshots` are untouched.
+- `src/lib/contracts/drama-movie-conversion.ts` (new) and
+  `src/modules/content/validation.ts`: the strict preview/apply request
+  (`dramaId`, `mode`, optional SHA-256 `fingerprint`) and the shared preview,
+  apply, and relationship-count DTOs.
+- `src/app/admin/api/dramas/convert-to-movie/route.ts` (new): `POST` preview or
+  apply, standard error envelope, same-origin enforcement, `401`/`403`/`404`/
+  `409`/`400`/`500` mapping, and an internal-error log carrying `dramaId`.
+- `src/workflows/admin/movie-conversion-actions.ts` (new): the Server Actions
+  used by the panel; they return the same `ActionResult` shape as the other
+  admin actions.
+- `src/app/admin/dramas/page.tsx`: a **Convert to movie** row action rendered
+  only when `activeEpisodes === 1`; the existing **Convert structure** action
+  is unchanged.
+- `src/app/admin/dramas/[id]/convert-to-movie/page.tsx` (new) and
+  `src/components/admin/dramas/drama-movie-conversion-panel.tsx` (new):
+  permission-checked page, read-only explanation when ineligible, preview of
+  title, slug, description, poster, banner, categories, platforms, publication
+  state, video source, source episode, and relationship counts; explicit
+  destructive confirmation naming the drama and the Trash consequence;
+  loading, error, conflict, and success states.
+- Tests: `tests/unit/modules/content/movie-conversion.test.ts` (new),
+  `tests/integration/content/movie-conversion.integration.test.ts` (new),
+  `tests/integration/content/movie-conversion-api.integration.test.ts` (new),
+  `tests/unit/components/drama-movie-conversion-panel.test.tsx` (new),
+  `tests/unit/app/admin-drama-convert-to-movie-page.test.tsx` (new), plus new
+  cases in `tests/e2e/admin-dramas.spec.ts` and video-source support in
+  `tests/e2e/support/drama-fixture.mjs`. Coverage includes 0/2 episodes,
+  trashed-episode exclusion, slug conflict, duplicate conversion, the
+  exactly-one rating/review constraint, full relationship migration, rollback,
+  authorization, and the conditional list action.
+- Docs: D-030, `DATABASE.md` §8.5, `API.md` §3.11, `ARCHITECTURE.md` §7.2/§8.2,
+  `admin-shell.md`, `PROJECT_STATUS.md`, and this changelog.
+
+Verification: `npm run typecheck` PASS, `npm run lint` PASS (only the
+pre-existing `MODULE_TYPELESS_PACKAGE_JSON` warning on `eslint.config.js`),
+`npm run test` 58 files / 546 tests PASS, `npm run test:integration` 11 files /
+152 tests PASS, `npm run test:e2e` 31 tests PASS, and `npm run build` PASS with
+HTTPS `APP_URL`/`TRUSTED_ORIGINS` overrides because `.env.local` uses
+`http://localhost` for local development. Migration 0006 was applied to both
+the development database and `dramascan_test`.
+
+Known limitations: conversion is one-way (no movie→drama path); there is no
+full movie management UI, only the conversion surface; `drama.manage` is the
+only permission required, so a Content Manager can create the movie without
+`movie.manage`; OpenAPI generation and rate limiting are still not implemented;
+movie recommendations are not modelled, so `similar_dramas` does not follow the
+new movie; and the authenticated E2E flows use the seeded test session, not a
+real Google OAuth consent.
+
 ## [0.9.1] - 2026-11-15
 
 ### fix: harden the drama structure conversion contract (Prompt 066 review pass)

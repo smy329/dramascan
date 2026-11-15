@@ -208,6 +208,15 @@ page. Its listing behaviour, URL contract, and page-level authorization are
 documented in [Admin Data Tables](admin-data-tables.md); the admin shell's own
 rules above still apply to it.
 
+`/admin/dramas` (Prompts 066 and 067) is a content section gated on
+`drama.manage`. Its listing renders two row actions: **Convert structure**, which
+opens `/admin/dramas/[id]/convert`, and **Convert to movie**, which is rendered
+only when the row has exactly one active episode and opens
+`/admin/dramas/[id]/convert-to-movie`. The detail pages are not separate
+navigation entries; they check `drama.manage` themselves and return `notFound()`
+for a denied actor or a missing drama. `ADMIN_ROUTE_LABELS` does not label the
+dynamic detail paths, so the breadcrumb keeps the `Admin` fallback (§7).
+
 ### 5.2 Filtering
 
 `filterAdminNavigation(groups, actor)` drops entries where `implemented` is
