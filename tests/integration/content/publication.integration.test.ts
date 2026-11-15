@@ -378,22 +378,94 @@ describe('publication workflows', () => {
     });
   });
 
-  it('publishes an eligible movie and skips a movie without a source', async () => {
-    const movieId = await insertMovie('draft', VALID_SOURCE);
+  it('publishes multiple eligible episodes and skips invalid ones', async () => {
+    const dramaId = await insertDrama('draft');
+    const seasonId = await insertSeason(dramaId, 'published');
+
+    // Episode with valid source
+    const validEp = await insertEpisode(dramaId, seasonId, 'draft', VALID_SOURCE);
+    // Episode without source
+    const noSourceEp = await insertEpisode(dramaId, seasonId, 'draft', null);
+    // Episode with non-HTTPS source
+    const badSourceEp = await insertEpisode(dramaId, seasonId, 'draft', 'http://example.com/e.mp4');
+
+    const result = await updatePublication(managerActor, {
+      contentType: 'episode',
+      action: 'publish',
+      ids: [validEp, noSourceEp, badSourceEp],
+    });
+
+    expect(result.summary).toEqual({ requested: 3, succeeded: 1, skipped: 2, failed: 0 });
+    expect(result.results.some(r => r.status === 'succeeded')).toBe(true);
+    expect(result.results.some(r => r.reason === 'missing_source')).toBe(true);
+    expect(result.results.some(r => r.reason === 'invalid_source')).toBe(true);
+  });
+
+  it('unpublishes multiple eligible items', async () => {
+    const publishedId = await insertDrama('published');
+    await db
+      .update(dramas)
+      .set({ publication_status: 'published' })
+      .where(eq(dramas.id, publishedId));
+
+    const result = await updatePublication(managerActor, {
+      contentType: 'drama',
+      action: 'unpublish',
+      ids: [publishedId],
+    });
+
+    expect(result.summary.succeeded).toBe(1);
+    expect(result.results[0]!.publicationStatus).toBe('unpublished');
+
+    // Now test bulk unpublish of duplicate IDs where item is already unpublished
+    const result2 = await updatePublication(managerActor, {
+      contentType: 'drama',
+      action: 'unpublish',
+      ids: [publishedId, publishedId],
+    });
+
+    // First item: already unpublished (status changed by first unpublish above)
+    // Second item: duplicate ID ignored
+    expect(result2.summary).toEqual({ requested: 2, succeeded: 0, skipped: 2, failed: 0 });
+    expect(result2.results.map(r => r.reason)).toEqual(['already_unpublished', 'duplicate_id']);
+  });
+
+  it('publishes multiple movies: some with source, some without', async () => {
+    const movieWithSource = await insertMovie('draft', VALID_SOURCE);
+    const movieWithoutSource = await insertMovie('draft', null);
+
     const result = await updatePublication(managerActor, {
       contentType: 'movie',
       action: 'publish',
-      ids: [movieId],
+      ids: [movieWithSource, movieWithoutSource],
     });
-    expect(result.results[0]).toMatchObject({ status: 'succeeded', publicationStatus: 'published', publiclyAvailable: true });
 
-    const unpublishedMovieId = await insertMovie('draft', null);
-    const skipped = await updatePublication(managerActor, {
-      contentType: 'movie',
+    expect(result.summary).toEqual({ requested: 2, succeeded: 1, skipped: 1, failed: 0 });
+    expect(result.results.find(r => r.status === 'succeeded')?.publicationStatus).toBe('published');
+    expect(result.results.find(r => r.status === 'skipped')?.reason).toBe('missing_source');
+  });
+
+  it('reports mixed results for episodes with varying eligibility', async () => {
+    const dramaId = await insertDrama('draft');
+    const seasonId = await insertSeason(dramaId, 'published');
+
+    // Episode with valid source
+    const validEp = await insertEpisode(dramaId, seasonId, 'draft', VALID_SOURCE);
+    // Episode without source
+    const noSourceEp = await insertEpisode(dramaId, seasonId, 'draft', null);
+    // Episode with non-HTTPS source
+    const badSourceEp = await insertEpisode(dramaId, seasonId, 'draft', 'http://example.com/e.mp4');
+
+    const result = await updatePublication(managerActor, {
+      contentType: 'episode',
       action: 'publish',
-      ids: [unpublishedMovieId],
+      ids: [validEp, noSourceEp, badSourceEp],
     });
-    expect(skipped.results[0]).toMatchObject({ status: 'skipped', reason: 'missing_source' });
+
+    expect(result.summary).toEqual({ requested: 3, succeeded: 1, skipped: 2, failed: 0 });
+    expect(result.results.find(r => r.status === 'succeeded')?.reason).toBeNull();
+    expect(result.results.find(r => r.reason === 'missing_source')?.id).toBe(noSourceEp);
+    expect(result.results.find(r => r.reason === 'invalid_source')?.id).toBe(badSourceEp);
   });
 
   it('rejects an actor without the manage permission', async () => {
