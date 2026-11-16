@@ -6,7 +6,7 @@
 
 **Baseline:** `main` at `1719598` (`feat: implement similar drama management (Prompt 071)`)
 
-**Status:** Phase 0 in progress. No audit finding is marked resolved until regression evidence passes.
+**Status:** Phase 0 complete in commit `5aa14c0`. Phase 1 has not started. No audit finding is marked resolved until regression evidence passes.
 
 **Authority:** `AGENTS.md` → `docs/requirements/REQUIREMENTS.md` → `docs/decisions/DECISIONS.md` → `docs/architecture/ARCHITECTURE.md` → `docs/development/CONVENTIONS.md` → this plan. This plan does not replace those sources and must be corrected if it conflicts with them.
 
@@ -324,19 +324,19 @@ All other requirements, phase ordering, architecture, and scope are fixed by the
 
 ## 9. Progress Ledger
 
-| Phase | Status      | Findings                                                        | Files                              | Migrations                                           | Tests executed          | Commit  | Remaining issues                  |
-| ----- | ----------- | --------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------- | ----------------------- | ------- | --------------------------------- |
-| P0    | In progress | Register only                                                   | This document, documentation index | None                                                 | Baseline recorded above | Pending | Complete review, commit, and push |
-| P1    | Not started | C-01, H-01, H-02, H-16, M-05, M-06, TEST-02, TEST-08, SCOPE-A07 | Pending                            | None expected                                        | Pending                 | —       | —                                 |
-| P2    | Not started | C-02, M-03, M-04, M-09, TEST-05                                 | Pending                            | Pending                                              | Pending                 | —       | —                                 |
-| P3    | Not started | H-03, H-18, SCOPE-A06, TEST-07                                  | Pending                            | Permission CHECK migration                           | Pending                 | —       | —                                 |
-| P4    | Not started | H-04..H-09, M-01, M-02, M-07, M-08, SCOPE-D01, SUP-01, TEST-03  | Pending                            | Integrity/typed-relationship/published-at migrations | Pending                 | —       | —                                 |
-| P5    | Not started | H-12, H-13, H-16, H-17, DOC-04                                  | Pending                            | None expected                                        | Pending                 | —       | —                                 |
-| P6    | Not started | H-14, H-15                                                      | Pending                            | Possible monitoring-state migration                  | Pending                 | —       | —                                 |
-| P7    | Not started | H-10, H-11, SCOPE-A05, TEST-04                                  | Pending                            | Verification/audit/progress migrations               | Pending                 | —       | —                                 |
-| P8    | Not started | SCOPE-P01..P08, SCOPE-A01..A04, SCOPE-D02, TEST-06              | Pending                            | Search/rate-limit/published-at support               | Pending                 | —       | —                                 |
-| P9    | Not started | ACC-01..ACC-08                                                  | Pending                            | None expected                                        | Pending                 | —       | —                                 |
-| P10   | Not started | DOC-01..DOC-05                                                  | Pending                            | Documentation only                                   | Pending                 | —       | —                                 |
+| Phase | Status      | Findings                                                        | Files                                                         | Migrations                                           | Tests executed                              | Commit    | Remaining issues           |
+| ----- | ----------- | --------------------------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------- | --------- | -------------------------- |
+| P0    | Complete    | Register only                                                   | This document, documentation index, project status, changelog | None                                                 | Baseline recorded; 69/69 IDs; Prettier pass | `5aa14c0` | Push pending at checkpoint |
+| P1    | Not started | C-01, H-01, H-02, H-16, M-05, M-06, TEST-02, TEST-08, SCOPE-A07 | Pending                                                       | None expected                                        | Pending                                     | —         | —                          |
+| P2    | Not started | C-02, M-03, M-04, M-09, TEST-05                                 | Pending                                                       | Pending                                              | Pending                                     | —         | —                          |
+| P3    | Not started | H-03, H-18, SCOPE-A06, TEST-07                                  | Pending                                                       | Permission CHECK migration                           | Pending                                     | —         | —                          |
+| P4    | Not started | H-04..H-09, M-01, M-02, M-07, M-08, SCOPE-D01, SUP-01, TEST-03  | Pending                                                       | Integrity/typed-relationship/published-at migrations | Pending                                     | —         | —                          |
+| P5    | Not started | H-12, H-13, H-16, H-17, DOC-04                                  | Pending                                                       | None expected                                        | Pending                                     | —         | —                          |
+| P6    | Not started | H-14, H-15                                                      | Pending                                                       | Possible monitoring-state migration                  | Pending                                     | —         | —                          |
+| P7    | Not started | H-10, H-11, SCOPE-A05, TEST-04                                  | Pending                                                       | Verification/audit/progress migrations               | Pending                                     | —         | —                          |
+| P8    | Not started | SCOPE-P01..P08, SCOPE-A01..A04, SCOPE-D02, TEST-06              | Pending                                                       | Search/rate-limit/published-at support               | Pending                                     | —         | —                          |
+| P9    | Not started | ACC-01..ACC-08                                                  | Pending                                                       | None expected                                        | Pending                                     | —         | —                          |
+| P10   | Not started | DOC-01..DOC-05                                                  | Pending                                                       | Documentation only                                   | Pending                                     | —         | —                          |
 
 ---
 
