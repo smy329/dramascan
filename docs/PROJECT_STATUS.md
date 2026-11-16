@@ -3,7 +3,7 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-10  
-**Current Prompt:** 067 - Convert a Single-Episode Drama into a Standalone Movie
+**Current Prompt:** Remediation Phase 0 - Baseline and Remediation Planning
 
 ---
 
@@ -13,6 +13,21 @@
 - **Documents:** `AGENTS.md`, `CONVENTIONS.md`, `ARCHITECTURE.md`, `CONVENTIONS.md`, `DATABASE.md`, `API.md`, `SECURITY.md`, `DECISIONS.md`
 - **Environment:** Node.js >= 24.0.0, PostgreSQL, Better Auth with Google OAuth
 - **Package manager:** npm
+
+## Production Remediation
+
+The production-readiness remediation begins from `main` at `1719598` with the complete audit finding register in `docs/development/REMEDIATION_PLAN.md`.
+
+Baseline results before remediation:
+
+- `npm run typecheck`: **FAIL** — 3 errors in `src/workflows/admin/similar-dramas.ts`.
+- `npm run lint`: **FAIL** — 16 errors.
+- `npm test`: **FAIL** — 636 passed, 1 failed (`admin-navigation.test.ts`).
+- `npm run test:integration`: **PASS** — 14 files, 191/191.
+- `npm run build`: **FAIL** — hooks imported into an async Server Component.
+- `npm run test:e2e`: **FAIL** — 16 passed, 15 failed.
+
+The three pre-existing working-tree modifications under the similar-drama page/workflow and authorization permission catalog are preserved for Phase 1. They are not treated as completed remediation.
 
 ## Architectural Conflicts
 

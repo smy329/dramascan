@@ -2,6 +2,15 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [Unreleased] - 2026-11-16
+
+### docs: establish the production remediation baseline (Phase 0)
+
+- Added `docs/development/REMEDIATION_PLAN.md` with all 69 confirmed audit findings, severity, phase assignment, affected files, root causes, required corrections, regression tests, dependencies, implementation order, acceptance criteria, migration/data risks, and progress ledger.
+- Recorded the current failing baseline: typecheck 3 errors, lint 16 errors, unit tests 636/637, integration tests 191/191, production build failure, and E2E 16 passed/15 failed.
+- Preserved the three pre-existing uncommitted similar-drama and permission-catalog modifications for Phase 1 review rather than discarding or committing them as remediation.
+- Linked the remediation plan from `docs/README.md` and recorded the baseline in `docs/PROJECT_STATUS.md`.
+
 ## [0.9.2] - 2026-11-15
 
 ### feat: convert a single-episode drama into a standalone movie (Prompt 067, D-030)
