@@ -14,16 +14,10 @@ import { and, eq, isNull } from 'drizzle-orm';
 export async function GET(request: Request): Promise<Response> {
   const { searchParams } = new URL(request.url);
 
-  const visibility = searchParams.get('visibility') as
-    | 'coming_soon'
-    | 'hidden'
-    | null;
+  const visibility = searchParams.get('visibility') as 'coming_soon' | 'hidden' | null;
 
   const publicationStatus = searchParams.get('publication_status') as
-    | 'draft'
-    | 'published'
-    | 'unpublished'
-    | null;
+    'draft' | 'published' | 'unpublished' | null;
 
   const whereConditions: any[] = [isNull(dramas.deleted_at)];
 

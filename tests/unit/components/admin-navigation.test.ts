@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 import type { ActorContext } from '@/modules/authorization/actors';
 import type { PermissionKey } from '@/modules/authorization/permissions';
@@ -22,28 +25,34 @@ const ANONYMOUS: ActorContext = {
   permissions: [],
 };
 
-const ALL_ENTRIES = ADMIN_NAVIGATION.flatMap((group) => group.entries);
+const ALL_ENTRIES = ADMIN_NAVIGATION.flatMap(group => group.entries);
 
 describe('ADMIN_NAVIGATION', () => {
   it('uses only canonical permission keys', () => {
-    expect(ALL_ENTRIES.every((entry) => entry.permissions.every(isPermissionKey))).toBe(true);
+    expect(ALL_ENTRIES.every(entry => entry.permissions.every(isPermissionKey))).toBe(true);
     expect(ADMIN_AREA_PERMISSIONS.every(isPermissionKey)).toBe(true);
   });
 
   it('has unique ids and admin-only hrefs', () => {
-    expect(new Set(ALL_ENTRIES.map((entry) => entry.id)).size).toBe(ALL_ENTRIES.length);
-    expect(new Set(ALL_ENTRIES.map((entry) => entry.href)).size).toBe(ALL_ENTRIES.length);
-    expect(ALL_ENTRIES.every((entry) => entry.href.startsWith('/admin'))).toBe(true);
+    expect(new Set(ALL_ENTRIES.map(entry => entry.id)).size).toBe(ALL_ENTRIES.length);
+    expect(new Set(ALL_ENTRIES.map(entry => entry.href)).size).toBe(ALL_ENTRIES.length);
+    expect(ALL_ENTRIES.every(entry => entry.href.startsWith('/admin'))).toBe(true);
   });
 
-  it('marks the implemented content and user entries', () => {
-    expect(ALL_ENTRIES.filter((entry) => entry.implemented).map((entry) => entry.id)).toEqual([
-      'overview',
-      'dramas',
-      'movies',
-      'episodes',
-      'users',
-    ]);
+  it('marks only entries whose pages exist as implemented', () => {
+    const implemented = ALL_ENTRIES.filter(entry => entry.implemented);
+
+    expect(implemented.map(entry => entry.id)).toEqual(['overview', 'dramas', 'users']);
+
+    for (const entry of implemented) {
+      const pagePath = join(process.cwd(), 'src', 'app', entry.href.slice(1), 'page.tsx');
+      expect(existsSync(pagePath), `${entry.href} must have a page.tsx`).toBe(true);
+    }
+  });
+
+  it('never exposes unresolved dynamic route tokens in navigation', () => {
+    expect(ALL_ENTRIES.filter(entry => /\[[^\]]+\]/.test(entry.href))).toEqual([]);
+    expect(ALL_ENTRIES.some(entry => entry.id === 'similar-dramas')).toBe(false);
   });
 });
 
@@ -57,6 +66,7 @@ describe('hasAdminAreaAccess', () => {
     expect(hasAdminAreaAccess(actor([], true))).toBe(true);
     expect(hasAdminAreaAccess(actor(['drama.manage']))).toBe(true);
     expect(hasAdminAreaAccess(actor(['analytics.read']))).toBe(true);
+    expect(hasAdminAreaAccess(actor(['similar-drama.manage']))).toBe(true);
   });
 
   it('denies authenticated actors with no admin-area permission', () => {
@@ -74,18 +84,18 @@ describe('filterAdminNavigation', () => {
   it('shows the implemented overview, content, and users entries to Super Admin', () => {
     const visible = filterAdminNavigation(ADMIN_NAVIGATION, actor([], true));
 
-    expect(visible.map((group) => group.id)).toEqual(['dashboard', 'content', 'users']);
-    expect(visible[0]?.entries.map((entry) => entry.id)).toEqual(['overview']);
+    expect(visible.map(group => group.id)).toEqual(['dashboard', 'content', 'users']);
+    expect(visible[0]?.entries.map(entry => entry.id)).toEqual(['overview']);
   });
 
-  it.each([ANONYMOUS, actor()])('renders nothing without admin-area access', (current) => {
+  it.each([ANONYMOUS, actor()])('renders nothing without admin-area access', current => {
     expect(filterAdminNavigation(ADMIN_NAVIGATION, current)).toEqual([]);
   });
 
   it('shows the implemented dashboard and content groups to an actor with drama.manage', () => {
-    expect(
-      filterAdminNavigation(ADMIN_NAVIGATION, actor(['drama.manage'])).map((g) => g.id)
-    ).toEqual(['dashboard', 'content']);
+    expect(filterAdminNavigation(ADMIN_NAVIGATION, actor(['drama.manage'])).map(g => g.id)).toEqual(
+      ['dashboard', 'content']
+    );
   });
 
   it('hides the Dramas entry from an actor holding only drama.read', () => {
@@ -131,11 +141,11 @@ describe('filterAdminNavigation', () => {
     ];
 
     expect(
-      filterAdminNavigation(groups, actor(['drama.read'])).map((group) =>
-        group.entries.map((entry) => entry.id)
+      filterAdminNavigation(groups, actor(['drama.read'])).map(group =>
+        group.entries.map(entry => entry.id)
       )
     ).toEqual([['dramas']]);
-    expect(filterAdminNavigation(groups, actor(['review.manage'])).map((group) => group.id)).toEqual([
+    expect(filterAdminNavigation(groups, actor(['review.manage'])).map(group => group.id)).toEqual([
       'moderation',
     ]);
     expect(filterAdminNavigation(groups, actor(['analytics.read']))).toEqual([]);
@@ -177,7 +187,7 @@ describe('isAdminNavItemActive', () => {
 });
 
 function entryById(id: string) {
-  return ALL_ENTRIES.find((entry) => entry.id === id);
+  return ALL_ENTRIES.find(entry => entry.id === id);
 }
 
 const SYSTEM_GROUP: readonly AdminNavGroup[] = [
@@ -222,19 +232,19 @@ describe('Super Admin-only entries', () => {
   it('hides Super Admin-only entries from an actor with admin.manage', () => {
     const visible = filterAdminNavigation(SYSTEM_GROUP, actor(['admin.manage']));
 
-    expect(visible[0]?.entries.map((entry) => entry.id)).toEqual(['information-pages']);
+    expect(visible[0]?.entries.map(entry => entry.id)).toEqual(['information-pages']);
   });
 
   it('hides Super Admin-only entries from an actor with settings.manage', () => {
     const visible = filterAdminNavigation(SYSTEM_GROUP, actor(['settings.manage']));
 
-    expect(visible[0]?.entries.map((entry) => entry.id)).toEqual(['information-pages']);
+    expect(visible[0]?.entries.map(entry => entry.id)).toEqual(['information-pages']);
   });
 
   it('shows every system entry to a Super Admin', () => {
     const visible = filterAdminNavigation(SYSTEM_GROUP, actor([], true));
 
-    expect(visible[0]?.entries.map((entry) => entry.id)).toEqual([
+    expect(visible[0]?.entries.map(entry => entry.id)).toEqual([
       'settings',
       'roles',
       'information-pages',

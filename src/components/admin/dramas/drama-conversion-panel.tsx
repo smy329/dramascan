@@ -630,6 +630,7 @@ export function DramaConversionPanel({
         onOpenChange={setIsConfirmOpen}
         onConfirm={handleApply}
         isPending={isApplying}
+        error={errorMessage}
         title="Confirm structure conversion"
         description={`This changes the structure of “${dramaTitle}”.`}
         affectedContent={

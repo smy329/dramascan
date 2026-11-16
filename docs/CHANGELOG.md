@@ -4,6 +4,52 @@ All notable changes to the DramaScan project will be documented in this file.
 
 ## [Unreleased] - 2026-11-16
 
+### fix: restore admin and public application availability (Phase 1)
+
+Resolves C-01, H-01, H-02, M-05, M-06, TEST-02, TEST-08, SCOPE-A07, and the
+missing-parent half of M-09. H-16 is corrected only for the similar-drama
+routes; the drama and episode delete handlers remain invalid until Phase 5.
+
+- `src/components/admin/navigation.ts`: removed the sidebar entry whose href was
+  the literal `/admin/dramas/[id]/similar-dramas`, which crashed every admin
+  page; Movies and Episodes are marked unimplemented until their pages exist;
+  added `ADMIN_DRILLDOWN_PERMISSIONS` so implemented drill-down pages still grant
+  admin-area access without a static sidebar destination.
+- `src/app/admin/dramas/page.tsx`: each row links to its similar-drama manager
+  only when the actor holds `similar-drama.manage`.
+- `src/workflows/admin/similar-dramas.ts`: rebuilt contracts. Page and count
+  share one joined scope, soft-deleted targets are excluded, search escapes LIKE
+  metacharacters, missing parents raise `NotFoundError`, and add/update/reorder
+  run in transactions with typed `ConflictError`/`ValidationError`/`NotFoundError`.
+  Added candidate search, atomic reorder, page loading, and table-query parsing.
+- `src/app/admin/api/similar-dramas/**`: standard envelopes, same-origin checks
+  on mutations, malformed JSON mapped to 400, bodyless 204 delete, plus new
+  `/candidates` and `/reorder` routes.
+- `src/app/admin/dramas/[id]/similar-dramas/page.tsx`: Server Component that
+  awaits `params`, enforces the drill-down permission, maps not-found, and
+  delegates interaction to `SimilarDramaManager`.
+- `src/components/admin/dramas/similar-drama-manager.tsx` (new): add, remove,
+  ordered reorder, candidate search, loading/empty/error/retry states.
+- `src/components/dialogs/confirmation-dialog.tsx`: confirmation no longer
+  closes itself; a failed attempt stays visible inside the dialog via the new
+  `error` prop, and both conversion panels pass their failure message through.
+- `src/app/(public)/drama/page.tsx`: temporary unblock (`force-dynamic` plus an
+  absolute `${APP_URL}/public/api/dramas` self-fetch). Phase 2 replaces this with
+  the public query service.
+- `tests/integration/content/similar-dramas.integration.test.ts` (new): 24
+  PostgreSQL contract tests for authorization, listing, count/join parity,
+  search, soft deletion, pagination, add, update, reorder, and candidate search.
+- `tests/e2e/admin-similar-dramas.spec.ts` (new): browser coverage for the full
+  add/reorder/remove workflow with persisted order, not-found handling, and
+  permission refusal. `tests/e2e/support/drama-fixture.mjs` now also deletes the
+  similar-drama links its seeded dramas acquire.
+- `eslint.config.js`: `no-extra-parens` ignores JSX and arrow conditionals,
+  because the previous setting contradicted the repository's Prettier output and
+  produced repo-wide false failures.
+
+Verification: typecheck PASS, lint PASS, unit 645/645, integration 215/215,
+Playwright 34/34, production build PASS.
+
 ### docs: establish the production remediation baseline (Phase 0)
 
 - Added `docs/development/REMEDIATION_PLAN.md` with all 69 confirmed audit findings, severity, phase assignment, affected files, root causes, required corrections, regression tests, dependencies, implementation order, acceptance criteria, migration/data risks, and progress ledger.

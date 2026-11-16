@@ -213,8 +213,10 @@ describe('DramaMovieConversionPanel', () => {
     const dialog = await screen.findByRole('alertdialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Convert to movie' }));
 
-    expect(await screen.findByText('The drama changed after the preview.')).toBeTruthy();
-    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect((await screen.findAllByText('The drama changed after the preview.')).length).toBeGreaterThan(
+      0
+    );
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
     expect(screen.queryByText(/was created as a standalone movie/)).toBeNull();
     expect(screen.getByText('seasons-of-glass')).toBeTruthy();
   });

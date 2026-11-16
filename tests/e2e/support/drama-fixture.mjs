@@ -227,17 +227,35 @@ export async function removeDrama(fixture) {
         'DELETE FROM movies WHERE converted_from_drama_id = $1',
         [fixture.id]
       );
-      await run(client, 'delete the seeded episodes', target, 'DELETE FROM episodes WHERE drama_id = $1', [
-        fixture.id,
-      ]);
-      await run(client, 'delete the seeded seasons', target, 'DELETE FROM seasons WHERE drama_id = $1', [
-        fixture.id,
-      ]);
+      await run(
+        client,
+        'delete the seeded episodes',
+        target,
+        'DELETE FROM episodes WHERE drama_id = $1',
+        [fixture.id]
+      );
+      await run(
+        client,
+        'delete the seeded seasons',
+        target,
+        'DELETE FROM seasons WHERE drama_id = $1',
+        [fixture.id]
+      );
       await run(
         client,
         'delete the seeded snapshots',
         target,
         'DELETE FROM structure_conversion_snapshots WHERE drama_id = $1',
+        [fixture.id]
+      );
+      // Recommendation links are written by the admin workflow, not by this
+      // helper, but they belong to the seeded dramas and would otherwise
+      // survive the cleanup as orphans.
+      await run(
+        client,
+        'delete the seeded similar-drama links',
+        target,
+        'DELETE FROM similar_dramas WHERE drama_id = $1 OR similar_drama_id = $1',
         [fixture.id]
       );
       await run(client, 'delete the seeded drama', target, 'DELETE FROM dramas WHERE id = $1', [

@@ -2,8 +2,8 @@
 
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
-**Date:** 2026-11-10  
-**Current Prompt:** Remediation Phase 0 - Baseline and Remediation Planning
+**Date:** 2026-11-16  
+**Current Prompt:** Remediation Phase 1 - Restore application availability (complete). Next: Phase 2 - Public API security and availability.
 
 ---
 
@@ -28,6 +28,24 @@ Baseline results before remediation:
 - `npm run test:e2e`: **FAIL** — 16 passed, 15 failed.
 
 The three pre-existing working-tree modifications under the similar-drama page/workflow and authorization permission catalog are preserved for Phase 1. They are not treated as completed remediation.
+
+### Phase 1 result - application availability restored
+
+Resolved: C-01, H-01, H-02, M-05, M-06, TEST-02, TEST-08, SCOPE-A07, plus M-09 early. H-16 is fixed for the similar-drama routes only; the drama and episode delete handlers keep their invalid bodyless-204 form until Phase 5.
+
+- `src/components/admin/navigation.ts`: the unresolved `/admin/dramas/[id]/similar-dramas` sidebar entry is gone, Movies and Episodes are marked unimplemented, and a new `ADMIN_DRILLDOWN_PERMISSIONS` list keeps implemented drill-down pages reachable without a static sidebar link.
+- `src/app/admin/dramas/page.tsx`: each drama row exposes "Manage similar dramas" only for actors holding the drill-down permission.
+- `src/workflows/admin/similar-dramas.ts`: rewritten contracts. The count and page queries share the same joined scope, soft-deleted targets are excluded, search is a literal `ILIKE` with escaped metacharacters, missing parents raise `NotFoundError`, and add/update/reorder run in transactions with typed conflicts and validation errors. New `searchSimilarDramaCandidates`, `reorderSimilarDramas`, `loadSimilarDramasPage`, and table-query parsing.
+- `src/app/admin/api/similar-dramas/**`: standard envelopes, same-origin checks on every mutation, JSON-parse failures mapped to 400, a bodyless 204 delete, and new `/candidates` and `/reorder` routes.
+- `src/app/admin/dramas/[id]/similar-dramas/page.tsx`: Server Component that awaits `params.id`, enforces `similar-drama.manage`, maps `NotFoundError` to `notFound()`, and renders a client island.
+- `src/components/admin/dramas/similar-drama-manager.tsx`: add, remove, ordered reorder, candidate search, loading/empty/error/retry states, and fixed poster dimensions.
+- `src/components/dialogs/confirmation-dialog.tsx`: confirm is a plain button, the dialog no longer closes itself, and a failed attempt stays visible through the new `error` prop; both conversion panels pass their failure message in.
+- `src/app/(public)/drama/page.tsx`: temporary Phase 1 unblock only - `force-dynamic` plus an absolute `${APP_URL}/public/api/dramas` self-fetch. Phase 2 replaces this with the public query service.
+- `eslint.config.js`: `no-extra-parens` now ignores JSX and arrow conditionals, because the previous setting contradicted the repository's Prettier formatting and produced repo-wide false failures.
+
+Verification: typecheck PASS, lint PASS (0 errors/warnings), unit 645/645 PASS, integration 215/215 PASS (24 new similar-drama contract tests), E2E 34/34 PASS (baseline: 16 passed/15 failed of 31; 3 new similar-drama browser tests), production build PASS.
+
+Note: the production build must be run with `APP_URL` and `TRUSTED_ORIGINS` set to `https://localhost:3000` in a shell, because `.env.local` carries the HTTP development profile while production validation requires HTTPS.
 
 ## Architectural Conflicts
 

@@ -25,6 +25,8 @@ export type ConfirmationDialogProps = Readonly<{
   defaultOpen?: boolean;
   onConfirm: () => void;
   isPending?: boolean;
+  /** A failed attempt's message; rendered inside the dialog so it stays visible. */
+  error?: ReactNode;
   title: string;
   description?: ReactNode;
   affectedContent?: ReactNode;
@@ -99,6 +101,7 @@ export function ConfirmationDialog({
   defaultOpen,
   onConfirm,
   isPending = false,
+  error,
   title,
   description,
   affectedContent,
@@ -160,24 +163,29 @@ export function ConfirmationDialog({
               children: consequences,
             })
           : null}
+        {error ? (
+          <div
+            role="alert"
+            className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
+          >
+            {error}
+          </div>
+        ) : null}
         <AlertDialogFooter>
           <AlertDialogCancel ref={cancelRef} disabled={isPending}>
             {cancelLabel}
           </AlertDialogCancel>
-          <AlertDialogPrimitive.Close
+          <Button
+            type="button"
+            data-slot="confirmation-dialog-confirm"
+            variant={variant === 'destructive' ? 'destructive' : 'default'}
             onClick={handleConfirm}
-            render={
-              <Button
-                data-slot="confirmation-dialog-confirm"
-                variant={variant === 'destructive' ? 'destructive' : 'default'}
-                disabled={isPending}
-                aria-busy={isPending ? true : undefined}
-              />
-            }
+            disabled={isPending}
+            aria-busy={isPending ? true : undefined}
           >
             {renderSpinner(isPending)}
             {isPending ? pendingLabel : confirmLabel}
-          </AlertDialogPrimitive.Close>
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialogPrimitive.Root>

@@ -86,7 +86,6 @@ export function DramaMovieConversionPanel({
     setIsApplying(false);
 
     if (!response.ok) {
-      setIsConfirmOpen(false);
       setErrorMessage(response.error.message);
       return;
     }
@@ -265,6 +264,7 @@ export function DramaMovieConversionPanel({
           onOpenChange={setIsConfirmOpen}
           onConfirm={handleApply}
           isPending={isApplying}
+          error={errorMessage}
           variant="destructive"
           title="Convert this drama to a movie?"
           description="The drama, its season, and its episode move to Trash. A new standalone movie is created with the same content."

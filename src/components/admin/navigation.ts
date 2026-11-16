@@ -72,14 +72,14 @@ export const ADMIN_NAVIGATION: readonly AdminNavGroup[] = [
         label: 'Movies',
         href: '/admin/movies',
         permissions: ['movie.read'],
-        implemented: true,
+        implemented: false,
       },
       {
         id: 'episodes',
         label: 'Episodes',
         href: '/admin/episodes',
         permissions: ['episode.read'],
-        implemented: true,
+        implemented: false,
       },
       {
         id: 'categories',
@@ -87,13 +87,6 @@ export const ADMIN_NAVIGATION: readonly AdminNavGroup[] = [
         href: '/admin/categories',
         permissions: ['category.read'],
         implemented: false,
-      },
-      {
-        id: 'similar-dramas',
-        label: 'Similar Dramas',
-        href: '/admin/dramas/[id]/similar-dramas',
-        permissions: ['similar-drama.manage'],
-        implemented: true,
       },
       {
         id: 'platforms',
@@ -195,17 +188,27 @@ export const ADMIN_NAVIGATION: readonly AdminNavGroup[] = [
 ];
 
 /**
+ * Permissions that open an implemented admin drill-down page but have no
+ * top-level sidebar destination. The similar-drama manager is reached from a
+ * concrete drama row, so it must still grant access to the admin area without
+ * introducing an unresolved `[id]` link into the sidebar.
+ */
+const ADMIN_DRILLDOWN_PERMISSIONS: readonly PermissionKey[] = ['similar-drama.manage'];
+
+/**
  * Union of every permission that grants access to a non-Super-Admin-only admin
- * section. Derived from the navigation model so the shell gate cannot drift
- * from the entries. Permissions that exist only on a Super Admin-only entry
- * are excluded: holding one must not open the admin shell.
+ * section. Derived from the navigation model plus implemented drill-down pages
+ * so the shell gate cannot drift from the entries. Permissions that exist only
+ * on a Super Admin-only entry are excluded: holding one must not open the admin
+ * shell.
  */
 export const ADMIN_AREA_PERMISSIONS: readonly PermissionKey[] = Array.from(
-  new Set(
-    ADMIN_NAVIGATION.flatMap((group) => group.entries)
-      .filter((entry) => entry.superAdminOnly !== true)
-      .flatMap((entry) => entry.permissions)
-  )
+  new Set<PermissionKey>([
+    ...ADMIN_NAVIGATION.flatMap(group => group.entries)
+      .filter(entry => entry.superAdminOnly !== true)
+      .flatMap(entry => entry.permissions),
+    ...ADMIN_DRILLDOWN_PERMISSIONS,
+  ])
 );
 
 /**
@@ -219,7 +222,7 @@ export function hasAdminAreaAccess(actor: ActorContext): boolean {
   if (actor.isSuperAdmin) {
     return true;
   }
-  return ADMIN_AREA_PERMISSIONS.some((permission) => hasPermission(actor, permission));
+  return ADMIN_AREA_PERMISSIONS.some(permission => hasPermission(actor, permission));
 }
 
 /**
@@ -233,18 +236,14 @@ export function filterAdminNavigation(
   const areaAccess = hasAdminAreaAccess(actor);
 
   return groups
-    .map((group) => ({
+    .map(group => ({
       ...group,
-      entries: group.entries.filter((entry) => isEntryVisible(entry, actor, areaAccess)),
+      entries: group.entries.filter(entry => isEntryVisible(entry, actor, areaAccess)),
     }))
-    .filter((group) => group.entries.length > 0);
+    .filter(group => group.entries.length > 0);
 }
 
-function isEntryVisible(
-  entry: AdminNavEntry,
-  actor: ActorContext,
-  areaAccess: boolean
-): boolean {
+function isEntryVisible(entry: AdminNavEntry, actor: ActorContext, areaAccess: boolean): boolean {
   if (!entry.implemented) {
     return false;
   }
@@ -254,7 +253,7 @@ function isEntryVisible(
   if (entry.permissions.length === 0) {
     return areaAccess;
   }
-  return entry.permissions.some((permission) => hasPermission(actor, permission));
+  return entry.permissions.some(permission => hasPermission(actor, permission));
 }
 
 /** `/admin` matches exactly; other sections match themselves and descendants. */

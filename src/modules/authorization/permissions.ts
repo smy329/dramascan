@@ -33,6 +33,7 @@ export const PERMISSION_RESOURCES = [
   'analytics',
   'settings',
   'admin',
+  'similar-drama',
 ] as const;
 
 export type PermissionResource = (typeof PERMISSION_RESOURCES)[number];
@@ -78,6 +79,9 @@ export const PERMISSIONS = {
   'category.update': { resource: 'category', action: 'update', description: 'Update categories.' },
   'category.delete': { resource: 'category', action: 'delete', description: 'Delete categories.' },
   'category.manage': { resource: 'category', action: 'manage', description: 'Manage categories.' },
+
+  // Similar dramas
+  'similar-drama.manage': { resource: 'similar-drama', action: 'manage', description: 'Manage similar dramas.' },
 
   // Content: platform
   'platform.create': { resource: 'platform', action: 'create', description: 'Create platforms.' },

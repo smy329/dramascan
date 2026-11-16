@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
+import { useState, type JSX, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { ConfirmationDialog } from '@/components/dialogs/confirmation-dialog';
 import { ConsequenceList } from '@/components/dialogs/consequence-list';
@@ -12,6 +13,42 @@ const BASE_PROPS = {
   title: 'Delete drama',
   onConfirm: () => {},
 } as const;
+
+/** Mirrors a real caller: pending while the request runs, close only on success. */
+function DeferredConfirmation({
+  operation,
+}: Readonly<{ operation: () => Promise<void> }>): JSX.Element {
+  const [open, setOpen] = useState(true);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<ReactNode>(null);
+
+  async function confirm(): Promise<void> {
+    setPending(true);
+    setError(null);
+
+    try {
+      await operation();
+      setOpen(false);
+    } catch {
+      setError('The drama could not be removed.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <ConfirmationDialog
+      open={open}
+      onOpenChange={setOpen}
+      onConfirm={() => void confirm()}
+      isPending={pending}
+      error={error}
+      title="Delete drama"
+      confirmLabel="Delete"
+      pendingLabel="Deleting…"
+    />
+  );
+}
 
 describe('ConfirmationDialog lifecycle', () => {
   it('renders nothing while closed', () => {
@@ -73,7 +110,7 @@ describe('ConfirmationDialog lifecycle', () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
-  it('confirms exactly once and requests closure', async () => {
+  it('confirms exactly once and does not close itself before the operation settles', async () => {
     const onOpenChange = vi.fn();
     const onConfirm = vi.fn();
 
@@ -90,7 +127,8 @@ describe('ConfirmationDialog lifecycle', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
-    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
   });
 
   it('honours custom confirm and cancel labels', async () => {
@@ -273,5 +311,42 @@ describe('ConfirmationDialog variant and sections', () => {
     await screen.findByRole('alertdialog');
     expect(container.querySelectorAll('h3')).toHaveLength(0);
     expect(screen.queryByRole('list')).toBeNull();
+  });
+});
+
+describe('ConfirmationDialog async lifecycle', () => {
+  it('stays open and pending until the deferred operation resolves', async () => {
+    let resolveOperation: () => void = () => {};
+    const operation = new Promise<void>(resolve => {
+      resolveOperation = resolve;
+    });
+
+    render(<DeferredConfirmation operation={() => operation} />);
+
+    await screen.findByRole('alertdialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(await screen.findByRole('button', { name: /Deleting/ })).toBeTruthy();
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+
+    await act(async () => {
+      resolveOperation();
+      await operation;
+    });
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  });
+
+  it('keeps a failure visible inside the open dialog and offers another attempt', async () => {
+    render(<DeferredConfirmation operation={() => Promise.reject(new Error('failed'))} />);
+
+    await screen.findByRole('alertdialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    const alert = await screen.findByRole('alert');
+
+    expect(alert.textContent).toContain('The drama could not be removed.');
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
   });
 });

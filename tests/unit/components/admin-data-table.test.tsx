@@ -24,7 +24,6 @@ const state: TableQueryState = {
 const columns: readonly AdminTableColumn<Row>[] = [
   { key: 'name', header: 'Name', sortKey: 'name', render: row => row.name },
   { key: 'email', header: 'Email', sortKey: 'email', visibility: 'sm', render: row => row.email },
-  // eslint-disable-next-line no-extra-parens -- required with no-confusing-arrow for this concise ternary
   { key: 'status', header: 'Status', render: row => (row.active ? 'Active' : 'Deactivated') },
 ];
 

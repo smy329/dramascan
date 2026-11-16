@@ -66,17 +66,24 @@ export async function readJsonBody(request: Request): Promise<unknown> {
   }
 }
 
-export function jsonResponse(
-  body: unknown,
-  status: number,
-  requestId: string
-): Response {
+export function jsonResponse(body: unknown, status: number, requestId: string): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       'X-Request-Id': requestId,
     },
+  });
+}
+
+/**
+ * A 204 response must not carry a body or a JSON content type. Returning
+ * `{ ok: true }` with status 204 is invalid and is silently dropped by fetch.
+ */
+export function emptyResponse(requestId: string): Response {
+  return new Response(null, {
+    status: 204,
+    headers: { 'X-Request-Id': requestId },
   });
 }
 

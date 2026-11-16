@@ -48,6 +48,8 @@ export default async function AdminDramasPage({
     notFound();
   }
 
+  const canManageSimilarDramas = hasPermission(actor, toPermissionKey('similar-drama', 'manage'));
+
   const raw = await searchParams;
   const query = parseConversionListQuery(raw);
   const result = await listConversionCandidates(actor, query);
@@ -90,7 +92,7 @@ export default async function AdminDramasPage({
       key: 'actions',
       header: 'Action',
       align: 'right',
-      render: row =>
+      render: row => (
         <div className="flex flex-wrap justify-end gap-3">
           <Link
             href={`/admin/dramas/${row.id}/convert`}
@@ -98,16 +100,24 @@ export default async function AdminDramasPage({
           >
             Convert structure
           </Link>
-          {row.activeEpisodes === 1 ?
+          {row.activeEpisodes === 1 ? (
             <Link
               href={`/admin/dramas/${row.id}/convert-to-movie`}
               className="text-sm font-medium text-foreground underline underline-offset-4 hover:text-primary"
             >
               Convert to movie
             </Link>
-          : null}
+          ) : null}
+          {canManageSimilarDramas ? (
+            <Link
+              href={`/admin/dramas/${row.id}/similar-dramas`}
+              className="text-sm font-medium text-foreground underline underline-offset-4 hover:text-primary"
+            >
+              Manage similar dramas
+            </Link>
+          ) : null}
         </div>
-      ,
+      ),
     },
   ];
 

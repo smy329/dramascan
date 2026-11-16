@@ -19,7 +19,14 @@ export default [
       'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       'no-unused-expressions': 'error',
       'no-implicit-coercion': ['error', { boolean: false, number: true, string: true }],
-      'no-extra-parens': 'error',
+      // Prettier always parenthesises multi-line JSX in ternaries and arrow
+      // bodies. Keep the rule for genuinely redundant parentheses in plain
+      // expressions, but do not fight the formatter on JSX.
+      'no-extra-parens': [
+        'error',
+        'all',
+        { ignoreJSX: 'all', enforceForArrowConditionals: false },
+      ],
       'no-floating-decimal': 'error',
       'eol-last': 'error',
       'no-trailing-spaces': 'error',

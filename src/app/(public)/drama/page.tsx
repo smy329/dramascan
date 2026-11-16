@@ -5,12 +5,19 @@ import { EmptyState, PageHeader, PublicPageLayout } from '@/components/public/La
 import { buttonVariants } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { serverConfig } from '@/platform/config';
+
+// The catalogue reads live data; it must never be prerendered from a request
+// that does not exist yet. Phase 2 replaces this self-fetch with the public
+// query service.
+export const dynamic = 'force-dynamic';
 
 export default async function DramasPage() {
-  const response = await fetch('/api/public/dramas', {
+  const response = await fetch(`${serverConfig.appUrl}/public/api/dramas`, {
     headers: {
       Accept: 'application/json',
     },
+    cache: 'no-store',
   });
 
   if (!response.ok) {
@@ -68,13 +75,13 @@ export default async function DramasPage() {
                 <Link
                   href="/categories"
                   className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
-                  >
+                >
                   Browse categories
                 </Link>
               </EmptyState>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {dramas.map((drama) => (
+                {dramas.map(drama => (
                   <div key={drama.id} className="group rounded-xl overflow-hidden">
                     <Link
                       href={`/drama/${drama.slug}`}
@@ -90,9 +97,7 @@ export default async function DramasPage() {
                           className="w-full h-48 object-cover"
                         />
                         {drama.visibility === 'coming_soon' && (
-                          <span
-                            className="absolute left-2 top-2 inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background/85 px-2 py-1 text-[11px] font-medium text-foreground backdrop-blur"
-                          >
+                          <span className="absolute left-2 top-2 inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background/85 px-2 py-1 text-[11px] font-medium text-foreground backdrop-blur">
                             <span
                               aria-hidden="true"
                               className="size-1.5 rounded-full bg-primary/20 text-primary"
@@ -101,9 +106,7 @@ export default async function DramasPage() {
                           </span>
                         )}
                         {drama.visibility === 'hidden' && (
-                          <span
-                            className="absolute left-2 top-2 inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background/85 px-2 py-1 text-[11px] font-medium text-foreground backdrop-blur"
-                          >
+                          <span className="absolute left-2 top-2 inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background/85 px-2 py-1 text-[11px] font-medium text-foreground backdrop-blur">
                             <span
                               aria-hidden="true"
                               className="size-1.5 rounded-full bg-muted-foreground/20 text-muted-foreground"
@@ -117,16 +120,16 @@ export default async function DramasPage() {
                           {drama.title}
                         </h3>
                         <p className="text-xs text-muted-foreground">
-                          {drama.publication_status === 'published' ? 'Available now' : 'Not yet published'}
+                          {drama.publication_status === 'published'
+                            ? 'Available now'
+                            : 'Not yet published'}
                         </p>
-                        {drama.publication_status === 'published' && drama.visibility !== 'hidden' && (
-                          <a
-                            href="#"
-                            className="text-primary hover:text-primary/90 text-xs"
-                          >
-                            Watch trailer
-                          </a>
-                        )}
+                        {drama.publication_status === 'published' &&
+                          drama.visibility !== 'hidden' && (
+                            <a href="#" className="text-primary hover:text-primary/90 text-xs">
+                              Watch trailer
+                            </a>
+                          )}
                       </div>
                     </Link>
                   </div>
