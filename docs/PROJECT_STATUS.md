@@ -3,7 +3,7 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-16  
-**Current Prompt:** Remediation Phase 1 - Restore application availability (complete). Next: Phase 2 - Public API security and availability.
+**Current Prompt:** Remediation Phase 2 - Public API security and availability (complete). Next: Phase 3 - Authorization and user administration.
 
 ---
 
@@ -46,6 +46,22 @@ Resolved: C-01, H-01, H-02, M-05, M-06, TEST-02, TEST-08, SCOPE-A07, plus M-09 e
 Verification: typecheck PASS, lint PASS (0 errors/warnings), unit 645/645 PASS, integration 215/215 PASS (24 new similar-drama contract tests), E2E 34/34 PASS (baseline: 16 passed/15 failed of 31; 3 new similar-drama browser tests), production build PASS.
 
 Note: the production build must be run with `APP_URL` and `TRUSTED_ORIGINS` set to `https://localhost:3000` in a shell, because `.env.local` carries the HTTP development profile while production validation requires HTTPS.
+
+### Phase 2 result - public catalogue is availability-aware
+
+Resolved: C-02, M-03, M-04, TEST-05. `M-09` was already resolved in Phase 1.
+
+- `src/modules/content/public-dramas.ts` (new): the single owner of public drama visibility. A drama is discoverable only when it is published, not in Trash, and either its visibility is not `hidden` or a playable episode exists. A playable episode is published, not in Trash, has a source, and - for season-based dramas - sits under a published, non-deleted season. The predicate is applied in SQL, so page contents and totals cannot disagree. Ordering is title plus the row id, so pagination is deterministic.
+- `src/modules/content/public-dramas.shared.ts` (new): the pure rules and the wire contract. `parsePublicDramaListQuery` accepts only `page` (1-1,000,000) and `pageSize` (1-100) and discards every other key, so `publication_status`, `visibility`, and unknown parameters can never widen the result. `toPublicDramaSummary` emits the explicit camelCase DTO (`id`, `title`, `slug`, `description`, `poster`, `banner`, `href`, `status`, `comingSoon`, `createdAt`, `updatedAt`) and never a raw row or a source URL.
+- `src/app/public/api/dramas/route.ts`: rewritten as HTTP adaptation over the service. `{ data, meta }` envelope, `X-Request-Id`, `Cache-Control: no-store`, 400 on an out-of-contract page or page size.
+- `src/app/(public)/drama/page.tsx`: calls the public query service directly. The Phase 1 absolute self-fetch and its `force-dynamic` workaround are gone, the route is dynamic because it reads `searchParams`, cards use the canonical `/drama/{id}/{slug}` route, the nested `href="#"` anchor is removed, and a bounded Previous/Next pagination control was added.
+- `tests/unit/modules/content/public-dramas.test.ts` (new): 30 cases for the discovery rules, the query bounds, the canonical href, and the exact DTO key set.
+- `tests/integration/content/public-dramas.integration.test.ts` (new): 27 anonymous PostgreSQL tests for published/draft/unpublished/trashed dramas, coming-soon and hidden dramas, unpublished and trashed seasons, trashed episodes, missing sources, orphan season-based episodes, crafted query filters, DTO shape, pagination bounds, and the unique tiebreaker.
+- `tests/e2e/public-drama-catalogue.spec.ts` (new): 4 browser tests for the canonical card href, the absence of nested interactive elements, the hidden-drama reveal, crafted query parameters on the page and the API, and pagination bounds. `tests/e2e/support/drama-fixture.mjs` can now seed publication status and visibility while keeping its previous defaults.
+
+Verification: typecheck PASS, lint PASS (0 errors/warnings), unit 675/675 PASS (30 new), integration 242/242 PASS (27 new), E2E 38/38 PASS (4 new), production build PASS.
+
+Not covered here: the canonical `/drama/{id}/{slug}` detail route does not exist yet and lands in Phase 8, and server-side proof that a source is browser-playable lands in Phase 7. The current rule treats a published episode with a source as playable, which is what the publication workflow guarantees today.
 
 ## Architectural Conflicts
 

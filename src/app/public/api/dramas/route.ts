@@ -1,47 +1,75 @@
 import 'server-only';
 
-import { db } from '@/db/client';
-import { dramas } from '@/modules/content/schema';
-import { and, eq, isNull } from 'drizzle-orm';
+import { listPublicDramas } from '@/modules/content';
+import { AppError, InternalError } from '@/platform/errors';
+import { mapErrorToRest } from '@/platform/Http';
+import { createRequestLogger, generateRequestId } from '@/platform/logging';
 
 /**
- * Public drama listing API.
+ * Anonymous public drama catalogue API.
  *
- * Fetches non-deleted dramas, ordered by title. Optionally filters by
- * visibility mode and/or publication status. No admin authorization required:
- * this endpoint is intentionally open for the public-facing drama catalogue.
+ * The response is the approved `{ data, meta }` envelope with an explicit
+ * camelCase DTO. Visibility is decided by the content module's public query
+ * service; caller-supplied `publication_status`, `visibility`, or unknown
+ * parameters are discarded and cannot widen the result.
+ *
+ * Only `page` and `pageSize` are read from the query string; both are validated
+ * and bounded by `parsePublicDramaListQuery`.
  */
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+function jsonResponse(body: unknown, status: number, requestId: string): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Request-Id': requestId,
+    },
+  });
+}
+
 export async function GET(request: Request): Promise<Response> {
-  const { searchParams } = new URL(request.url);
+  const requestId = request.headers.get('x-request-id')?.trim() || generateRequestId();
+  const { logger } = createRequestLogger({ requestId, module: 'public-dramas' });
 
-  const visibility = searchParams.get('visibility') as 'coming_soon' | 'hidden' | null;
+  try {
+    const { searchParams } = new URL(request.url);
 
-  const publicationStatus = searchParams.get('publication_status') as
-    'draft' | 'published' | 'unpublished' | null;
+    const result = await listPublicDramas({
+      page: searchParams.get('page') ?? undefined,
+      pageSize: searchParams.get('pageSize') ?? undefined,
+    });
 
-  const whereConditions: any[] = [isNull(dramas.deleted_at)];
+    return jsonResponse(
+      {
+        data: result.items,
+        meta: {
+          page: result.page,
+          pageSize: result.pageSize,
+          total: result.total,
+          totalPages: result.totalPages,
+          hasNextPage: result.hasNextPage,
+          hasPreviousPage: result.hasPreviousPage,
+        },
+      },
+      200,
+      requestId
+    );
+  } catch (error) {
+    let appError: AppError;
 
-  if (visibility) {
-    whereConditions.push(eq(dramas.visibility, visibility));
-  }
-
-  if (publicationStatus) {
-    whereConditions.push(eq(dramas.publication_status, publicationStatus));
-  }
-
-  const rows = await db
-    .select()
-    .from(dramas)
-    .where(and(...whereConditions))
-    .orderBy(dramas.title);
-
-  return new Response(
-    JSON.stringify({
-      data: rows,
-    }),
-    {
-      headers: { 'Content-Type': 'application/json' },
-      status: 200,
+    if (error instanceof AppError) {
+      appError = error;
+    } else {
+      logger.error({ err: error, event: 'public-dramas.request_failed' }, 'Public route failed');
+      appError = new InternalError('An unexpected error occurred.', error);
     }
-  );
+
+    const mapped = mapErrorToRest(appError, requestId);
+
+    return jsonResponse(mapped.body, mapped.status, requestId);
+  }
 }

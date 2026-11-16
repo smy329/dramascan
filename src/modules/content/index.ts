@@ -74,3 +74,23 @@ export type {
   PublicationEligibilityReason,
   PublicationStatus,
 } from './publication';
+
+export {
+  PUBLIC_DRAMA_PAGE_SIZE_DEFAULT,
+  PUBLIC_DRAMA_PAGE_SIZE_MAX,
+  evaluatePublicDramaDiscovery,
+  parsePublicDramaListQuery,
+  publicDramaHref,
+  toPublicDramaSummary,
+} from './public-dramas.shared';
+
+export type {
+  PublicDramaDiscovery,
+  PublicDramaDiscoveryReason,
+  PublicDramaList,
+  PublicDramaListQuery,
+  PublicDramaRow,
+  PublicDramaSummary,
+} from './public-dramas.shared';
+
+export { listPublicDramas } from './public-dramas';

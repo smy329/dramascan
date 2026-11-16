@@ -32,6 +32,10 @@ loadLocalEnv();
  * @typedef {object} DramaSeedOptions
  * @property {string} [title]
  * @property {'flat' | 'season_based'} [structureType]
+ * @property {'draft' | 'published' | 'unpublished'} [publicationStatus]
+ * @property {'coming_soon' | 'hidden'} [visibility]
+ * @property {'draft' | 'published' | 'unpublished'} [seasonPublicationStatus]
+ * @property {'draft' | 'published' | 'unpublished'} [episodePublicationStatus]
  * @property {number} [seasonCount]
  * @property {number} [episodesPerSeason]
  * @property {boolean} [withEpisodes]
@@ -81,6 +85,10 @@ export async function seedDrama(options = {}) {
   const {
     title = `E2E Drama ${randomUUID().slice(0, 8)}`,
     structureType = 'season_based',
+    publicationStatus = 'draft',
+    visibility = 'coming_soon',
+    seasonPublicationStatus = 'draft',
+    episodePublicationStatus = 'draft',
     seasonCount = 1,
     episodesPerSeason = 2,
     withEpisodes = true,
@@ -107,9 +115,9 @@ export async function seedDrama(options = {}) {
         client,
         'insert the seeded drama',
         target,
-        `INSERT INTO dramas (id, title, slug, structure_type, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, 'ongoing', now(), now())`,
-        [id, title, slug, structureType]
+        `INSERT INTO dramas (id, title, slug, structure_type, status, publication_status, visibility, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'ongoing', $5, $6, now(), now())`,
+        [id, title, slug, structureType, publicationStatus, visibility]
       );
 
       for (let seasonIndex = 0; seasonIndex < seasonCount; seasonIndex += 1) {
@@ -120,9 +128,9 @@ export async function seedDrama(options = {}) {
           client,
           'insert the seeded season',
           target,
-          `INSERT INTO seasons (id, drama_id, title, position, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, now(), now())`,
-          [seasonId, id, `Season ${seasonIndex + 1}`, seasonIndex]
+          `INSERT INTO seasons (id, drama_id, title, position, publication_status, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, now(), now())`,
+          [seasonId, id, `Season ${seasonIndex + 1}`, seasonIndex, seasonPublicationStatus]
         );
 
         if (!withEpisodes) {
@@ -138,7 +146,7 @@ export async function seedDrama(options = {}) {
             'insert the seeded episode',
             target,
             `INSERT INTO episodes (id, drama_id, season_id, title, episode_number, position, publication_status, video_source, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7, now(), now())`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now())`,
             [
               episodeId,
               id,
@@ -146,6 +154,7 @@ export async function seedDrama(options = {}) {
               `Episode ${seasonIndex + 1}.${episodeIndex + 1}`,
               episodeIndex + 1,
               episodeIndex,
+              episodePublicationStatus,
               episodeVideoSource,
             ]
           );

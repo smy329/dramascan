@@ -4,6 +4,50 @@ All notable changes to the DramaScan project will be documented in this file.
 
 ## [Unreleased] - 2026-11-16
 
+### fix: make the public drama catalogue availability-aware (Phase 2)
+
+Resolves C-02, M-03, M-04, and TEST-05.
+
+- `src/modules/content/public-dramas.ts` (new): one hierarchy-aware public query
+  service owns every public drama visibility decision. A drama is discoverable
+  only when it is published, not in Trash, and either its visibility is not
+  `hidden` or a playable episode exists. A playable episode is published, not in
+  Trash, has a source, and - for season-based dramas - sits under a published,
+  non-deleted season. The predicate is applied in SQL, so page contents and
+  totals cannot disagree, and ordering is title plus row id for deterministic
+  pagination.
+- `src/modules/content/public-dramas.shared.ts` (new): pure rules and the wire
+  contract. The query schema accepts only `page` (1-1,000,000) and `pageSize`
+  (1-100) and discards every other key, so `publication_status`, `visibility`,
+  and unknown parameters cannot widen the result. The public DTO is explicit
+  camelCase and never carries raw rows, publication state, or source URLs.
+- `src/app/public/api/dramas/route.ts`: rewritten as HTTP adaptation over the
+  service. `{ data, meta }` envelope, `X-Request-Id`, `Cache-Control: no-store`,
+  and 400 for an out-of-contract page or page size.
+- `src/app/(public)/drama/page.tsx`: calls the public query service directly.
+  The Phase 1 absolute self-fetch and its `force-dynamic` workaround are gone,
+  cards use the canonical `/drama/{id}/{slug}` route, the nested `href="#"`
+  anchor is removed, and a bounded Previous/Next pagination control was added.
+- `tests/unit/modules/content/public-dramas.test.ts` (new): 30 cases for the
+  discovery rules, query bounds, canonical href, and the exact DTO key set.
+- `tests/integration/content/public-dramas.integration.test.ts` (new): 27
+  anonymous PostgreSQL tests covering published, draft, unpublished, trashed,
+  coming-soon, hidden, unpublished-season, trashed-season, trashed-episode,
+  missing-source, and orphan-episode states, plus crafted filters, DTO shape,
+  pagination bounds, and the unique tiebreaker.
+- `tests/e2e/public-drama-catalogue.spec.ts` (new): 4 browser tests for the
+  canonical card href, the absence of nested interactive elements, the
+  hidden-drama reveal, crafted query parameters on the page and the API, and
+  pagination bounds. `tests/e2e/support/drama-fixture.mjs` can now seed
+  publication status and visibility while keeping its previous defaults.
+
+Verification: typecheck PASS, lint PASS, unit 675/675, integration 242/242,
+Playwright 38/38, production build PASS.
+
+Not covered here: the canonical `/drama/{id}/{slug}` detail route lands in
+Phase 8, and server-side proof that a source is browser-playable lands in
+Phase 7.
+
 ### fix: restore admin and public application availability (Phase 1)
 
 Resolves C-01, H-01, H-02, M-05, M-06, TEST-02, TEST-08, SCOPE-A07, and the
