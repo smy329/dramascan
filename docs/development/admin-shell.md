@@ -121,13 +121,19 @@ stays permission-based, and the System group as a whole is not Super Admin-only.
 The same rule is enforced server-side by `requireSuperAdmin(actor)` from
 `src/modules/authorization/guards.ts`, which checks `actor.isSuperAdmin`:
 
-- `/admin/api/roles` — every action;
-- `/admin/api/users?action=authorize-admin` — only the role-assigning action;
+- `/admin/api/roles`, `/admin/api/roles/[id]`, `/admin/api/roles/[id]/permissions`
+  — every method;
+- `/admin/api/users/[id]/roles`, `/admin/api/users/[id]/roles/[roleId]` — every
+  method;
 - `src/workflows/admin/roles.ts` — all functions;
-- `src/workflows/admin/users.ts` — `authorizeUserAsAdmin` only.
+- `src/workflows/admin/users.ts` — `assignUserRoleForAdmin` and
+  `revokeUserRoleForAdmin`.
 
-Ordinary user management (`deactivate-admin`, `reactivate-admin`) and
-`inspect-role` keep their canonical `admin.manage` requirement. Sidebar
+Account status (`/admin/api/users/[id]/status`) keeps its canonical
+`admin.manage` requirement, but a Super Admin account can only be changed by a
+Super Admin: the workflow reads the stored account first and refuses the change
+for any other actor. Reading one account's role assignments
+(`GET /admin/api/users/[id]/roles`) also keeps `admin.manage`. Sidebar
 visibility is never the boundary.
 
 ### 4.3 `ADMIN_AREA_PERMISSIONS`

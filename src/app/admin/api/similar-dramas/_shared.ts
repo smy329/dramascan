@@ -6,7 +6,7 @@ import { mapErrorToRest } from '@/platform/Http';
 import { createRequestLogger, generateRequestId } from '@/platform/logging';
 
 /** Similar drama administration permission key. */
-export const SIMILAR_DRAMA_MANAGE_PERMISSION = 'similar-drama.manage';
+export const SIMILAR_DRAMA_MANAGE_PERMISSION = 'similar_drama.manage';
 
 export type AdminRouteContext = {
   requestId: string;

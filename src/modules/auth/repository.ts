@@ -17,6 +17,8 @@ import 'server-only';
 import { and, asc, count, desc, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
+import { ConflictError, NotFoundError } from '@/platform/errors';
+
 import { users } from './schema';
 
 /** Account statuses an administrator can filter by. */
@@ -145,4 +147,103 @@ export async function listUserAccounts(query: ListUserAccountsQuery): Promise<Us
   const [totalRow] = await db.select({ value: count() }).from(users).where(filter);
 
   return { rows, total: Number(totalRow?.value ?? 0) };
+}
+
+/** One identity row, with the account-status columns an administrator needs. */
+export type UserAccountRecord = {
+  id: string;
+  name: string;
+  email: string;
+  isActive: boolean;
+  isSuperAdmin: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+};
+
+const USER_ACCOUNT_COLUMNS = {
+  id: users.id,
+  name: users.name,
+  email: users.email,
+  isActive: users.isActive,
+  isSuperAdmin: users.isSuperAdmin,
+  createdAt: users.createdAt,
+  updatedAt: users.updatedAt,
+  deletedAt: users.deletedAt,
+} as const;
+
+/** Read one account, or `null` when the id matches no row. */
+export async function getUserAccount(userId: string): Promise<UserAccountRecord | null> {
+  const [row] = await db
+    .select(USER_ACCOUNT_COLUMNS)
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return row ?? null;
+}
+
+/**
+ * Activate or deactivate an account.
+ *
+ * The last-active-Super-Admin invariant is enforced here, inside the module
+ * that owns the `users` table, so it holds for every caller. The check runs in
+ * one transaction that locks the active Super Admin rows before the target
+ * row:
+ *
+ * - The lock is taken in a stable order (by id), so two concurrent
+ *   deactivations cannot deadlock or both observe a stale count.
+ * - PostgreSQL re-evaluates the row filter after a blocked lock is released, so
+ *   the second transaction sees the first one's deactivation and refuses to
+ *   remove the last remaining Super Admin.
+ *
+ * A deactivated account loses access immediately: the actor resolver reads
+ * `is_active` from the database on every request, so a stale session cookie is
+ * not enough to get back in.
+ */
+export async function setUserAccountActive(
+  userId: string,
+  isActive: boolean
+): Promise<UserAccountRecord> {
+  return db.transaction(async tx => {
+    const lockedSuperAdmins = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(
+          eq(users.isSuperAdmin, true),
+          eq(users.isActive, true),
+          isNull(users.deletedAt)
+        )
+      )
+      .orderBy(asc(users.id))
+      .for('update');
+
+    const [target] = await tx
+      .select(USER_ACCOUNT_COLUMNS)
+      .from(users)
+      .where(eq(users.id, userId))
+      .for('update')
+      .limit(1);
+
+    if (!target) {
+      throw new NotFoundError('User account not found.');
+    }
+
+    const isActiveSuperAdmin =
+      target.isSuperAdmin && target.isActive && target.deletedAt === null;
+
+    if (!isActive && isActiveSuperAdmin && lockedSuperAdmins.length <= 1) {
+      throw new ConflictError('The last active Super Admin cannot be deactivated.');
+    }
+
+    if (target.isActive !== isActive) {
+      await tx
+        .update(users)
+        .set({ isActive, updatedAt: new Date() })
+        .where(eq(users.id, userId));
+    }
+
+    return { ...target, isActive };
+  });
 }

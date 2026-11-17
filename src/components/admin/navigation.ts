@@ -173,7 +173,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavGroup[] = [
         label: 'Roles & permissions',
         href: '/admin/roles',
         permissions: ['admin.manage'],
-        implemented: false,
+        implemented: true,
         superAdminOnly: true,
       },
       {
@@ -193,7 +193,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavGroup[] = [
  * concrete drama row, so it must still grant access to the admin area without
  * introducing an unresolved `[id]` link into the sidebar.
  */
-const ADMIN_DRILLDOWN_PERMISSIONS: readonly PermissionKey[] = ['similar-drama.manage'];
+const ADMIN_DRILLDOWN_PERMISSIONS: readonly PermissionKey[] = ['similar_drama.manage'];
 
 /**
  * Union of every permission that grants access to a non-Super-Admin-only admin

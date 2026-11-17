@@ -288,4 +288,52 @@ async function remove(subject) {
   }
 }
 
-export const adminSession = { seed, remove };
+/**
+ * Delete a role created by a test, together with its assignments and its
+ * permission rows.
+ *
+ * The role table is shared by every seeded session, so the cleanup is scoped
+ * by the exact role id the test received and never touches another role.
+ *
+ * @param {string} roleId
+ * @returns {Promise<void>}
+ */
+async function removeRole(roleId) {
+  const { target, client } = requireTestClient();
+
+  try {
+    try {
+      await client.connect();
+    } catch {
+      throw databaseFailure('connect to', target);
+    }
+
+    await run(client, 'begin the transaction', target, 'BEGIN');
+
+    try {
+      await run(
+        client,
+        'delete the role assignments',
+        target,
+        'DELETE FROM user_roles WHERE role_id = $1',
+        [roleId]
+      );
+      await run(
+        client,
+        'delete the role permissions',
+        target,
+        'DELETE FROM permissions WHERE role_id = $1',
+        [roleId]
+      );
+      await run(client, 'delete the role', target, 'DELETE FROM roles WHERE id = $1', [roleId]);
+      await run(client, 'commit the transaction', target, 'COMMIT');
+    } catch (error) {
+      await run(client, 'roll the transaction back', target, 'ROLLBACK').catch(() => {});
+      throw error;
+    }
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+export const adminSession = { seed, remove, removeRole };

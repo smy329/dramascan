@@ -48,7 +48,7 @@ export default async function AdminDramasPage({
     notFound();
   }
 
-  const canManageSimilarDramas = hasPermission(actor, toPermissionKey('similar-drama', 'manage'));
+  const canManageSimilarDramas = hasPermission(actor, toPermissionKey('similar_drama', 'manage'));
 
   const raw = await searchParams;
   const query = parseConversionListQuery(raw);

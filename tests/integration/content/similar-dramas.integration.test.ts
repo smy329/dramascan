@@ -54,7 +54,7 @@ const managerActor: ActorContext = {
   userId: 'it-similar-manager',
   roles: ['content_manager'],
   isSuperAdmin: false,
-  permissions: ['similar-drama.manage'],
+  permissions: ['similar_drama.manage'],
 };
 
 const readerActor: ActorContext = {
@@ -125,7 +125,7 @@ afterAll(async () => {
 const defaultQuery = () => parseListSimilarDramasQuery({});
 
 describe('authorization', () => {
-  it('rejects every mutation for an actor without similar-drama.manage', async () => {
+  it('rejects every mutation for an actor without similar_drama.manage', async () => {
     const drama = await insertDrama('Parent');
     const target = await insertDrama('Target');
 

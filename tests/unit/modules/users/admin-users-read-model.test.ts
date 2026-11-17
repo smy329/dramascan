@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { listUserAccountsMock } = vi.hoisted(() => ({ listUserAccountsMock: vi.fn() }));
+const { listUserAccountsMock, listRoleAssignmentsForUsersMock } = vi.hoisted(() => ({
+  listUserAccountsMock: vi.fn(),
+  listRoleAssignmentsForUsersMock: vi.fn(),
+}));
 
 vi.mock('@/modules/auth', () => ({ listUserAccounts: listUserAccountsMock }));
 vi.mock('server-only', () => ({}));
@@ -11,7 +14,11 @@ vi.mock('@/modules/authorization', async () => {
   const permissions = await vi.importActual<typeof import('@/modules/authorization/permissions')>(
     '@/modules/authorization/permissions'
   );
-  return { ...guards, ...permissions };
+  return {
+    ...guards,
+    ...permissions,
+    listRoleAssignmentsForUsers: listRoleAssignmentsForUsersMock,
+  };
 });
 
 import type { ActorContext } from '@/modules/authorization';
@@ -36,6 +43,8 @@ const query: AdminUsersQuery = {
 
 beforeEach(() => {
   listUserAccountsMock.mockReset();
+  listRoleAssignmentsForUsersMock.mockReset();
+  listRoleAssignmentsForUsersMock.mockResolvedValue({});
 });
 
 describe('listUsersForAdmin', () => {
@@ -75,6 +84,7 @@ describe('listUsersForAdmin', () => {
         email: 'ada@example.com',
         status: 'active',
         isSuperAdmin: false,
+        roles: [],
         createdAt: '2026-01-02T03:04:05.000Z',
         updatedAt: '2026-01-02T03:04:05.000Z',
       },

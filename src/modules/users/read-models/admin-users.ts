@@ -10,10 +10,22 @@
  * cannot be reached without the canonical `user.read` permission.
  */
 
-import { requirePermission, toPermissionKey, type ActorContext } from '@/modules/authorization';
+import {
+  listRoleAssignmentsForUsers,
+  requirePermission,
+  toPermissionKey,
+  type ActorContext,
+} from '@/modules/authorization';
 import { listUserAccounts } from '@/modules/auth';
 
 import type { AdminUserStatus, AdminUsersQuery } from '../validation';
+
+/** One role assignment shown next to a listed account. */
+export type AdminUserRoleAssignment = {
+  roleId: string;
+  roleName: string;
+  assignedAt: string;
+};
 
 export type AdminUserListItem = {
   id: string;
@@ -21,6 +33,7 @@ export type AdminUserListItem = {
   email: string;
   status: AdminUserStatus;
   isSuperAdmin: boolean;
+  roles: readonly AdminUserRoleAssignment[];
   createdAt: string;
   updatedAt: string;
 };
@@ -83,6 +96,14 @@ export async function listUsersForAdmin(
       ? requested
       : await listUserAccounts({ ...identityQuery, page: effectivePage });
 
+  // The role assignments are read for the whole page in one query. Reading
+  // them per row would issue one query per account, and omitting them would
+  // leave the administration area unable to show who holds which role.
+  const assignments = await listRoleAssignmentsForUsers(
+    actor,
+    result.rows.map(row => row.id)
+  );
+
   return {
     items: result.rows.map(row => ({
       id: row.id,
@@ -90,6 +111,7 @@ export async function listUsersForAdmin(
       email: row.email,
       status: resolveStatus(row.isActive, row.deletedAt),
       isSuperAdmin: row.isSuperAdmin,
+      roles: assignments[row.id] ?? [],
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     })),

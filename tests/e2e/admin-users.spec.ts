@@ -49,8 +49,10 @@ test.describe('admin users listing', () => {
       await expect(page).not.toHaveURL(/page=\d/);
 
       // The Super Admin filter is a second control in the same GET form, so it
-      // combines with the status filter instead of replacing it.
-      await page.getByLabel('Super Admin').selectOption('yes');
+      // combines with the status filter instead of replacing it. The label is
+      // matched exactly: the per-row account controls carry "Super Admin" in
+      // their accessible names too.
+      await page.getByLabel('Super Admin', { exact: true }).selectOption('yes');
       await page.getByRole('button', { name: 'Apply' }).first().click();
       await expect(page).toHaveURL(/status=active/);
       await expect(page).toHaveURL(/superAdmin=yes/);

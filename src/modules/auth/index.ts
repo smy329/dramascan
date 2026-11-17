@@ -8,11 +8,18 @@
 
 import 'server-only';
 
-export { USER_ACCOUNT_SORT_FIELDS, USER_ACCOUNT_STATUSES, listUserAccounts } from './repository';
+export {
+  USER_ACCOUNT_SORT_FIELDS,
+  USER_ACCOUNT_STATUSES,
+  getUserAccount,
+  listUserAccounts,
+  setUserAccountActive,
+} from './repository';
 
 export type {
   ListUserAccountsQuery,
   UserAccountPage,
+  UserAccountRecord,
   UserAccountRow,
   UserAccountSortField,
   UserAccountStatus,

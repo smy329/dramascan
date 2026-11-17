@@ -9,7 +9,11 @@
 import 'server-only';
 
 export { listUsersForAdmin } from './read-models/admin-users';
-export type { AdminUserListItem, AdminUserListResult } from './read-models/admin-users';
+export type {
+  AdminUserListItem,
+  AdminUserListResult,
+  AdminUserRoleAssignment,
+} from './read-models/admin-users';
 export {
   ADMIN_USER_SORT_FIELDS,
   ADMIN_USER_STATUSES,

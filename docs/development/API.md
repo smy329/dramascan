@@ -375,7 +375,52 @@ The schema is strict; unknown fields are rejected. `mode` is required.
 
 ---
 
-## 4. Server Action Catalog
+### 3.12 Role, permission, and account administration (implemented, Phase 3)
+
+These endpoints replace the former `?action=` dispatchers on `/admin/api/roles`
+and `/admin/api/users`. Every mutation uses the HTTP method that matches the
+operation, and no state-changing `GET` remains. Authorization is enforced at
+the route entrypoint and re-checked inside the workflow and the module service.
+
+| Method   | Path                                  | Auth          | Permission                    | Purpose                                              | Status      |
+| -------- | ------------------------------------- | ------------- | ----------------------------- | ---------------------------------------------------- | ----------- |
+| `GET`    | `/admin/api/roles`                    | Super Admin   | —                             | List every role with its stored permission grants    | Implemented |
+| `POST`   | `/admin/api/roles`                    | Super Admin   | —                             | Create a role with no permissions                    | Implemented |
+| `PATCH`  | `/admin/api/roles/[id]`               | Super Admin   | —                             | Rename a role or change its description              | Implemented |
+| `DELETE` | `/admin/api/roles/[id]`               | Super Admin   | —                             | Delete a role that is not assigned to any user       | Implemented |
+| `PUT`    | `/admin/api/roles/[id]/permissions`   | Super Admin   | —                             | Replace the whole granted permission set of a role   | Implemented |
+| `GET`    | `/admin/api/users/[id]/roles`         | Admin         | `admin.manage`               | List the roles assigned to one account               | Implemented |
+| `POST`   | `/admin/api/users/[id]/roles`         | Super Admin   | —                             | Assign a role to an account                          | Implemented |
+| `DELETE` | `/admin/api/users/[id]/roles/[roleId]`| Super Admin   | —                             | Revoke one role from an account                      | Implemented |
+| `POST`   | `/admin/api/users/[id]/status`        | Admin         | `admin.manage`               | Activate or deactivate one account                   | Implemented |
+
+Bodies are strict; unknown fields are rejected.
+
+- `POST /admin/api/roles` — `{ "name": "content_editor", "description": "…" }`.
+  The name is lowercase snake_case (`[a-z][a-z0-9_]*`, 2–64 characters) and
+  `super_admin` is reserved: Super Admin is the authoritative `is_super_admin`
+  flag, not a role grant. A duplicate name is a `409`.
+- `PATCH /admin/api/roles/[id]` — `{ "name"?: …, "description"?: … }`; at least
+  one field is required. `description: null` clears the description.
+- `PUT /admin/api/roles/[id]/permissions` — `{ "permissionKeys": ["drama.read"] }`.
+  The replacement is atomic: a permission that leaves the set keeps its row
+  with `granted = false`, and an unknown key is a `400`.
+- `POST /admin/api/users/[id]/roles` — `{ "roleId": "uuid" }`. Assigning the
+  same role twice is idempotent.
+- `POST /admin/api/users/[id]/status` — `{ "isActive": true | false }`. The last
+  active Super Admin cannot be deactivated: the invariant is enforced inside
+  the auth module under a `FOR UPDATE` lock, so it holds under concurrency. A
+  Super Admin account can only be changed by a Super Admin.
+
+Responses use the standard envelopes: `{ data, meta }` for a read, `{ data }`
+for a write, and `{ error: { code, message, fieldErrors?, requestId } }` for a
+failure. A `DELETE` answers `204` with no body. Every response carries the
+`X-Request-Id` header. Mutations reject cross-origin requests.
+
+The pages `/admin/roles` and `/admin/users` use these endpoints from their
+client islands; the pages themselves are Server Components.
+
+---
 
 Server Actions are application operations, not REST endpoints. They are documented here with their permission keys and result shape.
 
@@ -394,7 +439,7 @@ Server Actions are application operations, not REST endpoints. They are document
 | Source replacement      | Replace an episode or movie source after preview and confirmation                | `episode.manage`, `movie.manage`                                                | Planned |
 | Taxonomy administration | Create/update/delete categories and platforms                                    | `category.*`, `platform.*`                       | Planned |
 | Moderation              | Resolve content reports, remove reviews                                          | `review.manage`              | Planned |
-| User administration     | Deactivate/reactivate users                                                      | `user.manage`                                | Planned |
+| User administration     | Deactivate/reactivate accounts, assign and revoke roles                           | `admin.manage`, Super Admin for role assignment | Implemented |
 | Admin administration    | Authorize/deactivate admins, assign roles, terminate sessions                    | `admin.*`                                        | Planned |
 | System configuration    | Update settings, restore a version, maintenance mode                             | `settings.manage`                             | Planned |
 | CSV import              | Dry run and apply metadata import                                                | `drama.manage`, `movie.manage`                                                | Planned |

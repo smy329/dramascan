@@ -21,16 +21,18 @@ vi.hoisted(() => {
 
 vi.mock('server-only', () => ({}));
 
-import { like } from 'drizzle-orm';
+import { eq, like } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { listUserAccounts } from '@/modules/auth';
 import { users } from '@/modules/auth/schema';
+import { roles, userRoles } from '@/modules/authorization/schema';
 import { listUsersForAdmin } from '@/modules/users';
 import { closePool } from '@/platform/db/pool';
 import { AuthenticationError, AuthorizationError } from '@/platform/errors';
 
 const TEST_EMAIL_PREFIX = 'it-users-';
+const TEST_ROLE_PREFIX = 'it_users_listing_';
 
 async function insertUser(options: {
   name: string;
@@ -378,5 +380,69 @@ describe('listUsersForAdmin (real database)', () => {
 
     expect(result.items.map(item => item.id)).toContain(id);
     expect(result.items[0]?.status).toBe('active');
+  });
+
+  it('includes the role assignments of every listed account', async () => {
+    const userId = await insertUser({
+      name: 'Assigned Person',
+      email: `${TEST_EMAIL_PREFIX}assigned@example.com`,
+    });
+
+    const [role] = await db
+      .insert(roles)
+      .values({ name: `${TEST_ROLE_PREFIX}listing` })
+      .returning({ id: roles.id, name: roles.name });
+
+    if (!role) {
+      throw new Error('Test role insert returned no row.');
+    }
+
+    await db.insert(userRoles).values({ user_id: userId, role_id: role.id });
+
+    try {
+      const result = await listUsersForAdmin(
+        { userId: 'u3', roles: [], isSuperAdmin: false, permissions: ['user.read'] },
+        {
+          page: 1,
+          pageSize: 100,
+          sortBy: 'createdAt',
+          sortDirection: 'desc',
+          search: 'Assigned Person',
+          status: null,
+          superAdmin: null,
+        }
+      );
+
+      const listed = result.items.find(item => item.id === userId);
+
+      expect(listed?.roles).toEqual([
+        expect.objectContaining({ roleId: role.id, roleName: role.name }),
+      ]);
+    } finally {
+      await db.delete(userRoles).where(eq(userRoles.user_id, userId));
+      await db.delete(roles).where(eq(roles.id, role.id));
+    }
+  });
+
+  it('reports an empty role list for an account without assignments', async () => {
+    const userId = await insertUser({
+      name: 'Unassigned Person',
+      email: `${TEST_EMAIL_PREFIX}unassigned@example.com`,
+    });
+
+    const result = await listUsersForAdmin(
+      { userId: 'u4', roles: [], isSuperAdmin: false, permissions: ['user.read'] },
+      {
+        page: 1,
+        pageSize: 100,
+        sortBy: 'createdAt',
+        sortDirection: 'desc',
+        search: 'Unassigned Person',
+        status: null,
+        superAdmin: null,
+      }
+    );
+
+    expect(result.items.find(item => item.id === userId)?.roles).toEqual([]);
   });
 });

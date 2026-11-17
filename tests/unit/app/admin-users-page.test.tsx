@@ -3,13 +3,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 
-const { requireAdminPageAccessMock, listUsersForAdminMock, notFoundMock } = vi.hoisted(() => ({
-  requireAdminPageAccessMock: vi.fn(),
-  listUsersForAdminMock: vi.fn(),
-  notFoundMock: vi.fn(() => {
-    throw new Error('NEXT_NOT_FOUND');
-  }),
-}));
+const { requireAdminPageAccessMock, listUsersForAdminMock, listRolesForAdminMock, notFoundMock } =
+  vi.hoisted(() => ({
+    requireAdminPageAccessMock: vi.fn(),
+    listUsersForAdminMock: vi.fn(),
+    listRolesForAdminMock: vi.fn(),
+    notFoundMock: vi.fn(() => {
+      throw new Error('NEXT_NOT_FOUND');
+    }),
+  }));
 
 function formatSortTokenStub(sortBy: string, sortDirection: string): string {
   return sortDirection === 'desc' ? `-${sortBy}` : sortBy;
@@ -18,7 +20,10 @@ function formatSortTokenStub(sortBy: string, sortDirection: string): string {
 vi.mock('server-only', () => ({}));
 
 vi.mock('@/app/admin/_access', () => ({ requireAdminPageAccess: requireAdminPageAccessMock }));
-vi.mock('next/navigation', () => ({ notFound: notFoundMock }));
+vi.mock('next/navigation', () => ({
+  notFound: notFoundMock,
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
 // The real guards decide, so the test proves the page checks the canonical key.
 vi.mock('@/modules/authorization', async () => {
   const guards = await vi.importActual<typeof import('@/modules/authorization/guards')>(
@@ -29,6 +34,7 @@ vi.mock('@/modules/authorization', async () => {
   );
   return { ...permissions, ...guards };
 });
+vi.mock('@/workflows/admin/roles', () => ({ listRolesForAdmin: listRolesForAdminMock }));
 vi.mock('@/modules/users', () => ({
   listUsersForAdmin: listUsersForAdminMock,
   parseAdminUsersQuery: (input: unknown) => ({
@@ -54,6 +60,8 @@ const analyst = { userId: 'u2', roles: [], isSuperAdmin: false, permissions: ['a
 beforeEach(() => {
   requireAdminPageAccessMock.mockReset();
   listUsersForAdminMock.mockReset();
+  listRolesForAdminMock.mockReset();
+  listRolesForAdminMock.mockResolvedValue([]);
 });
 
 describe('AdminUsersPage', () => {
@@ -70,6 +78,7 @@ describe('AdminUsersPage', () => {
           email: 'ada@example.com',
           status: 'active',
           isSuperAdmin: false,
+          roles: [],
           createdAt: '2026-01-01T00:00:00.000Z',
           updatedAt: '2026-01-01T00:00:00.000Z',
         },

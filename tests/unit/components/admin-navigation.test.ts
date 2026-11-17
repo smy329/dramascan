@@ -42,7 +42,7 @@ describe('ADMIN_NAVIGATION', () => {
   it('marks only entries whose pages exist as implemented', () => {
     const implemented = ALL_ENTRIES.filter(entry => entry.implemented);
 
-    expect(implemented.map(entry => entry.id)).toEqual(['overview', 'dramas', 'users']);
+    expect(implemented.map(entry => entry.id)).toEqual(['overview', 'dramas', 'users', 'roles']);
 
     for (const entry of implemented) {
       const pagePath = join(process.cwd(), 'src', 'app', entry.href.slice(1), 'page.tsx');
@@ -66,7 +66,7 @@ describe('hasAdminAreaAccess', () => {
     expect(hasAdminAreaAccess(actor([], true))).toBe(true);
     expect(hasAdminAreaAccess(actor(['drama.manage']))).toBe(true);
     expect(hasAdminAreaAccess(actor(['analytics.read']))).toBe(true);
-    expect(hasAdminAreaAccess(actor(['similar-drama.manage']))).toBe(true);
+    expect(hasAdminAreaAccess(actor(['similar_drama.manage']))).toBe(true);
   });
 
   it('denies authenticated actors with no admin-area permission', () => {
@@ -81,11 +81,12 @@ describe('hasAdminAreaAccess', () => {
 });
 
 describe('filterAdminNavigation', () => {
-  it('shows the implemented overview, content, and users entries to Super Admin', () => {
+  it('shows the implemented overview, content, users, and roles entries to Super Admin', () => {
     const visible = filterAdminNavigation(ADMIN_NAVIGATION, actor([], true));
 
-    expect(visible.map(group => group.id)).toEqual(['dashboard', 'content', 'users']);
+    expect(visible.map(group => group.id)).toEqual(['dashboard', 'content', 'users', 'system']);
     expect(visible[0]?.entries.map(entry => entry.id)).toEqual(['overview']);
+    expect(visible[3]?.entries.map(entry => entry.id)).toEqual(['roles']);
   });
 
   it.each([ANONYMOUS, actor()])('renders nothing without admin-area access', current => {

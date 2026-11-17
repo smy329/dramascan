@@ -46,7 +46,7 @@ const manager = {
   userId: 'u1',
   roles: [],
   isSuperAdmin: false,
-  permissions: ['similar-drama.manage'],
+  permissions: ['similar_drama.manage'],
 };
 
 const DRAMA_ID = '3fbc8b1a-3b0e-4f43-a7fd-c22f2d6c4e4f';

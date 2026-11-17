@@ -115,8 +115,20 @@ describe('countFailedAttempts (real database)', () => {
     await recordLoginAttempt(userId, false);
     await recordLoginAttempt(userId, true);
 
+    // One failed attempt from well outside the window, inserted with an
+    // explicit timestamp. The previous version used a zero-minute window for
+    // this case, which raced: `created_at` has microsecond precision while
+    // `Date.now()` truncates to milliseconds, so an attempt inserted in the
+    // same millisecond as the count was inside the "zero-minute" window. The
+    // exclusion is now proven against an attempt that is unambiguously old.
+    await db.insert(loginAttempts).values({
+      userId,
+      success: false,
+      createdAt: new Date(Date.now() - 60 * 60 * 1000),
+    });
+
     await expect(countFailedAttempts(userId, 30)).resolves.toBe(2);
-    await expect(countFailedAttempts(userId, 0)).resolves.toBe(0);
+    await expect(countFailedAttempts(userId, 120)).resolves.toBe(3);
   });
 
   it('does not count attempts belonging to another user', async () => {

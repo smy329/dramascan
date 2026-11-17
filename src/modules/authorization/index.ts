@@ -15,3 +15,17 @@ export { hasPermission, requirePermission, requireAnyPermission, requireUser, re
 export { refreshSessionActivity, listUserSessions, invalidateUserSessions, forceReauthenticateUser, enrichSession } from './session-management';
 export { recordLoginAttempt, countFailedAttempts, isUserLockedOut, resetFailedAttempts, getUserLoginAttempts, getAllLoginAttempts, getLoginStatistics, checkGoogleSecurityChange } from './login-monitoring';
 export type { SessionInfo } from './session-management';
+export {
+  assignUserRole,
+  createRole,
+  deleteRole,
+  getRole,
+  listRoleAssignmentsForUsers,
+  listRoles,
+  listUserRoleAssignments,
+  revokeUserRole,
+  setRolePermissions,
+  updateRole,
+} from './roles';
+export type { RolePermission, RoleSummary, UserRoleAssignment, UserRoleAssignmentMap } from './roles';
+export { parsePermissionKeysBody } from './validation';

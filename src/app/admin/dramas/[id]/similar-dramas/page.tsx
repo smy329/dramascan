@@ -35,7 +35,7 @@ export default async function AdminSimilarDramasPage({
   const { actor } = await requireAdminPageAccess(PATHNAME);
 
   // Navigation is never the boundary: the drill-down requires its own key.
-  if (!hasPermission(actor, toPermissionKey('similar-drama', 'manage'))) {
+  if (!hasPermission(actor, toPermissionKey('similar_drama', 'manage'))) {
     notFound();
   }
 

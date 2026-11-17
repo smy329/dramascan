@@ -945,7 +945,7 @@ plan that was computed against a structure that has since changed.
    single Season 1 holding every active episode. Trashed rows are ignored and
    left untouched in both directions.
 9. **The surface is REST plus a minimal admin UI.** `POST
-   /admin/api/dramas/convert` and the `/admin/dramas` listing and
+/admin/api/dramas/convert` and the `/admin/dramas` listing and
    `/admin/dramas/[id]/convert` page require `drama.manage`, enforced
    server-side on every entrypoint. The admin surface deliberately has no
    create, edit, delete, or publish controls. The navigation's Dramas entry
@@ -1050,7 +1050,7 @@ lifecycle work.
    drama and its active episodes `FOR UPDATE`; a mismatch, `23505`, or `40001`
    is a `409`, and the transaction leaves no partial conversion.
 9. **The surface is REST plus a minimal admin page.** `POST
-   /admin/api/dramas/convert-to-movie`, the `/admin/dramas` listing, and
+/admin/api/dramas/convert-to-movie`, the `/admin/dramas` listing, and
    `/admin/dramas/[id]/convert-to-movie` require `drama.manage`, enforced
    server-side at every entrypoint. The listing renders **Convert to movie**
    only when `activeEpisodes === 1`; the page previews the resulting movie and
@@ -1081,7 +1081,99 @@ lifecycle work.
 
 ---
 
-## Decision log rules
+## D-031 — Role, permission, and account administration is method-correct, actor-first, and Super-Admin-scoped
+
+**Date:** 2026-11-17
+**Status:** Approved by user (Phase 3 of the production remediation plan)
+**Resolves:** H-03, H-18, SCOPE-A06, TEST-07; supersedes the transport shape
+described for these surfaces in D-025 §4 and `docs/development/admin-shell.md`
+§4.2. D-025's rule — that restricted management stays Super-Admin-only — is
+unchanged and reaffirmed here.
+
+**Context:** The administration API exposed every mutation through `GET` with an
+`?action=` query parameter on `/admin/api/roles` and `/admin/api/users`. The
+workflows resolved the actor themselves and returned `{ success: true }` without
+touching a table, so a passing test proved nothing about roles, permissions, or
+account state. The `roles`, `permissions`, and `user_roles` tables had no
+persistence layer at all: there was no code that wrote a role, granted a
+permission, or assigned a role to a user. The permission catalog used
+`similar-drama.manage`, whose resource segment violates the lowercase
+snake_case rule that every other catalog key follows, and the applied database
+`CHECK` constraint did not allow it, so the drill-down permission could never
+have been stored.
+
+**Decision:**
+
+1. **Role and permission persistence is real and owned by `authorization`.**
+   `src/modules/authorization/roles.ts` owns writes to `roles`, `permissions`,
+   and `user_roles`, and exposes them through the module's public API. Callers
+   receive small projections, never Drizzle rows.
+2. **Workflows are actor-first.** `src/workflows/admin/roles.ts` and
+   `src/workflows/admin/users.ts` take the resolved actor as their first
+   argument and re-check the guard at the service layer. A workflow no longer
+   resolves the actor itself, so no entrypoint can pass an actor it did not
+   resolve server-side.
+3. **The authorization split is explicit.**
+   - Role and permission management — create, rename, delete, replace the
+     permission set — is Super Admin only, because it grants and removes
+     privileges.
+   - Assigning or revoking a role is Super Admin only, for the same reason.
+   - Reading one account's role assignments keeps the canonical `admin.manage`
+     requirement.
+   - Reading the assignments for the admin user listing keeps the canonical
+     `user.read` requirement, so the listing stays readable for an actor that
+     may not change anything.
+   - Changing an account's status keeps the canonical `admin.manage`
+     requirement, but a Super Admin account can only be changed by a Super
+     Admin.
+4. **`super_admin` is a reserved role name.** Super Admin is the authoritative
+   `is_super_admin` flag on the account, not a role grant. Role names are
+   lowercase snake_case (`[a-z][a-z0-9_]*`), so a role name can be used in code
+   and in a URL without an escaping rule.
+5. **A revoked permission keeps its row with `granted = false`,** and
+   `setRolePermissions` replaces the whole granted set atomically. A role is
+   never half-applied.
+6. **A role with user assignments cannot be deleted** (`409 Conflict`); a role
+   is deleted together with its permission rows.
+7. **The REST contract is method-correct.** `GET` reads, `POST` creates or
+   assigns, `PATCH` updates, `PUT` replaces a permission set, and `DELETE`
+   removes. No state-changing `GET` remains. A `DELETE` answers `204` with no
+   body. The shared route helpers live in `src/platform/Http/admin-route.ts`.
+8. **The last active Super Admin cannot be deactivated.** The invariant lives
+   in the `auth` module, which owns the `users` table, and is enforced inside a
+   transaction that locks the active Super Admin rows `FOR UPDATE` in a stable
+   order, so it holds under concurrency. Deactivation blocks access immediately
+   because the actor resolver reads `is_active` from the database on every
+   request; session invalidation is not part of this decision.
+9. **The permission catalog key is `similar_drama.manage`.** The applied
+   `CHECK` constraint is replaced by a forward-only migration that drops the
+   old check, updates the stored resource, and re-adds the check. The same
+   migration sets the `dramas.visibility` default to `coming_soon`: the initial
+   migration created the column as nullable `text` without a default, so the
+   database and the schema disagreed. Existing `NULL` values are preserved and
+   read as "not hidden"; the migration does not rewrite stored rows.
+10. **The administration pages are real.** `/admin/roles` is Super Admin only
+    and answers `notFound()` for every other actor. The `/admin/users` listing
+    shows each account's role assignments and offers the role and account
+    status controls. Both use client islands that call the REST endpoints; the
+    server pages own authorization and the first read.
+
+**Consequences:**
+
+- Navigation visibility and server-side enforcement now agree: a role that
+  holds `admin.manage` no longer sees the Roles entry, because the entry is
+  Super-Admin-only, and it cannot reach the endpoints either.
+- The `GET /admin/api/roles` and `GET /admin/api/users` action dispatchers are
+  removed. Any client that used them must move to the matching method.
+- The role and permission tables hold real data, so the effective permission
+  set of an administrator is the union of the permissions of the roles actually
+  assigned to it.
+- A custom role can grant a permission its holder does not have. This is
+  deliberate: only a Super Admin can create or change a role, and a Super
+  Admin already holds the complete catalog.
+
+---
+
 - A decision is added only after explicit user approval or when the specification
   establishes it.
 - Decisions record context, the approved choice, and consequences.

@@ -42,7 +42,7 @@ const manager = {
   userId: 'u1',
   roles: [],
   isSuperAdmin: false,
-  permissions: ['drama.manage', 'similar-drama.manage'],
+  permissions: ['drama.manage', 'similar_drama.manage'],
 };
 
 afterEach(cleanup);

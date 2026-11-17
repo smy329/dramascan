@@ -4,6 +4,88 @@ All notable changes to the DramaScan project will be documented in this file.
 
 ## [Unreleased] - 2026-11-16
 
+### feat: implement authorization and user administration (Phase 3)
+
+Resolves H-03, H-18, SCOPE-A06, and TEST-07.
+
+- `src/modules/authorization/roles.ts` (new): real persistence for `roles`,
+  `permissions`, and `user_roles`. Roles are created, renamed, and deleted; the
+  granted permission set is replaced atomically, so a revoked permission keeps
+  its row with `granted = false`; role assignments are added and removed. A
+  role that still has assignments cannot be deleted.
+- `src/modules/authorization/validation.ts` (new): strict Zod contracts for
+  every role, permission, and assignment payload. Role names are lowercase
+  snake_case, and `super_admin` is reserved: Super Admin is the authoritative
+  `is_super_admin` flag, not a role grant.
+- `src/modules/auth/repository.ts`: added `getUserAccount` and
+  `setUserAccountActive`. The last active Super Admin cannot be deactivated;
+  the invariant is enforced inside a transaction that locks the active Super
+  Admin rows `FOR UPDATE` in a stable order, so it holds under concurrency.
+- `src/workflows/admin/roles.ts` and `src/workflows/admin/users.ts`: rewritten
+  as actor-first workflows. The caller resolves the actor server-side and
+  passes it as the first argument, and the workflow re-checks the guard.
+  Role/permission management and role assignment are Super Admin only;
+  reading one account's assignments keeps `admin.manage`; account status keeps
+  `admin.manage`, but a Super Admin account can only be changed by a Super
+  Admin.
+- `src/app/admin/api/roles/**` and `src/app/admin/api/users/[id]/**` (new):
+  method-correct REST. `GET/POST /admin/api/roles`,
+  `PATCH/DELETE /admin/api/roles/[id]`,
+  `PUT /admin/api/roles/[id]/permissions`,
+  `GET/POST /admin/api/users/[id]/roles`,
+  `DELETE /admin/api/users/[id]/roles/[roleId]`, and
+  `POST /admin/api/users/[id]/status`. The former `?action=` dispatchers,
+  including `GET /admin/api/users`, are removed: no state-changing `GET`
+  remains. The shared route helpers live in `src/platform/Http/admin-route.ts`.
+- `src/app/admin/roles/page.tsx` and `src/components/admin/roles/role-manager.tsx`
+  (new): a real Super-Admin-only role and permission console that creates,
+  renames, and deletes roles and replaces a role's granted permission set from
+  the canonical catalog. Every other actor gets `notFound()`.
+- `src/app/admin/users/page.tsx` and
+  `src/components/admin/users/user-management-controls.tsx`: the listing shows
+  each account's role assignments and offers the role and account-status
+  controls. The role checkbox applies its change locally first and rolls it
+  back when the request is refused, so it answers the click at once and never
+  claims a change that did not happen.
+- `src/modules/users/read-models/admin-users.ts`: the listing is enriched with
+  role assignments read for the whole page in one query.
+- `drizzle/0008_freezing_shockwave.sql`: forward-only migration that drops the
+  old permission `CHECK`, renames the stored resource to `similar_drama`, and
+  re-adds the check. It also sets the `dramas.visibility` default to
+  `coming_soon`, which the initial migration omitted. The column itself already
+  existed as a nullable `text`; existing `NULL` values are preserved, not
+  rewritten, and the public predicate already treats them as "not hidden".
+- The permission catalog key is now `similar_drama.manage` everywhere: code,
+  tests, navigation, and the database constraint.
+- `src/workflows/admin/roles.ts` and `src/workflows/admin/users.ts` no longer
+  carry the `'use server'` directive. The directive registers every export as an
+  RPC endpoint whose arguments arrive from the request body, so an actor-first
+  workflow would have let a caller assert `isSuperAdmin: true`.
+  `tests/unit/architecture/server-action-actor-boundary.test.ts` fails if any
+  `src/workflows` Server Action module references `ActorContext`.
+- `src/platform/db/errors.ts` (new): `isUniqueViolation` walks Drizzle's `cause`
+  chain, so a duplicate role name in a race answers `409` instead of `500`.
+- `setRolePermissions` locks the role row `FOR UPDATE` before reading its
+  permission rows, so concurrent full replacements serialize instead of merging
+  into a union.
+- `GET /admin/api/users/[id]/roles` and `POST /admin/api/users/[id]/status`
+  validate the path id, so a malformed id answers `400` instead of surfacing a
+  PostgreSQL `uuid` syntax error as `500`.
+- `tests/integration/authorization/login-monitoring.integration.test.ts`: the
+  "outside the window" assertion no longer races. It used a zero-minute window
+  read in the same millisecond as the insert, which counted the fresh attempt
+  because `created_at` has microsecond precision while `Date.now()` truncates
+  to milliseconds. The exclusion is now proven against an attempt that is
+  explicitly 60 minutes old. The production window semantics are unchanged -
+  H-15 owns the lockout-window correction.
+
+Verification: typecheck PASS, lint PASS, unit 673/673, integration 334/334,
+Playwright 41/41, production build PASS.
+
+Not covered here: deactivation blocks access immediately because the actor
+resolver reads `is_active` from the database on every request, but existing
+sessions are not revoked - that is Phase 6 scope.
+
 ### fix: make the public drama catalogue availability-aware (Phase 2)
 
 Resolves C-02, M-03, M-04, and TEST-05.
@@ -60,7 +142,7 @@ routes; the drama and episode delete handlers remain invalid until Phase 5.
   added `ADMIN_DRILLDOWN_PERMISSIONS` so implemented drill-down pages still grant
   admin-area access without a static sidebar destination.
 - `src/app/admin/dramas/page.tsx`: each row links to its similar-drama manager
-  only when the actor holds `similar-drama.manage`.
+  only when the actor holds `similar_drama.manage`.
 - `src/workflows/admin/similar-dramas.ts`: rebuilt contracts. Page and count
   share one joined scope, soft-deleted targets are excluded, search escapes LIKE
   metacharacters, missing parents raise `NotFoundError`, and add/update/reorder
@@ -219,9 +301,9 @@ the contract around it is now explicit and enforced.
   an internal error (`500`), logged with the drama context, instead of being
   reported as a stale-state conflict (`409`).
 - `src/workflows/admin/conversion.ts` + `src/app/admin/api/dramas/convert/route.ts`
-  + `src/workflows/admin/conversion-actions.ts` + `src/lib/contracts/drama-conversion.ts`:
-  the apply response is the plan shape plus `applied: true`,
-  `newFingerprint`, `snapshotId`, and `snapshotStatus`.
+  - `src/workflows/admin/conversion-actions.ts` + `src/lib/contracts/drama-conversion.ts`:
+    the apply response is the plan shape plus `applied: true`,
+    `newFingerprint`, `snapshotId`, and `snapshotStatus`.
 - `src/app/admin/api/dramas/_shared.ts`: a malformed JSON request body is a
   `400 validation_error` instead of a `500`.
 - `src/app/admin/dramas/[id]/convert/page.tsx` + `src/workflows/admin/conversion.ts`:
@@ -382,7 +464,6 @@ blocking sign-in entirely.
   table, `.env.example`, and the plan in
   `docs/superpowers/plans/2026-11-14-super-admin-password-login.md`.
 
-
 ## [0.6.0] - 2026-11-12
 
 ### feat: Reusable admin data tables and the users listing (Prompt 051)
@@ -419,7 +500,7 @@ table state, and no new dependency.
   navigation entry's `implemented` flag is now `true`.
 - `drizzle/0003_needy_infant_terrible.sql` adds one partial index,
   `idx_users_active_created_at ON users (created_at DESC) WHERE deleted_at IS
-  NULL`, for the default scope and default sort of the listing.
+NULL`, for the default scope and default sort of the listing.
 - Decisions: D-026 — the URL-state contract, the 404 for a page-level permission
   failure in the admin area (an intentional exception to `CONVENTIONS.md` §6.6),
   the query-parameter normalization deviation from §6.4, the ownership split
@@ -450,9 +531,9 @@ entity-specific CRUD pages or schemas created.
   dirty-state warning, pending state, and server error display.
 
 Documentation: `docs/development/admin-forms.md` (new),
-  `docs/README.md` (quick link), `docs/CHANGELOG.md` (this entry),
-  `docs/PROJECT_STATUS.md` (row), `docs/development/admin-data-tables.md`
-  (related-document links).
+`docs/README.md` (quick link), `docs/CHANGELOG.md` (this entry),
+`docs/PROJECT_STATUS.md` (row), `docs/development/admin-data-tables.md`
+(related-document links).
 
 ### Known limitations
 

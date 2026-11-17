@@ -5,6 +5,7 @@ import { AdminDataTable } from '@/components/admin/data-table/data-table';
 import { AdminTablePagination } from '@/components/admin/data-table/data-table-pagination';
 import { AdminTableToolbar } from '@/components/admin/data-table/data-table-toolbar';
 import type { AdminTableColumn } from '@/components/admin/data-table/types';
+import { UserManagementControls } from '@/components/admin/users/user-management-controls';
 import { hasPermission, toPermissionKey } from '@/modules/authorization';
 import {
   formatSortToken,
@@ -12,7 +13,9 @@ import {
   parseAdminUsersQuery,
   type AdminUserStatus,
 } from '@/modules/users';
+import { listRolesForAdmin } from '@/workflows/admin/roles';
 import { buildTableHref, type TableQueryState } from '@/lib/contracts/table';
+import type { AdminAssignableRoleView } from '@/lib/contracts/admin-authorization';
 
 import { requireAdminPageAccess } from '../_access';
 
@@ -26,6 +29,7 @@ type AdminUserRow = {
   email: string;
   status: AdminUserStatus;
   isSuperAdmin: boolean;
+  roles: readonly { roleId: string; roleName: string; assignedAt: string }[];
   createdAt: string;
 };
 
@@ -56,8 +60,27 @@ function formatStatus(row: AdminUserRow): string {
   return STATUS_LABELS[row.status] ?? row.status;
 }
 
-function formatSuperAdmin(row: AdminUserRow): string {
+function renderSuperAdmin(row: AdminUserRow): string {
   return row.isSuperAdmin ? 'Yes' : 'No';
+}
+
+function renderRoles(row: AdminUserRow): JSX.Element {
+  if (row.roles.length === 0) {
+    return <span className="text-xs text-muted-foreground">No roles</span>;
+  }
+
+  return (
+    <ul className="flex flex-wrap gap-1" aria-label={`Roles of ${row.name}`}>
+      {row.roles.map(role => (
+        <li
+          key={role.roleId}
+          className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
+        >
+          {role.roleName}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function renderEmptyState(hasActiveFilter: boolean): JSX.Element {
@@ -89,6 +112,16 @@ export default async function AdminUsersPage({
   const query = parseAdminUsersQuery(raw);
   const result = await listUsersForAdmin(actor, query);
 
+  // Role assignment grants access, so it is Super Admin only. Account status
+  // keeps the canonical `admin.manage` requirement, and the API refuses a
+  // change to a Super Admin account by a non-Super-Admin.
+  const canManageRoles = actor.isSuperAdmin;
+  const canManageStatus = hasPermission(actor, toPermissionKey('admin', 'manage'));
+
+  const availableRoles: readonly AdminAssignableRoleView[] = canManageRoles
+    ? (await listRolesForAdmin(actor)).map(role => ({ id: role.id, name: role.name }))
+    : [];
+
   // The summary, the page window, and every generated link follow the page the
   // read model resolved, not the one the URL asked for: a page past the last
   // one is clamped, so a shared or bookmarked link never renders an inverted
@@ -116,7 +149,32 @@ export default async function AdminUsersPage({
       key: 'superAdmin',
       header: 'Super Admin',
       visibility: 'md',
-      render: formatSuperAdmin,
+      render: renderSuperAdmin,
+    },
+    {
+      key: 'roles',
+      header: 'Roles',
+      visibility: 'md',
+      render: renderRoles,
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      align: 'right',
+      render: row => (
+        <UserManagementControls
+          user={{
+            id: row.id,
+            name: row.name,
+            status: row.status,
+            isSuperAdmin: row.isSuperAdmin,
+            roles: row.roles,
+          }}
+          availableRoles={availableRoles}
+          canManageStatus={canManageStatus}
+          canManageRoles={canManageRoles}
+        />
+      ),
     },
     {
       key: 'created',

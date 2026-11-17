@@ -19,7 +19,7 @@ import { ConflictError, NotFoundError, ValidationError } from '@/platform/errors
  */
 
 /** Permission key for similar drama management. Phase 3 renames it to snake_case. */
-const MANAGE_PERMISSION = 'similar-drama.manage';
+const MANAGE_PERMISSION = 'similar_drama.manage';
 
 /** The target's stored position. Existing rows may still carry a null. */
 export type SimilarDramaPosition = number | null;
