@@ -2,6 +2,169 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [Unreleased] - 2026-11-17
+
+### feat: enforce database integrity, typed targets, and preview-bound conversion (Phase 4)
+
+Resolves H-04, H-05, H-06, H-07, H-08, H-09, M-01, M-02, M-07, M-08,
+SCOPE-D01, SUP-01, and TEST-03.
+
+- `drizzle/0009_content_integrity_and_typed_targets.sql` (new): forward-only
+  migration that makes the database enforce the hierarchy the schema assumed.
+  `seasons.drama_id` and `episodes.drama_id` reference `dramas.id`; the
+  composite `episodes(drama_id, season_id)` references `seasons(drama_id, id)`,
+  so an episode can no longer name a season of another drama. Content
+  references are `ON DELETE RESTRICT`. Taxonomy and similar-drama endpoints get
+  foreign keys and indexes, active drama-scoped episode numbers and season
+  positions get partial unique indexes, `ck_ratings_value_range` bounds a
+  rating to 1-5, reactions and reports get foreign keys and partial uniqueness,
+  `review_reports` gets an `active`/`resolved` lifecycle, the four user-content
+  tables get typed `drama_id`/`movie_id` targets with exactly-one checks and
+  per-user/per-target uniqueness, and `published_at` is added to `dramas`,
+  `seasons`, `episodes`, and `movies`.
+- `drizzle/0010_typed_analytics_targets_and_report_state.sql` (new): forward
+  migration extending `0009`. The three analytics tables get typed
+  `drama_id`/`movie_id` targets — the two event tables name exactly one content
+  item, the daily aggregate may be site-wide and therefore name none, but never
+  both. `review_reports` gains `description`, `resolved_by`,
+  `resolution_outcome`, and `reported_at` with a lifecycle CHECK, and its
+  reference to `reviews` becomes `ON DELETE RESTRICT` so moderation history
+  survives the removal of a review. `reported_at` is added as a nullable column
+  and only afterwards given `DEFAULT now()`, so legacy reports keep an empty
+  submission time instead of a fabricated one.
+- Both migrations land in the `NOT VALID` posture: foreign keys and CHECK
+  constraints are verified for every new or updated row while tolerating
+  pre-existing rows, and the unique indexes are created in guarded blocks. A
+  migration therefore always lands on a populated database. Because a
+  `NOT VALID` CHECK is still enforced on new writes, the migration and the
+  release that writes the typed columns ship together; the previous release
+  keeps reading the schema but can no longer write to it.
+- `scripts/data-integrity.mjs` (new, `npm run db:integrity`): the operator
+  command. `report` is read-only and lists every row the new constraints cannot
+  accept yet, grouped by problem; `backfill` gives the seven typed tables their
+  typed target, but only where the legacy type names a table, the id exists
+  there, and the id does not also exist in the other table — every other row is
+  listed for a human decision and never guessed; `validate` validates the
+  `NOT VALID` constraints and retries the skipped unique indexes, exiting
+  non-zero on any failure. The backfill runs in bounded, idempotent batches of
+  500 rows, one transaction per batch, and a row it must not place is left
+  untouched and reported (`target-already-typed`, `duplicate-legacy-row`,
+  `missing-user`, `missing-episode`) instead of aborting the run. The report
+  prints every offending row and adds a `foreign-key-orphans` section that
+  covers every foreign key added by `0009`/`0010` outside the content
+  hierarchy.
+- `docs/development/DATA_INTEGRITY.md` (new): the operator runbook - what the
+  database now enforces, what it deliberately does not enforce yet, and how to
+  reconcile the difference without discarding data.
+- `src/workflows/admin/dramas.ts`: `createDrama` and `updateDrama` replace
+  both association sets in one transaction under a drama row lock, collapse
+  duplicate ids, reject unknown targets, and roll back a partial replacement.
+- `src/workflows/admin/seasons.ts`: `deleteSeason` trashes the season and its
+  active episodes in one transaction, keeps `season_id` intact so the hierarchy
+  can be restored, and reports the accurate affected count. `updateSeason`
+  resolves the parent drama of the stored season and excludes that season
+  itself from the position conflict check.
+- `src/workflows/admin/episodes.ts`: `updateEpisode` resolves the parent drama
+  from the stored episode and validates the season and the drama-scoped episode
+  number against it.
+- Every season, episode, and drama writer locks the parent drama row
+  `FOR NO KEY UPDATE` before allocating a number or position, duplicate ids are
+  rejected, and a renumbering rewrite is two-phase (`NULL` first) so the
+  unique index cannot be violated halfway through. Episode numbering is
+  drama-wide: Season 2 continues after Season 1, and moving an episode between
+  seasons never renumbers it.
+- `src/workflows/admin/dramas.ts` and `src/workflows/admin/episodes.ts`: the
+  title/slug and title/number search alternatives are grouped in an explicit
+  `or(...)` inside the parent `and(...)`, so a search term can no longer escape
+  the active, published, and parent predicates. Every admin list query orders
+  by the sort column and then the row id, so pagination has a unique final
+  tiebreaker.
+- `src/modules/users/content-ownership.ts` and
+  `src/modules/analytics/content-ownership.ts` (new): the drama → movie
+  conversion moves the typed target, not just the legacy pair. The typed target
+  is authoritative; a row without any typed target falls back to the legacy
+  pair, and a row is counted once. When two rows of one user would end up on the
+  same target they are merged first: bookmarks keep one row per user; playback
+  progress keeps the resume point of the most recently watched row and is
+  complete when any merged row was complete; watched state keeps the most
+  watched minutes, is complete when any merged row met the threshold, and
+  carries the earliest completion and the latest reset; watch history stays
+  append-only and keeps its episode id. Daily aggregates of one date are
+  merged — every row of that date, including several rows of the target: the
+  counters add up and the visitor count takes the larger value, because the
+  overlap between two rows is unknown.
+- `src/workflows/admin/publication.ts`: `published_at` records the first
+  successful publication and is never rewritten, so an ordinary edit, an
+  unpublish, and a later republication all preserve the original instant.
+  Existing published rows keep `NULL` — no date is invented — and the Recently
+  Added listing, which is built in Phase 8, orders by
+  `published_at DESC NULLS LAST, created_at DESC`.
+- `src/modules/content/conversion.ts`, `src/workflows/admin/conversion.ts`, and
+  `src/app/admin/api/dramas/convert/route.ts`: the preview returns a
+  `planDigest` over the whole plan — target structure, strategy, seasons,
+  episode assignments, numbers, positions, and the source fingerprint — and an
+  apply request must carry that digest. The server rebuilds the plan from the
+  locked state and rejects a mismatch with a conflict, so an edited
+  distribution can no longer be applied behind the administrator's back. The
+  fingerprint alone proved only that the source had not changed.
+- `src/components/admin/dramas/drama-conversion-panel.tsx`: the admin panel
+  disables editing while a preview is pending and echoes the digest back.
+  Removing a season that owns episodes asks for confirmation first and names
+  the episodes that move, so no episode is reassigned behind the
+  administrator's back.
+- `tests/integration/db/migration-populated.integration.test.ts` (new): rebuilds
+  the pre-Phase 4 schema in a disposable schema, fills it with the shapes the
+  migrations must tolerate (duplicate active slug, duplicate episode number,
+  duplicate season position, orphan season, cross-parent episode, out-of-range
+  rating, duplicate reaction, duplicate active report, ambiguous and
+  unresolvable legacy targets, legacy analytics rows, legacy review reports),
+  then applies `0009` and `0010` and asserts the whole posture: every legacy
+  row survives, `published_at` stays `null`, the constraints are `NOT VALID`
+  while new writes are rejected, only the unambiguous rows are backfilled, and
+  a second backfill updates zero rows.
+- `tests/integration/db/integrity-constraints.integration.test.ts` (new): 51
+  SQLSTATE assertions on real inserts, proving the guarantees from the
+  application side rather than through the workflow layer.
+- `tests/integration/content/seasons.integration.test.ts` and
+  `tests/integration/content/episodes.integration.test.ts` (new): the season and
+  episode persistence rules — parent scope, numbering, positions, reorder, move,
+  rollback, and concurrency.
+- `tests/integration/content/movie-conversion.integration.test.ts`: extended
+  with the typed-target move and merge coverage, including the legacy-only
+  bookmark row that cannot be written after the migration.
+- `tests/integration/content/conversion-api.integration.test.ts`: an apply
+  without a plan digest is rejected with `400`.
+- `docs/decisions/DECISIONS.md`: D-032 records the Phase 4 decisions —
+  database-enforced integrity, the `NOT VALID` posture, the typed-target scope
+  (users and analytics), the unambiguous-only backfill, the conversion merge
+  rules, the first-publication policy, the preview-bound apply, the full report
+  state, and the `ON DELETE RESTRICT` report history.
+
+#### Phase 4 review fix pass
+
+A fresh-context review of the change set found ten defects across the standards
+and spec axes; each fix was driven by a test that failed first.
+
+- Episode renumbering is drama-wide. A season-scoped renumber request is
+  rejected with a validation error instead of silently renumbering the whole
+  drama, and the rewrite order follows season position and then episode
+  position (`src/workflows/admin/episodes.ts`).
+- `updateSeason` locks the parent drama row before the season row and before
+  the position conflict check (`src/workflows/admin/seasons.ts`).
+- The daily-aggregate merge now merges every row of a date, including several
+  rows of the target, so the counters of that day are not split
+  (`src/modules/analytics/content-ownership.ts`).
+- The conversion panel asks before the episodes of a removed season are
+  reassigned, and the distribution editor is frozen while a preview or an apply
+  is in flight (`src/components/admin/dramas/drama-conversion-panel.tsx`).
+- The operator command runs the backfill in bounded, idempotent batches of 500
+  rows, leaves a row it must not place untouched instead of aborting the run,
+  prints every offending row without truncation, and reports the foreign-key
+  orphans outside the content hierarchy (`scripts/data-integrity.mjs`).
+- The slug-reuse test now cleans up the row it creates, so the integration
+  suite leaves no residue in the test database
+  (`tests/integration/db/integrity-constraints.integration.test.ts`).
+
 ## [Unreleased] - 2026-11-16
 
 ### feat: implement authorization and user administration (Phase 3)

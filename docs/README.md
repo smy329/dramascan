@@ -53,6 +53,7 @@ For the future upgrade backlog, see `future/`.
 - [Admin Forms](development/admin-forms.md)
 - [CI/CD Conventions](development/ci-cd.md)
 - [Migration Conventions](development/migration-conventions.md)
+- [Data Integrity Runbook](development/DATA_INTEGRITY.md)
 - [Production Remediation Plan](development/REMEDIATION_PLAN.md)
 - [Implementation Plan](implementation/implementation-plan.md)
 - [Progress Tracker](implementation/progress-tracker.md)

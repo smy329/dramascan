@@ -23,9 +23,8 @@ vi.hoisted(() => {
 const authMock = vi.hoisted(() => ({ actor: undefined as unknown }));
 
 vi.mock('@/modules/authorization', async () => {
-  const actual = await vi.importActual<typeof import('@/modules/authorization')>(
-    '@/modules/authorization'
-  );
+  const actual =
+    await vi.importActual<typeof import('@/modules/authorization')>('@/modules/authorization');
 
   return {
     ...actual,
@@ -137,6 +136,7 @@ async function cleanup(): Promise<void> {
 type ApiBody = {
   data: {
     fingerprint: string;
+    planDigest: string;
     targetStructureType: string;
     applied?: boolean;
     newFingerprint?: string;
@@ -208,12 +208,14 @@ describe('POST /admin/api/dramas/convert', () => {
     });
 
     expect(preview.status).toBe(200);
+    expect(preview.body.data.planDigest).toMatch(/^[a-f0-9]{64}$/);
 
     const applied = await post({
       dramaId: drama.id,
       mode: 'apply',
       targetStructureType: 'flat',
       fingerprint: preview.body.data.fingerprint,
+      planDigest: preview.body.data.planDigest,
     });
 
     expect(applied.status).toBe(200);
@@ -241,16 +243,14 @@ describe('POST /admin/api/dramas/convert', () => {
       targetStructureType: 'flat',
     });
 
-    await db
-      .update(episodes)
-      .set({ episode_number: 12 })
-      .where(eq(episodes.id, episode.id));
+    await db.update(episodes).set({ episode_number: 12 }).where(eq(episodes.id, episode.id));
 
     const stale = await post({
       dramaId: drama.id,
       mode: 'apply',
       targetStructureType: 'flat',
       fingerprint: preview.body.data.fingerprint,
+      planDigest: preview.body.data.planDigest,
     });
 
     expect(stale.status).toBe(409);
@@ -281,6 +281,27 @@ describe('POST /admin/api/dramas/convert', () => {
       dramaId: drama.id,
       mode: 'apply',
       targetStructureType: 'flat',
+    });
+
+    expect(status).toBe(400);
+  });
+
+  it('rejects an apply without a plan digest with 400', async () => {
+    const drama = await insertDrama('missing-digest');
+    const season = await insertSeason(drama.id);
+    await insertEpisode(drama.id, season.id);
+
+    const preview = await post({
+      dramaId: drama.id,
+      mode: 'preview',
+      targetStructureType: 'flat',
+    });
+
+    const { status } = await post({
+      dramaId: drama.id,
+      mode: 'apply',
+      targetStructureType: 'flat',
+      fingerprint: preview.body.data.fingerprint,
     });
 
     expect(status).toBe(400);

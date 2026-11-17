@@ -16,10 +16,7 @@ import {
   type ConversionStructureTypeDto,
 } from '@/lib/contracts/drama-conversion';
 
-import {
-  applyDramaConversion,
-  previewDramaConversion,
-} from '@/workflows/admin/conversion-actions';
+import { applyDramaConversion, previewDramaConversion } from '@/workflows/admin/conversion-actions';
 
 /** One episode row shown in the distribution editor and the plan table. */
 export type ConversionEpisodeRow = {
@@ -46,6 +43,20 @@ type SeasonDraft = {
 };
 
 type DraftAssignment = { episodeId: string; seasonKey: string };
+
+/**
+ * A season removal that moves episodes to another season.
+ *
+ * The removal is held until the administrator confirms it, because moving a
+ * person's episodes is a consequence they must see before it happens.
+ */
+type SeasonRemoval = {
+  key: string;
+  title: string;
+  episodeTitles: string[];
+  fallbackKey: string | null;
+  fallbackTitle: string | null;
+};
 
 function defaultSeasons(): SeasonDraft[] {
   return [{ key: 'season-1', title: 'Season 1', position: 0 }];
@@ -84,7 +95,9 @@ function formatNumber(value: number | null): string {
  * The server validates the authoritative payload; this only keeps the editor
  * honest before a request is sent.
  */
-function formatDistributionError(error: { issues: ReadonlyArray<{ path: PropertyKey[] }> }): string {
+function formatDistributionError(error: {
+  issues: ReadonlyArray<{ path: PropertyKey[] }>;
+}): string {
   const issue = error.issues[0];
 
   if (!issue) {
@@ -149,6 +162,7 @@ export function DramaConversionPanel({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
+  const [pendingRemoval, setPendingRemoval] = useState<SeasonRemoval | null>(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [appliedFingerprint, setAppliedFingerprint] = useState<string | null>(null);
 
@@ -158,15 +172,17 @@ export function DramaConversionPanel({
   const isFlatTarget = targetStructureType === 'flat';
   const requiresStrategyChoice = !isFlatTarget && snapshotAvailable;
   const needsDistribution = !isFlatTarget && strategy === 'convert';
-  const isPreviewDisabled =
-    isPreviewing || isApplying || requiresStrategyChoice && strategy === null;
+  const strategyChoiceMissing = requiresStrategyChoice && strategy === null;
+  // The distribution editor is frozen while a request is in flight: an edit
+  // during that window would describe a plan the server never built.
+  const isEditorLocked = isPreviewing || isApplying;
+  const isPreviewDisabled = isEditorLocked || strategyChoiceMissing;
   /**
    * Build the distribution payload and check it against the client-safe
    * contract before a request is sent.
    */
   function buildDistribution():
-    | { ok: true; value: ConversionDistributionDto }
-    | { ok: false; message: string } {
+    { ok: true; value: ConversionDistributionDto } | { ok: false; message: string } {
     const distribution: ConversionDistributionDto = {
       seasons: seasons.map(season => ({
         key: season.key,
@@ -225,6 +241,10 @@ export function DramaConversionPanel({
 
     if (mode === 'apply' && plan) {
       request.fingerprint = plan.fingerprint;
+      // The digest binds the apply request to the previewed plan. The
+      // fingerprint only proves the source structure is unchanged; the digest
+      // also proves the distribution is the one that was previewed.
+      request.planDigest = plan.planDigest;
     }
 
     return request;
@@ -310,13 +330,50 @@ export function DramaConversionPanel({
   }
 
   function handleRemoveSeason(key: string): void {
-    const remaining = seasons.filter(season => season.key !== key);
+    const season = seasons.find(candidate => candidate.key === key);
+    const remaining = seasons.filter(candidate => candidate.key !== key);
+    const affectedEpisodes = assignments
+      .filter(assignment => assignment.seasonKey === key)
+      .map(
+        assignment =>
+          episodes.find(episode => episode.id === assignment.episodeId)?.title ??
+          assignment.episodeId
+      );
 
-    setSeasons(remaining);
+    // A season without episodes has no consequence to confirm.
+    if (affectedEpisodes.length === 0) {
+      applySeasonRemoval(key, remaining[0]?.key ?? null);
+      return;
+    }
+
+    const fallback = remaining[0] ?? null;
+
+    setPendingRemoval({
+      key,
+      title: season?.title ?? key,
+      episodeTitles: affectedEpisodes,
+      fallbackKey: fallback?.key ?? null,
+      fallbackTitle: fallback?.title ?? null,
+    });
+  }
+
+  function confirmSeasonRemoval(): void {
+    if (pendingRemoval === null) {
+      return;
+    }
+
+    const { key, fallbackKey } = pendingRemoval;
+
+    setPendingRemoval(null);
+    applySeasonRemoval(key, fallbackKey);
+  }
+
+  function applySeasonRemoval(key: string, fallbackKey: string | null): void {
+    setSeasons(current => current.filter(season => season.key !== key));
     setAssignments(current =>
       current.map(assignment => {
         if (assignment.seasonKey === key) {
-          return { ...assignment, seasonKey: remaining[0]?.key ?? '' };
+          return { ...assignment, seasonKey: fallbackKey ?? '' };
         }
 
         return assignment;
@@ -409,7 +466,7 @@ export function DramaConversionPanel({
         </p>
       </div>
 
-      {!isFlatTarget && snapshotAvailable ?
+      {!isFlatTarget && snapshotAvailable ? (
         <fieldset className="rounded-xl border border-border p-4">
           <legend className="px-1 text-sm font-medium text-foreground">Strategy</legend>
           <div className="mt-2 space-y-2">
@@ -447,16 +504,16 @@ export function DramaConversionPanel({
             </label>
           </div>
         </fieldset>
-       : null}
+      ) : null}
 
-      {needsDistribution ?
+      {needsDistribution ? (
         <section className="rounded-xl border border-border p-4" aria-labelledby={`${planId}-dist`}>
           <h2 id={`${planId}-dist`} className="text-sm font-medium text-foreground">
             Season distribution
           </h2>
 
           <ul className="mt-3 space-y-3">
-            {seasons.map(season =>
+            {seasons.map(season => (
               <li key={season.key} className="grid gap-2 sm:grid-cols-[1fr_6rem_auto] sm:items-end">
                 <div className="space-y-1">
                   <label
@@ -468,6 +525,7 @@ export function DramaConversionPanel({
                   <Input
                     id={`season-title-${season.key}`}
                     value={season.title}
+                    disabled={isEditorLocked}
                     onChange={event => handleSeasonTitleChange(season.key, event.target.value)}
                   />
                 </div>
@@ -483,6 +541,7 @@ export function DramaConversionPanel({
                     type="number"
                     min={0}
                     value={season.position}
+                    disabled={isEditorLocked}
                     onChange={event =>
                       handleSeasonPositionChange(season.key, Number(event.target.value))
                     }
@@ -492,15 +551,21 @@ export function DramaConversionPanel({
                   type="button"
                   variant="outline"
                   onClick={() => handleRemoveSeason(season.key)}
-                  disabled={seasons.length <= 1}
+                  disabled={isEditorLocked || seasons.length <= 1}
                 >
                   Remove
                 </Button>
               </li>
-            )}
+            ))}
           </ul>
 
-          <Button type="button" variant="outline" className="mt-3" onClick={handleAddSeason}>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-3"
+            onClick={handleAddSeason}
+            disabled={isEditorLocked}
+          >
             Add season
           </Button>
 
@@ -511,7 +576,10 @@ export function DramaConversionPanel({
                 const assignment = assignments.find(row => row.episodeId === episode.id);
 
                 return (
-                  <li key={episode.id} className="grid gap-2 sm:grid-cols-[1fr_12rem] sm:items-center">
+                  <li
+                    key={episode.id}
+                    className="grid gap-2 sm:grid-cols-[1fr_12rem] sm:items-center"
+                  >
                     <label htmlFor={`assignment-${episode.id}`} className="text-sm text-foreground">
                       {episode.title}{' '}
                       <span className="text-xs text-muted-foreground">
@@ -521,14 +589,15 @@ export function DramaConversionPanel({
                     <select
                       id={`assignment-${episode.id}`}
                       value={assignment?.seasonKey ?? ''}
+                      disabled={isEditorLocked}
                       onChange={event => handleAssignmentChange(episode.id, event.target.value)}
                       className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm text-foreground"
                     >
-                      {seasons.map(season =>
+                      {seasons.map(season => (
                         <option key={season.key} value={season.key}>
                           {season.title}
                         </option>
-                      )}
+                      ))}
                     </select>
                   </li>
                 );
@@ -536,7 +605,7 @@ export function DramaConversionPanel({
             </ul>
           </div>
         </section>
-       : null}
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" onClick={handlePreview} disabled={isPreviewDisabled}>
@@ -552,35 +621,34 @@ export function DramaConversionPanel({
         </Button>
       </div>
 
-      {errorMessage ?
+      {errorMessage ? (
         <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-4">
           <p className="text-sm text-foreground">{errorMessage}</p>
         </div>
-       : null}
+      ) : null}
 
       <section aria-live="polite" aria-labelledby={planId}>
         <h2 id={planId} className="text-sm font-medium text-foreground">
           Preview
         </h2>
 
-        {plan ?
+        {plan ? (
           <div className="mt-2 space-y-3">
             <p className="text-sm text-muted-foreground">
-              {plan.counts.activeEpisodes} active episode(s),{' '}
-              {plan.counts.seasonsCreated} season(s) created,{' '}
-              {plan.counts.seasonsAffected} season(s) affected.
+              {plan.counts.activeEpisodes} active episode(s), {plan.counts.seasonsCreated} season(s)
+              created, {plan.counts.seasonsAffected} season(s) affected.
             </p>
 
-            {plan.warnings.length > 0 ?
+            {plan.warnings.length > 0 ? (
               <ConsequenceList items={plan.warnings} label="Warnings" />
-             : null}
+            ) : null}
 
-            {plan.snapshot ?
+            {plan.snapshot ? (
               <p className="text-sm text-muted-foreground">
                 Snapshot {plan.snapshot.status}
                 {plan.snapshot.restorable ? ' (restorable)' : ' (no longer restorable)'}.
               </p>
-             : null}
+            ) : null}
 
             <table className="w-full text-left text-sm">
               <caption className="sr-only">Episode renumbering preview</caption>
@@ -598,7 +666,7 @@ export function DramaConversionPanel({
                 </tr>
               </thead>
               <tbody>
-                {plan.episodes.map(episode =>
+                {plan.episodes.map(episode => (
                   <tr key={episode.id} className="border-t border-border">
                     <td className="py-1 pr-3 text-foreground">{episode.title}</td>
                     <td className="py-1 pr-3 text-muted-foreground">
@@ -608,22 +676,58 @@ export function DramaConversionPanel({
                       {formatNumber(episode.toEpisodeNumber)}
                     </td>
                   </tr>
-                )}
+                ))}
               </tbody>
             </table>
           </div>
-         :
+        ) : (
           <p className="mt-2 text-sm text-muted-foreground">
             No preview yet. Build a preview before confirming a conversion.
           </p>
-        }
+        )}
       </section>
 
-      {appliedFingerprint ?
+      {appliedFingerprint ? (
         <p role="status" className="text-sm text-muted-foreground">
           Conversion applied.
         </p>
-       : null}
+      ) : null}
+
+      <ConfirmationDialog
+        open={pendingRemoval !== null}
+        onOpenChange={nextOpen => {
+          if (!nextOpen) {
+            setPendingRemoval(null);
+          }
+        }}
+        onConfirm={confirmSeasonRemoval}
+        title="Remove season and reassign its episodes"
+        description={
+          pendingRemoval === null
+            ? undefined
+            : `Removing “${pendingRemoval.title}” moves its episodes to another season.`
+        }
+        affectedContent={
+          pendingRemoval === null ? undefined : (
+            <ul className="list-inside list-disc">
+              {pendingRemoval.episodeTitles.map(title => (
+                <li key={title}>{title}</li>
+              ))}
+            </ul>
+          )
+        }
+        affectedContentLabel="Episodes to reassign"
+        consequences={
+          pendingRemoval?.fallbackTitle === null || pendingRemoval === null ? undefined : (
+            <p>
+              {pendingRemoval.episodeTitles.length} episode(s) move to “
+              {pendingRemoval.fallbackTitle}”.
+            </p>
+          )
+        }
+        confirmLabel="Remove season"
+        variant="destructive"
+      />
 
       <ConfirmationDialog
         open={isConfirmOpen}
@@ -635,8 +739,7 @@ export function DramaConversionPanel({
         description={`This changes the structure of “${dramaTitle}”.`}
         affectedContent={
           <p>
-            {plan?.counts.activeEpisodes ?? 0} active episode(s) will be renumbered and
-            reassigned.
+            {plan?.counts.activeEpisodes ?? 0} active episode(s) will be renumbered and reassigned.
           </p>
         }
         consequences={<ConsequenceList items={consequenceItems} label="Consequences" />}

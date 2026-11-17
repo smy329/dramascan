@@ -32,7 +32,9 @@ test.describe('admin drama conversion', () => {
 
       await expect(page.getByRole('heading', { name: 'Dramas' })).toBeVisible();
       await expect(page.getByRole('cell', { name: drama.title })).toBeVisible();
-      await expect(page.getByRole('cell', { name: 'Season-based' })).toBeVisible();
+      await expect(
+        page.getByRole('row', { name: new RegExp(drama.title) }).getByRole('cell', { name: 'Season-based' })
+      ).toBeVisible();
 
       await page
         .getByRole('row', { name: new RegExp(drama.title) })
@@ -48,13 +50,15 @@ test.describe('admin drama conversion', () => {
   });
 
   test('previews and applies a season-based to flat conversion', async ({ context, page }) => {
-    const session = await adminSession.seed({ email: 'e2e-dramas-convert@example.com' });
+    // The drama is seeded first: if the seeder fails, no session exists yet and
+    // the test database keeps no residue.
     const drama = await seedDrama({
       title: 'E2E Converted Drama',
       structureType: 'season_based',
       seasonCount: 2,
       episodesPerSeason: 2,
     });
+    const session = await adminSession.seed({ email: 'e2e-dramas-convert@example.com' });
 
     try {
       await context.addCookies([

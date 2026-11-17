@@ -69,6 +69,7 @@ const PUBLICATION_BATCH_SIZE = 100;
 type PublicationRow = {
   id: string;
   publication_status: string;
+  published_at: Date | null;
   deleted_at: Date | null;
   video_source: string | null;
   season_id: string | null;
@@ -93,6 +94,7 @@ async function fetchById(
       byId.set(row.id, {
         id: row.id,
         publication_status: row.publication_status,
+        published_at: row.published_at,
         deleted_at: row.deleted_at,
         video_source: null,
         season_id: null,
@@ -100,12 +102,17 @@ async function fetchById(
       });
     }
   } else if (contentType === 'season') {
-    const rows = await tx.select().from(seasons).where(inArray(seasons.id, targetIds)).for('update');
+    const rows = await tx
+      .select()
+      .from(seasons)
+      .where(inArray(seasons.id, targetIds))
+      .for('update');
 
     for (const row of rows) {
       byId.set(row.id, {
         id: row.id,
         publication_status: row.publication_status,
+        published_at: row.published_at,
         deleted_at: row.deleted_at,
         video_source: null,
         season_id: null,
@@ -113,12 +120,17 @@ async function fetchById(
       });
     }
   } else if (contentType === 'episode') {
-    const rows = await tx.select().from(episodes).where(inArray(episodes.id, targetIds)).for('update');
+    const rows = await tx
+      .select()
+      .from(episodes)
+      .where(inArray(episodes.id, targetIds))
+      .for('update');
 
     for (const row of rows) {
       byId.set(row.id, {
         id: row.id,
         publication_status: row.publication_status,
+        published_at: row.published_at,
         deleted_at: row.deleted_at,
         video_source: row.video_source,
         season_id: row.season_id,
@@ -132,6 +144,7 @@ async function fetchById(
       byId.set(row.id, {
         id: row.id,
         publication_status: row.publication_status,
+        published_at: row.published_at,
         deleted_at: row.deleted_at,
         video_source: row.video_source,
         season_id: null,
@@ -158,25 +171,40 @@ async function resolveAvailability(
   let parentSeason: AvailabilityParent | null = null;
 
   if (contentType === 'season') {
-    const [drama] = await tx.select().from(dramas).where(eq(dramas.id, row.drama_id ?? ''));
+    const [drama] = await tx
+      .select()
+      .from(dramas)
+      .where(eq(dramas.id, row.drama_id ?? ''));
 
     parentDrama = drama
-      ? { publicationStatus: (drama.publication_status as PublicationStatus) ?? 'draft', deleted: drama.deleted_at !== null }
+      ? {
+          publicationStatus: (drama.publication_status as PublicationStatus) ?? 'draft',
+          deleted: drama.deleted_at !== null,
+        }
       : { publicationStatus: 'draft', deleted: false };
   }
 
   if (contentType === 'episode') {
-    const [drama] = await tx.select().from(dramas).where(eq(dramas.id, row.drama_id ?? ''));
+    const [drama] = await tx
+      .select()
+      .from(dramas)
+      .where(eq(dramas.id, row.drama_id ?? ''));
     const [season] = row.season_id
       ? await tx.select().from(seasons).where(eq(seasons.id, row.season_id))
       : [null];
 
     parentDrama = drama
-      ? { publicationStatus: (drama.publication_status as PublicationStatus) ?? 'draft', deleted: drama.deleted_at !== null }
+      ? {
+          publicationStatus: (drama.publication_status as PublicationStatus) ?? 'draft',
+          deleted: drama.deleted_at !== null,
+        }
       : { publicationStatus: 'draft', deleted: false };
 
     parentSeason = season
-      ? { publicationStatus: (season.publication_status as PublicationStatus) ?? 'draft', deleted: season.deleted_at !== null }
+      ? {
+          publicationStatus: (season.publication_status as PublicationStatus) ?? 'draft',
+          deleted: season.deleted_at !== null,
+        }
       : null;
   }
 
@@ -222,12 +250,22 @@ export async function updatePublication(
           const uuid = z.uuid().safeParse(id);
 
           if (!uuid.success) {
-            batchResults.push({ id, status: 'failed', reason: 'invalid_id', message: 'Id must be a UUID.' });
+            batchResults.push({
+              id,
+              status: 'failed',
+              reason: 'invalid_id',
+              message: 'Id must be a UUID.',
+            });
             continue;
           }
 
           if (seenIds.has(uuid.data)) {
-            batchResults.push({ id, status: 'skipped', reason: 'duplicate_id', message: 'Duplicate id ignored.' });
+            batchResults.push({
+              id,
+              status: 'skipped',
+              reason: 'duplicate_id',
+              message: 'Duplicate id ignored.',
+            });
             continue;
           }
 
@@ -235,12 +273,22 @@ export async function updatePublication(
           const row = byId.get(uuid.data);
 
           if (!row) {
-            batchResults.push({ id, status: 'skipped', reason: 'not_found', message: 'Content not found.' });
+            batchResults.push({
+              id,
+              status: 'skipped',
+              reason: 'not_found',
+              message: 'Content not found.',
+            });
             continue;
           }
 
           if (row.deleted_at !== null) {
-            batchResults.push({ id, status: 'skipped', reason: 'trashed', message: 'Content is in Trash.' });
+            batchResults.push({
+              id,
+              status: 'skipped',
+              reason: 'trashed',
+              message: 'Content is in Trash.',
+            });
             continue;
           }
 
@@ -263,15 +311,45 @@ export async function updatePublication(
             continue;
           }
           const targetStatus = parsed.action === 'publish' ? 'published' : 'unpublished';
-          const table = parsed.contentType === 'drama' ? dramas : parsed.contentType === 'season' ? seasons : parsed.contentType === 'episode' ? episodes : movies;
-          const [updated] = await tx
-            .update(table)
-            .set({ publication_status: targetStatus, updated_at: new Date() })
-            .where(and(eq(table.id, row.id), eq(table.publication_status, currentStatus)))
-            .returning();
+          const table =
+            parsed.contentType === 'drama'
+              ? dramas
+              : parsed.contentType === 'season'
+                ? seasons
+                : parsed.contentType === 'episode'
+                  ? episodes
+                  : movies;
+          const now = new Date();
 
-          const publicationStatus = (updated?.publication_status as PublicationStatus) ?? targetStatus;
-          const publiclyAvailable = await resolveAvailability(parsed.contentType, tx, { ...row, publication_status: publicationStatus }, publicationStatus);
+          // `published_at` records the first successful publication (SCOPE-D01).
+          // It is written once and never rewritten: an ordinary edit, an
+          // unpublish, and a later republication all preserve the original
+          // instant, so the value stays a stable "first published" date.
+          const [updated] =
+            parsed.action === 'publish'
+              ? await tx
+                  .update(table)
+                  .set({
+                    publication_status: targetStatus,
+                    published_at: row.published_at ?? now,
+                    updated_at: now,
+                  })
+                  .where(and(eq(table.id, row.id), eq(table.publication_status, currentStatus)))
+                  .returning()
+              : await tx
+                  .update(table)
+                  .set({ publication_status: targetStatus, updated_at: now })
+                  .where(and(eq(table.id, row.id), eq(table.publication_status, currentStatus)))
+                  .returning();
+
+          const publicationStatus =
+            (updated?.publication_status as PublicationStatus) ?? targetStatus;
+          const publiclyAvailable = await resolveAvailability(
+            parsed.contentType,
+            tx,
+            { ...row, publication_status: publicationStatus },
+            publicationStatus
+          );
 
           batchResults.push({
             id,
@@ -286,7 +364,12 @@ export async function updatePublication(
       results.push(...batchResults);
     } catch {
       for (const id of batch) {
-        results.push({ id, status: 'failed', reason: 'update_failed', message: 'Publication update failed.' });
+        results.push({
+          id,
+          status: 'failed',
+          reason: 'update_failed',
+          message: 'Publication update failed.',
+        });
       }
     }
   }

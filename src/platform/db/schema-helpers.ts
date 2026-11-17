@@ -113,6 +113,37 @@ export function foreignKeyConstraint(
   return builder;
 }
 
+/**
+ * Named multi-column foreign key.
+ *
+ * PostgreSQL requires the referenced columns to be covered by a unique
+ * constraint or primary key, so a caller passing several columns must also
+ * provide that target. This is how a composite parent is enforced: an episode's
+ * `(drama_id, season_id)` must match a season row that belongs to the same
+ * drama, which a single-column `season_id` reference cannot express.
+ */
+export function compositeForeignKeyConstraint(
+  table: string,
+  columns: [AnyPgColumn, ...AnyPgColumn[]],
+  foreignColumns: [AnyPgColumn, ...AnyPgColumn[]],
+  actions: { onUpdate?: UpdateDeleteAction; onDelete?: UpdateDeleteAction } = {}
+) {
+  const builder = foreignKey({
+    name: constraintNames.foreignKey(table, columns.map(column => column.name).join('_')),
+    columns,
+    foreignColumns,
+  });
+
+  if (actions.onUpdate) {
+    builder.onUpdate(actions.onUpdate);
+  }
+  if (actions.onDelete) {
+    builder.onDelete(actions.onDelete);
+  }
+
+  return builder;
+}
+
 /** Named unique constraint, for use in a `pgTable` extra-config callback. */
 export function uniqueConstraint(table: string, column: AnyPgColumn, ...columns: AnyPgColumn[]) {
   return unique(constraintNames.unique(table, column.name, ...columns.map(c => c.name))).on(

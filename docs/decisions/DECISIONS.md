@@ -1174,9 +1174,126 @@ have been stored.
 
 ---
 
-- A decision is added only after explicit user approval or when the specification
-  establishes it.
-- Decisions record context, the approved choice, and consequences.
-- Changing a decision requires a new entry that supersedes the old one; prior entries
-  are not deleted.
-- Implementation must not silently contradict an active decision.
+## D-032 — Database-enforced content integrity, typed targets, and preview-bound conversion
+
+**Date:** 2026-11-17
+**Status:** Approved by user (Phase 4 of the production remediation plan)
+**Resolves:** H-04, H-05, H-06, H-07, H-08, H-09, M-01, M-02, M-07, M-08,
+SCOPE-D01, SUP-01, TEST-03. Extends D-020 (typed relationships) and D-030
+(drama → movie conversion) without changing either of their outcomes.
+
+**Context:** The schema assumed a hierarchy it did not enforce. `seasons` and
+`episodes` carried a free-text `drama_id`, an episode could name a season of
+another drama, and duplicate episode numbers and season positions were
+possible. Association sets were replaced in several statements, so a partial
+replacement could be persisted. The user-content tables and the analytics
+tables stored a polymorphic `content_type`/`content_id` pair, which cannot
+carry an ordinary foreign key, while D-020 forbids that pair in the final
+model. The drama → movie conversion moved only the legacy pair, so a typed
+target stayed behind on the trashed drama. A conversion preview proved that
+the source structure had not changed but not that the plan being applied was
+the plan that was previewed. `published_at` did not exist, so a listing could
+not order by first publication. A review report recorded no description, no
+resolver, no outcome, and — because the row was cascaded away with its
+review — no durable moderation history.
+
+**Decision:**
+
+1. **The database enforces the content hierarchy.** `seasons.drama_id` and
+   `episodes.drama_id` reference `dramas.id`; the composite
+   `episodes(drama_id, season_id)` references `seasons(drama_id, id)`, so an
+   episode cannot name a season of another drama. Content references are
+   `ON DELETE RESTRICT`: permanently removing content is an explicit Super
+   Admin action, never a silent cascade.
+2. **Numbering and positions are scoped and unique.** Episode numbers are
+   unique per drama and season positions are unique per drama, both among the
+   active rows. Episode numbering is **drama-wide**: Season 2 continues after
+   Season 1, and moving an episode between seasons never renumbers it.
+   Allocation happens under a lock on the parent drama row, and a renumbering
+   rewrite is two-phase (`NULL` first) so the unique index cannot be violated
+   halfway through.
+3. **The integrity constraints land in the `NOT VALID` posture.** Foreign
+   keys and CHECK constraints are added `NOT VALID` and the unique indexes are
+   created in guarded blocks, so a migration always lands on a populated
+   database. New and updated rows are enforced immediately; historical rows
+   are reconciled by the operator and then validated with
+   `npm run db:integrity -- validate`. Two constraints are the exception and
+   are validated from the start, because no pre-existing row can violate them:
+   `ck_review_reports_status` (the `status` column is new and defaulted to
+   `active`, so every legacy row already satisfies it) and
+   `uq_seasons_drama_id_id` (the composite is always satisfiable, because
+   `seasons.id` is already unique).
+4. **Typed targets cover users and analytics.** `bookmarks`,
+   `playback_progress`, `watched_state`, `watch_history`,
+   `content_view_events`, and `playback_analytics_events` name exactly one
+   content item through `drama_id`/`movie_id`. `analytics_daily_aggregates` may
+   name none, because a site-wide aggregate legitimately has no content, but
+   never both. The legacy `content_type`/`content_id` pair is kept — it is
+   still the only evidence for rows that cannot be placed — and the typed
+   target wins whenever the two disagree.
+5. **Only unambiguous legacy rows are backfilled.** A row is backfilled when
+   its legacy type names a table, its id exists there, and the id does not
+   also exist in the other table. Every other row is listed, read-only, by
+   `npm run db:integrity` and is never guessed.
+6. **The conversion moves the typed target and merges what it would
+   duplicate.** The typed target is authoritative; a row without any typed
+   target falls back to the legacy pair, and a row is counted once. When two
+   rows of one user would end up on the same target, they are merged before
+   the move: bookmarks keep one row per user; playback progress keeps the
+   resume point of the most recently watched row and is complete when any
+   merged row was complete; watched state keeps the most watched minutes, is
+   complete when any merged row met the threshold, and carries the earliest
+   completion and the latest reset; watch history stays append-only and keeps
+   its episode id. Daily aggregates of one date are merged: the counters add
+   up and the visitor count takes the larger value, because the overlap
+   between two rows is unknown.
+7. **`published_at` records the first successful publication.** It is set on
+   the first publication and never rewritten: an ordinary edit, an unpublish,
+   and a later republication all preserve the original instant. Existing
+   published rows keep `NULL` — no date is invented — and the Recently Added
+   listing, which is built in Phase 8, orders by
+   `published_at DESC NULLS LAST, created_at DESC`.
+8. **A conversion apply is bound to the previewed plan.** The preview returns
+   a `planDigest` over the whole plan — target structure, strategy, seasons,
+   episode assignments, numbers, positions, and the source fingerprint. An
+   apply request must carry that digest; the server rebuilds the plan from the
+   locked state and rejects a mismatch with a conflict. The fingerprint alone
+   is not enough: it proves the source did not change, not that the
+   distribution was not edited after the preview.
+9. **A review report records its full state.** An optional `description`, the
+   moderator who resolved it (`resolved_by`), the `resolution_outcome`, the
+   submission time (`reported_at`), and a lifecycle rule: an active report
+   carries no resolution record, a resolved report carries a complete one.
+   `reported_at` is `NULL` for reports that predate the column, because their
+   real submission time cannot be reconstructed. The reason stays free-text
+   until the moderation service of Phase 8 enforces the documented vocabulary.
+10. **Report history outlives the review.** `review_reports.review_id` is
+    `ON DELETE RESTRICT`: permanently removing a review that has reports is
+    blocked until a moderator resolves them.
+
+**Consequences:**
+
+- The migrations are forward-only. `0009` adds the hierarchy, the typed
+  user-content targets, the rating range, and `published_at`; `0010` extends
+  them with the analytics targets, the report state, and the `restrict` review
+  reference. Neither drops a column that holds data, and neither edits an
+  applied migration.
+- Because a `NOT VALID` CHECK is enforced on new and updated rows, the
+  migration and the application release that relies on the typed columns ship
+  together. A release that still writes the legacy pair only is rejected by
+  the database after the migration; this is a deliberate consequence of
+  enforcing new writes immediately.
+- The daily aggregate has no unique `(date, target)` index yet. The phase
+  that builds the analytics write path adds it, after the data has been
+  audited for duplicates.
+- The moderation service itself is Phase 8. The state it will write is
+  enforced by the database now, so the service cannot record a half-resolved
+  report.
+- The Recently Added listing is also Phase 8. Phase 4 provides the timestamp
+  and the ordering rule; the listing that uses them is not built yet.
+- The operator command never aborts on a legacy row it cannot place. A row
+  whose unique key is already taken, or whose other foreign keys are broken,
+  is left untouched and listed by the report, so a single bad row cannot roll
+  back the placements that did succeed.
+
+---

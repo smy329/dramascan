@@ -64,6 +64,20 @@
       "when": 1794838786223,
       "tag": "0008_freezing_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794898436810,
+      "tag": "0009_content_integrity_and_typed_targets",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794915352315,
+      "tag": "0010_typed_analytics_targets_and_report_state",
+      "breakpoints": true
     }
   ]
 }

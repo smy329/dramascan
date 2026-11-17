@@ -46,21 +46,18 @@ export const publicationReadyVideoSourceSchema = z
   .trim()
   .min(1)
   .max(2048)
-  .refine(
-    value => {
-      let url: URL;
-      try {
-        url = new URL(value);
-      } catch {
-        return false;
-      }
+  .refine(value => {
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      return false;
+    }
 
-      if (url.protocol !== 'https:') return false;
-      if (url.username !== '' || url.password !== '') return false;
-      return url.pathname.toLowerCase().endsWith('.mp4');
-    },
-    'Video source must be an absolute HTTPS URL whose path ends in .mp4.'
-  );
+    if (url.protocol !== 'https:') return false;
+    if (url.username !== '' || url.password !== '') return false;
+    return url.pathname.toLowerCase().endsWith('.mp4');
+  }, 'Video source must be an absolute HTTPS URL whose path ends in .mp4.');
 
 /** Bulk publish/unpublish request. Malformed ids are reported per item. */
 export const publicationRequestSchema = z.strictObject({
@@ -116,12 +113,10 @@ export function parseCreateDramaInput(input: unknown): CreateDramaInput {
  * renumber episodes and store a restorable snapshot. An update may repeat the
  * stored value, but a different value is rejected as a conflict.
  */
-export const updateDramaSchema = createDramaSchema
-  .omit({ structure_type: true })
-  .extend({
-    structure_type: z.enum(['flat', 'season_based']).optional(),
-    visibility: dramaVisibilitySchema.optional(),
-  });
+export const updateDramaSchema = createDramaSchema.omit({ structure_type: true }).extend({
+  structure_type: z.enum(['flat', 'season_based']).optional(),
+  visibility: dramaVisibilitySchema.optional(),
+});
 
 export type UpdateDramaInput = z.infer<typeof updateDramaSchema>;
 
@@ -150,14 +145,20 @@ export function parseOrThrow<T>(schema: z.ZodType<T>, input: unknown): T {
   return parsed.data;
 }
 
-/** Episode create schema with minimal metadata. */
+/**
+ * Episode create schema with minimal metadata.
+ *
+ * The parent drama is the workflow's `dramaId` argument, never a body field:
+ * a second, ignored parent source is how an episode ends up validated against
+ * the wrong drama (H-05). `season_id` is the only parent a payload may name,
+ * and the workflow proves it belongs to that drama.
+ */
 export const createEpisodeSchema = z.strictObject({
   title: z.string().trim().min(1).max(200),
   description: z.string().optional(),
   episode_number: z.coerce.number().int().min(1).optional(),
-  position: z.coerce.number().int().min(0).default(0),
+  position: z.coerce.number().int().min(0).optional(),
   season_id: z.string().uuid().optional(),
-  drama_id: z.string().uuid(),
   video_source: publicationReadyVideoSourceSchema.optional(),
 });
 
@@ -250,7 +251,19 @@ export const conversionRequestSchema = z.strictObject({
   mode: z.enum(['preview', 'apply']),
   targetStructureType: conversionStructureTypeSchema,
   strategy: conversionStrategySchema.optional(),
-  fingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  fingerprint: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
+  /**
+   * Digest of the previewed plan. It binds an apply request to the exact plan
+   * the administrator saw, so a distribution edited after the preview cannot be
+   * applied behind their back (SUP-01).
+   */
+  planDigest: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
   snapshotId: z.uuid().optional(),
   distribution: conversionDistributionSchema.optional(),
 });

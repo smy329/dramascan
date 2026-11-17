@@ -25,16 +25,6 @@ export async function createSeason(
 
   const parsedDramaId = parseOrThrow(z.uuid(), dramaId);
 
-  // Check drama exists
-  const [drama] = await db
-    .select({ title: dramas.title })
-    .from(dramas)
-    .where(eq(dramas.id, parsedDramaId));
-
-  if (!drama) {
-    return { ok: false, error: new NotFoundError('Drama not found.') };
-  }
-
   // Parse season input - only allow title and position for now
   const seasonSchema = z.strictObject({
     title: z.string().trim().min(1).max(100),
@@ -43,42 +33,71 @@ export async function createSeason(
 
   const parsed = parseOrThrow(seasonSchema, input);
 
-  // Check for duplicate position within the drama
-  const [existing] = await db
-    .select({ id: seasons.id })
-    .from(seasons)
-    .where(and(eq(seasons.drama_id, parsedDramaId), eq(seasons.position, parsed.position), isNull(seasons.deleted_at)));
+  return db.transaction(async tx => {
+    // Lock the parent drama for the whole allocation. The lock proves the drama
+    // exists and serializes position allocation for its seasons, so two
+    // concurrent creates cannot both see the same free position.
+    const [drama] = await tx
+      .select({ id: dramas.id })
+      .from(dramas)
+      .where(eq(dramas.id, parsedDramaId))
+      .for('no key update')
+      .limit(1);
 
-  if (existing) {
-    return {
-      ok: false,
-      error: {
-        code: 'validation_error',
-        message: 'A season with this position already exists.',
-        fieldErrors: { position: ['A season with this position already exists.'] },
-      },
-    };
-  }
+    if (!drama) {
+      return { ok: false as const, error: new NotFoundError('Drama not found.') };
+    }
 
-  const [row] = await db
-    .insert(seasons)
-    .values({
-      drama_id: parsedDramaId,
-      title: parsed.title,
-      position: parsed.position,
-      created_at: new Date(),
-      updated_at: new Date(),
-    })
-    .returning();
+    // Check for duplicate position within the drama
+    const [existing] = await tx
+      .select({ id: seasons.id })
+      .from(seasons)
+      .where(
+        and(
+          eq(seasons.drama_id, parsedDramaId),
+          eq(seasons.position, parsed.position),
+          isNull(seasons.deleted_at)
+        )
+      );
 
-  if (!row) {
-    return { ok: false, error: new NotFoundError('Season not found.') };
-  }
+    if (existing) {
+      return {
+        ok: false as const,
+        error: {
+          code: 'validation_error',
+          message: 'A season with this position already exists.',
+          fieldErrors: { position: ['A season with this position already exists.'] },
+        },
+      };
+    }
 
-  return { ok: true, season: toSeason(row) };
+    const [row] = await tx
+      .insert(seasons)
+      .values({
+        drama_id: parsedDramaId,
+        title: parsed.title,
+        position: parsed.position,
+        created_at: new Date(),
+        updated_at: new Date(),
+      })
+      .returning();
+
+    if (!row) {
+      return { ok: false as const, error: new NotFoundError('Season not found.') };
+    }
+
+    return { ok: true as const, season: toSeason(row) };
+  });
 }
 
-/** Season update. */
+/**
+ * Season update.
+ *
+ * The position conflict is scoped to the season's real parent drama, loaded
+ * from the row rather than inferred from the season id, and excludes the season
+ * itself. Comparing `seasons.drama_id` to the season id never matched, so the
+ * duplicate-position check silently passed for every update (M-02).
+ */
 export async function updateSeason(
   actor: ActorContext,
   seasonId: string,
@@ -94,46 +113,85 @@ export async function updateSeason(
 
   const parsed = parseOrThrow(seasonSchema, input);
 
-  // Check for duplicate position (excluding current season)
-  const [conflict] = await db
-    .select({ id: seasons.id })
-    .from(seasons)
-    .where(
-      and(
-        eq(seasons.drama_id, parsedSeasonId),
-        eq(seasons.position, parsed.position ?? -1), // -1 means no position check
-        isNull(seasons.deleted_at),
-        ne(seasons.id, parsedSeasonId)
-      )
-    );
+  return db.transaction(async tx => {
+    // The season's drama is read first without a lock, so the parent can be
+    // locked before the season. Every writer that allocates a position in this
+    // drama takes the same drama lock, so two concurrent updates cannot read
+    // the same free position at the same time.
+    const [seasonRef] = await tx
+      .select({ id: seasons.id, drama_id: seasons.drama_id })
+      .from(seasons)
+      .where(eq(seasons.id, parsedSeasonId))
+      .limit(1);
 
-  if (conflict) {
-    return {
-      ok: false,
-      error: {
-        code: 'validation_error',
-        message: 'A season with this position already exists.',
-        fieldErrors: { position: ['A season with this position already exists.'] },
-      },
-    };
-  }
+    if (!seasonRef) {
+      return { ok: false as const, error: new NotFoundError('Season not found.') };
+    }
 
-  const [row] = await db
-    .update(seasons)
-    .set({
-      title: parsed.title,
-      position: parsed.position,
-      updated_at: new Date(),
-    })
-    .where(eq(seasons.id, parsedSeasonId))
+    const [drama] = await tx
+      .select({ id: dramas.id })
+      .from(dramas)
+      .where(eq(dramas.id, seasonRef.drama_id))
+      .for('no key update')
+      .limit(1);
 
-    .returning();
+    if (!drama) {
+      return { ok: false as const, error: new NotFoundError('Season not found.') };
+    }
 
-  if (!row) {
-    return { ok: false, error: new NotFoundError('Season not found.') };
-  }
+    // Re-read the season under its own lock, now that the drama is locked.
+    const [season] = await tx
+      .select({ id: seasons.id, drama_id: seasons.drama_id })
+      .from(seasons)
+      .where(eq(seasons.id, parsedSeasonId))
+      .for('no key update')
+      .limit(1);
 
-  return { ok: true, season: toSeason(row) };
+    if (!season) {
+      return { ok: false as const, error: new NotFoundError('Season not found.') };
+    }
+
+    if (parsed.position !== undefined) {
+      const [conflict] = await tx
+        .select({ id: seasons.id })
+        .from(seasons)
+        .where(
+          and(
+            eq(seasons.drama_id, season.drama_id),
+            eq(seasons.position, parsed.position),
+            isNull(seasons.deleted_at),
+            ne(seasons.id, parsedSeasonId)
+          )
+        );
+
+      if (conflict) {
+        return {
+          ok: false as const,
+          error: {
+            code: 'validation_error',
+            message: 'A season with this position already exists.',
+            fieldErrors: { position: ['A season with this position already exists.'] },
+          },
+        };
+      }
+    }
+
+    const [row] = await tx
+      .update(seasons)
+      .set({
+        title: parsed.title,
+        position: parsed.position,
+        updated_at: new Date(),
+      })
+      .where(eq(seasons.id, parsedSeasonId))
+      .returning();
+
+    if (!row) {
+      return { ok: false as const, error: new NotFoundError('Season not found.') };
+    }
+
+    return { ok: true as const, season: toSeason(row) };
+  });
 }
 
 /** List seasons for a drama. */
@@ -165,10 +223,12 @@ export async function listSeasons(
       ...toSeason(row.season),
       publiclyAvailable: evaluatePublicAvailability({
         contentType: 'season',
-        publicationStatus: (row.season.publication_status ?? 'draft') as 'draft' | 'published' | 'unpublished',
+        publicationStatus: (row.season.publication_status ?? 'draft') as
+          'draft' | 'published' | 'unpublished',
         deleted: row.season.deleted_at !== null,
         parentDrama: {
-          publicationStatus: (row.drama.publication_status ?? 'draft') as 'draft' | 'published' | 'unpublished',
+          publicationStatus: (row.drama.publication_status ?? 'draft') as
+            'draft' | 'published' | 'unpublished',
           deleted: row.drama.deleted_at !== null,
         },
       }).publiclyAvailable,
@@ -177,65 +237,62 @@ export async function listSeasons(
   };
 }
 
-/** Soft-delete a season (move to trash). */
+/**
+ * Move a season and its active episode hierarchy to Trash.
+ *
+ * The whole operation is one transaction. The season row is locked first, so a
+ * second concurrent delete waits and then sees an already-trashed season
+ * instead of double-counting episodes.
+ *
+ * `season_id` is deliberately preserved on the trashed episodes. The seasons'
+ * Trash is a restorable state, so the hierarchy must survive; detaching the
+ * episodes (the previous behaviour) destroyed the relationship that a restore
+ * needs and left the episodes looking unseasoned.
+ */
 export async function deleteSeason(
   actor: ActorContext,
   seasonId: string
 ): Promise<
-  | { ok: true; affectedEpisodes: number }
-  | { ok: false; error: unknown; affectedEpisodes: number }
+  { ok: true; affectedEpisodes: number } | { ok: false; error: unknown; affectedEpisodes: number }
 > {
   requirePermission(actor, MANAGE_PERMISSION);
 
   const parsedSeasonId = parseOrThrow(z.uuid(), seasonId);
 
-  // Count episodes that will be affected (episodes with this season_id)
-  const [episodeCountRow] = await db
-    .select({ count: count() })
-    .from(episodes)
-    .where(eq(episodes.season_id, parsedSeasonId));
+  return db.transaction(async tx => {
+    const [season] = await tx
+      .select({ id: seasons.id })
+      .from(seasons)
+      .where(and(eq(seasons.id, parsedSeasonId), isNull(seasons.deleted_at)))
+      .for('no key update')
+      .limit(1);
 
-  const affectedEpisodes = Number(episodeCountRow?.count ?? 0);
+    if (!season) {
+      return {
+        ok: false as const,
+        error: new NotFoundError('Season not found.'),
+        affectedEpisodes: 0,
+      };
+    }
 
-  // Check that the season exists and is not already deleted
-  const [season] = await db
-    .select({ id: seasons.id, title: seasons.title, drama_id: seasons.drama_id })
-    .from(seasons)
-    .where(and(eq(seasons.id, parsedSeasonId), isNull(seasons.deleted_at)));
+    const now = new Date();
 
-  if (!season) {
-    return { ok: false, error: new NotFoundError('Season not found.'), affectedEpisodes: 0 };
-  }
+    // Trash and count in one statement: the reported count is exactly the set
+    // that changed, and episodes that were already in the trash keep their
+    // original deletion time.
+    const trashedEpisodes = await tx
+      .update(episodes)
+      .set({ deleted_at: now, updated_at: now })
+      .where(and(eq(episodes.season_id, parsedSeasonId), isNull(episodes.deleted_at)))
+      .returning({ id: episodes.id });
 
-  // Check that the drama exists
-  const [drama] = await db
-    .select({ id: dramas.id, title: dramas.title })
-    .from(dramas)
-    .where(eq(dramas.id, season.drama_id));
+    await tx
+      .update(seasons)
+      .set({ deleted_at: now, updated_at: now })
+      .where(eq(seasons.id, parsedSeasonId));
 
-  if (!drama) {
-    return { ok: false, error: new NotFoundError('Drama not found.'), affectedEpisodes: 0 };
-  }
-
-  // **Critical workflow check**: Prevent deletion if the drama has active episodes
-  // with the season_id set and the drama is currently being streamed or tracked.
-  // For now, we allow the delete but reassign episodes' season_id to null.
-  // A more critical check would verify if the drama has active subscriptions,
-  // which would require additional business logic beyond this prompt's scope.
-
-  // Soft-delete the season
-  await db
-    .update(seasons)
-    .set({ deleted_at: new Date() })
-    .where(eq(seasons.id, parsedSeasonId));
-
-  // Reassign episodes in this season to have no season_id
-  await db
-    .update(episodes)
-    .set({ season_id: null })
-    .where(eq(episodes.season_id, parsedSeasonId));
-
-  return { ok: true, affectedEpisodes };
+    return { ok: true as const, affectedEpisodes: trashedEpisodes.length };
+  });
 }
 
 /** Function to restore a season from trash (optional future feature). */

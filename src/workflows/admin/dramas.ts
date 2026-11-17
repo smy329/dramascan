@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, asc, count, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { requirePermission, type ActorContext } from '@/modules/authorization';
@@ -8,10 +8,12 @@ import { NotFoundError } from '@/platform/errors';
 
 import { z } from 'zod';
 import {
+  categories,
   content_slug_history as contentSlugHistory,
   drama_categories as dramaCategories,
   drama_platforms as dramaPlatforms,
   dramas,
+  platforms,
 } from '@/modules/content/schema';
 import { createDramaSchema, parseOrThrow, updateDramaSchema } from '@/modules/content/validation';
 
@@ -45,44 +47,88 @@ export async function createDrama(
 
   const parsed = parseOrThrow(createDramaSchema, input);
 
-  // Check for duplicate slug
-  const [existing] = await db
-    .select({ id: dramas.id })
-    .from(dramas)
-    .where(and(eq(dramas.slug, parsed.slug), isNull(dramas.deleted_at)));
+  return db.transaction(async tx => {
+    // Check for duplicate slug
+    const [existing] = await tx
+      .select({ id: dramas.id })
+      .from(dramas)
+      .where(and(eq(dramas.slug, parsed.slug), isNull(dramas.deleted_at)));
 
-  if (existing) {
-    return {
-      ok: false,
-      error: {
-        code: 'validation_error',
-        message: 'A drama with this slug already exists.',
-        fieldErrors: { slug: ['A drama with this slug already exists.'] },
-      },
-    };
-  }
+    if (existing) {
+      return {
+        ok: false as const,
+        error: {
+          code: 'validation_error',
+          message: 'A drama with this slug already exists.',
+          fieldErrors: { slug: ['A drama with this slug already exists.'] },
+        },
+      };
+    }
 
-  const [row] = await db
-    .insert(dramas)
-    .values({
-      title: parsed.title,
-      slug: parsed.slug,
-      description: parsed.description,
-      status: parsed.status,
-      structure_type: parsed.structure_type,
-      visibility: parsed.visibility,
-      poster: parsed.poster,
-      banner: parsed.banner,
-      created_at: new Date(),
-      updated_at: new Date(),
-    })
-    .returning();
+    // Resolve and validate every association target before writing anything, so
+    // an invalid id stores no drama at all (H-04).
+    const categoryIds = await resolveAssociationTargets(
+      tx,
+      parsed.categories ?? [],
+      categories,
+      'categories'
+    );
 
-  if (!row) {
-    return { ok: false, error: new NotFoundError('Drama not found.') };
-  }
+    if (!categoryIds.ok) {
+      return { ok: false as const, error: categoryIds.error };
+    }
 
-  return { ok: true, drama: toDrama(row) };
+    const platformIds = await resolveAssociationTargets(
+      tx,
+      parsed.platforms ?? [],
+      platforms,
+      'platforms'
+    );
+
+    if (!platformIds.ok) {
+      return { ok: false as const, error: platformIds.error };
+    }
+
+    const [row] = await tx
+      .insert(dramas)
+      .values({
+        title: parsed.title,
+        slug: parsed.slug,
+        description: parsed.description,
+        status: parsed.status,
+        structure_type: parsed.structure_type,
+        visibility: parsed.visibility,
+        poster: parsed.poster,
+        banner: parsed.banner,
+        created_at: new Date(),
+        updated_at: new Date(),
+      })
+      .returning();
+
+    if (!row) {
+      return { ok: false as const, error: new NotFoundError('Drama not found.') };
+    }
+
+    if (categoryIds.ids.length > 0) {
+      await tx.insert(dramaCategories).values(
+        categoryIds.ids.map(categoryId => ({
+          drama_id: row.id,
+          category_id: categoryId,
+        }))
+      );
+    }
+
+    if (platformIds.ids.length > 0) {
+      await tx.insert(dramaPlatforms).values(
+        platformIds.ids.map(platformId => ({
+          drama_id: row.id,
+          platform_id: platformId,
+        }))
+      );
+    }
+
+    return { ok: true as const, drama: toDrama(row) };
+  });
 }
 
 /** Drama update. */
@@ -96,118 +142,188 @@ export async function updateDrama(
   const parsedId = parseOrThrow(z.uuid(), dramaId);
   const parsed = parseOrThrow(updateDramaSchema, input);
 
-  // Check for duplicate slug (excluding the current drama)
-  const [conflict] = await db
-    .select({ id: dramas.id })
-    .from(dramas)
-    .where(
-      and(
-        eq(dramas.slug, parsed.slug),
-        isNull(dramas.deleted_at),
-        ne(dramas.id, parsedId)
-      )
-    );
+  return db.transaction(async tx => {
+    // Read and lock the current row. The lock is held until commit, so two
+    // simultaneous replacements of the same drama's associations serialize
+    // instead of interleaving into a mixed set. The slug history needs the old
+    // slug, and the structure type may only be repeated, never changed (D-029).
+    const [oldDrama] = await tx
+      .select({
+        slug: dramas.slug,
+        structureType: dramas.structure_type,
+        deletedAt: dramas.deleted_at,
+      })
+      .from(dramas)
+      .where(eq(dramas.id, parsedId))
+      .for('no key update')
+      .limit(1);
 
-  if (conflict) {
+    if (!oldDrama || oldDrama.deletedAt !== null) {
+      return { ok: false as const, error: new NotFoundError('Drama not found.') };
+    }
+
+    // Check for duplicate slug (excluding the current drama)
+    const [conflict] = await tx
+      .select({ id: dramas.id })
+      .from(dramas)
+      .where(and(eq(dramas.slug, parsed.slug), isNull(dramas.deleted_at), ne(dramas.id, parsedId)));
+
+    if (conflict) {
+      return {
+        ok: false as const,
+        error: {
+          code: 'validation_error',
+          message: 'A drama with this slug already exists.',
+          fieldErrors: { slug: ['A drama with this slug already exists.'] },
+        },
+      };
+    }
+
+    if (parsed.structure_type !== undefined && parsed.structure_type !== oldDrama.structureType) {
+      return {
+        ok: false as const,
+        error: {
+          code: 'conflict',
+          message:
+            'The drama structure cannot be changed here. Use the structure conversion endpoint.',
+        },
+      };
+    }
+
+    // Validate every supplied association target before any write, so a bad id
+    // leaves the previous set untouched.
+    const categoryIds =
+      parsed.categories === undefined
+        ? null
+        : await resolveAssociationTargets(tx, parsed.categories, categories, 'categories');
+
+    if (categoryIds !== null && !categoryIds.ok) {
+      return { ok: false as const, error: categoryIds.error };
+    }
+
+    const platformIds =
+      parsed.platforms === undefined
+        ? null
+        : await resolveAssociationTargets(tx, parsed.platforms, platforms, 'platforms');
+
+    if (platformIds !== null && !platformIds.ok) {
+      return { ok: false as const, error: platformIds.error };
+    }
+
+    if (oldDrama.slug !== parsed.slug) {
+      await tx.insert(contentSlugHistory).values({
+        content_type: 'drama',
+        content_id: parsedId,
+        old_slug: oldDrama.slug,
+        new_slug: parsed.slug,
+      });
+    }
+
+    const [row] = await tx
+      .update(dramas)
+      .set({
+        title: parsed.title,
+        slug: parsed.slug,
+        description: parsed.description,
+        status: parsed.status,
+        poster: parsed.poster,
+        banner: parsed.banner,
+        visibility: parsed.visibility,
+        updated_at: new Date(),
+      })
+      .where(and(eq(dramas.id, parsedId), isNull(dramas.deleted_at)))
+      .returning();
+
+    if (!row) {
+      return { ok: false as const, error: new NotFoundError('Drama not found.') };
+    }
+
+    // Replace the whole set inside the same transaction: a request never
+    // observes a half-replaced association set.
+    if (categoryIds !== null && categoryIds.ok) {
+      await tx.delete(dramaCategories).where(eq(dramaCategories.drama_id, parsedId));
+
+      if (categoryIds.ids.length > 0) {
+        await tx.insert(dramaCategories).values(
+          categoryIds.ids.map(categoryId => ({
+            drama_id: parsedId,
+            category_id: categoryId,
+          }))
+        );
+      }
+    }
+
+    if (platformIds !== null && platformIds.ok) {
+      await tx.delete(dramaPlatforms).where(eq(dramaPlatforms.drama_id, parsedId));
+
+      if (platformIds.ids.length > 0) {
+        await tx.insert(dramaPlatforms).values(
+          platformIds.ids.map(platformId => ({
+            drama_id: parsedId,
+            platform_id: platformId,
+          }))
+        );
+      }
+    }
+
+    return { ok: true as const, drama: toDrama(row) };
+  });
+}
+
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+type AssociationResolution =
+  | { ok: true; ids: string[] }
+  | {
+      ok: false;
+      error: { code: 'validation_error'; message: string; fieldErrors: Record<string, string[]> };
+    };
+
+/**
+ * Deduplicate association ids and prove every target exists and is active.
+ *
+ * The join tables carry a composite primary key, so a repeated id in the input
+ * used to fail the insert with a raw `23505` instead of a field error. A target
+ * that is missing or in the Trash is rejected: associating it would make the
+ * trashed taxonomy reappear in public listings.
+ */
+async function resolveAssociationTargets(
+  tx: DbTransaction,
+  ids: readonly string[],
+  table: typeof categories | typeof platforms,
+  field: 'categories' | 'platforms'
+): Promise<AssociationResolution> {
+  const unique = [...new Set(ids)];
+
+  if (unique.length === 0) {
+    return { ok: true, ids: [] };
+  }
+
+  const rows = await tx
+    .select({ id: table.id })
+    .from(table)
+    .where(and(inArray(table.id, unique), isNull(table.deleted_at)));
+
+  const found = new Set(rows.map(row => row.id));
+  const missing = unique.filter(id => !found.has(id));
+
+  if (missing.length > 0) {
+    const message =
+      field === 'categories'
+        ? 'One or more categories do not exist or are in the Trash.'
+        : 'One or more platforms do not exist or are in the Trash.';
+
     return {
       ok: false,
       error: {
         code: 'validation_error',
-        message: 'A drama with this slug already exists.',
-        fieldErrors: { slug: ['A drama with this slug already exists.'] },
+        message,
+        fieldErrors: { [field]: [message] },
       },
     };
   }
 
-  // Read the current row: the slug history needs the old slug, and the
-  // structure type may only be repeated, never changed (D-029). Moving a
-  // drama between structures belongs to the conversion workflow, which
-  // renumbers the episodes and stores a restorable snapshot.
-  const [oldDrama] = await db
-    .select({ slug: dramas.slug, structureType: dramas.structure_type })
-    .from(dramas)
-    .where(eq(dramas.id, parsedId));
-
-  if (!oldDrama) {
-    return { ok: false, error: new NotFoundError('Drama not found.') };
-  }
-
-  if (parsed.structure_type !== undefined && parsed.structure_type !== oldDrama.structureType) {
-    return {
-      ok: false,
-      error: {
-        code: 'conflict',
-        message:
-          'The drama structure cannot be changed here. Use the structure conversion endpoint.',
-      },
-    };
-  }
-
-  if (oldDrama.slug !== parsed.slug) {
-    await db.insert(contentSlugHistory).values({
-      content_type: 'drama',
-      content_id: parsedId,
-      old_slug: oldDrama.slug,
-      new_slug: parsed.slug,
-    });
-  }
-
-  const [row] = await db
-    .update(dramas)
-    .set({
-      title: parsed.title,
-      slug: parsed.slug,
-      description: parsed.description,
-      status: parsed.status,
-      poster: parsed.poster,
-      banner: parsed.banner,
-      visibility: parsed.visibility,
-      updated_at: new Date(),
-    })
-    .where(and(eq(dramas.id, parsedId), isNull(dramas.deleted_at)))
-    .returning();
-
-  if (!row) {
-    return { ok: false, error: new NotFoundError('Drama not found.') };
-  }
-
-  // Handle categories update (replace all existing categories)
-  if (parsed.categories !== undefined && Array.isArray(parsed.categories)) {
-    // Remove existing category associations
-    await db
-      .delete(dramaCategories)
-      .where(eq(dramaCategories.drama_id, parsedId));
-
-    // Add new category associations
-    if (parsed.categories.length > 0) {
-      await db.insert(dramaCategories).values(
-        parsed.categories.map((catId) => ({
-          drama_id: parsedId,
-          category_id: catId,
-        }))
-      );
-    }
-  }
-
-  // Handle platforms update (replace all existing platforms)
-  if (parsed.platforms !== undefined && Array.isArray(parsed.platforms)) {
-    // Remove existing platform associations
-    await db
-      .delete(dramaPlatforms)
-      .where(eq(dramaPlatforms.drama_id, parsedId));
-
-    // Add new platform associations
-    if (parsed.platforms.length > 0) {
-      await db.insert(dramaPlatforms).values(
-        parsed.platforms.map((platId) => ({
-          drama_id: parsedId,
-          platform_id: platId,
-        }))
-      );
-    }
-  }
-
-  return { ok: true, drama: toDrama(row) };
+  return { ok: true, ids: unique };
 }
 
 /** List non-deleted dramas for administration with pagination and filters. */
@@ -243,11 +359,16 @@ export async function listDramas(
     }
   }
 
-  // Search filter (title or slug)
+  // Search filter (title or slug).
+  //
+  // The alternatives are grouped in their own `or(...)`. A bare `OR` inside
+  // `and(...)` is re-associated by SQL precedence (`AND` binds tighter), so the
+  // last alternative escapes the parent, publication, and deleted predicates
+  // and can return a trashed or unpublished drama (M-01).
   if (query.search) {
     const searchPattern = `%${query.search}%`;
     whereConditions.push(
-      sql`${dramas.title} ILIKE ${searchPattern} OR ${dramas.slug} ILIKE ${searchPattern}`
+      or(ilike(dramas.title, searchPattern), ilike(dramas.slug, searchPattern))!
     );
   }
 
@@ -259,7 +380,9 @@ export async function listDramas(
 
   const total = Number(totalRow?.total ?? 0);
 
-  // Build ORDER BY
+  // Build ORDER BY. The id tiebreaker makes the order total: without it rows
+  // that share a sort value have no defined relative order, so a paged read can
+  // repeat one row and skip another between requests (M-08).
   const sortColumn =
     query.sort === 'title'
       ? dramas.title
@@ -267,14 +390,14 @@ export async function listDramas(
         ? dramas.publication_status
         : dramas.created_at;
   const sortOrder = query.order === 'desc' ? desc : asc;
-  const orderBy = sortOrder(sortColumn);
+  const orderBy = [sortOrder(sortColumn), sortOrder(dramas.id)];
 
   // Fetch dramas with pagination
   const rows = await db
     .select()
     .from(dramas)
     .where(and(...whereConditions))
-    .orderBy(orderBy)
+    .orderBy(...orderBy)
     .limit(query.pageSize)
     .offset(offset);
 

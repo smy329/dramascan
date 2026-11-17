@@ -88,6 +88,16 @@ export type ConversionPlan = {
   targetStructureType: ConversionStructureType;
   strategy: ConversionStrategy;
   fingerprint: string;
+  /**
+   * Digest of the plan itself (SUP-01).
+   *
+   * The fingerprint proves that the source structure has not changed. It does
+   * not prove that the *plan* is the one the administrator previewed: a flat →
+   * season conversion depends on the administrator-supplied distribution, which
+   * can change between preview and apply without changing the structure. The
+   * digest binds the apply request to the exact plan that was shown.
+   */
+  planDigest: string;
   seasons: ConversionPlanSeason[];
   episodes: ConversionPlanEpisode[];
   counts: {
@@ -98,6 +108,9 @@ export type ConversionPlan = {
   snapshot: ConversionPlanSnapshot | null;
   warnings: string[];
 };
+
+/** A plan without its own digest, which is what the digest is computed from. */
+export type ConversionPlanContent = Omit<ConversionPlan, 'planDigest'>;
 
 export type NormalizedSeason = {
   key: string;
@@ -135,9 +148,7 @@ function orderSeasons(seasons: readonly ConversionSeasonState[]): ConversionSeas
   );
 }
 
-function orderEpisodes(
-  episodes: readonly ConversionEpisodeState[]
-): ConversionEpisodeState[] {
+function orderEpisodes(episodes: readonly ConversionEpisodeState[]): ConversionEpisodeState[] {
   return [...episodes].sort(
     (left, right) =>
       compareNullableNumber(left.position, right.position) ||
@@ -177,9 +188,7 @@ export function orderSeasonStructure(
     orderEpisodes(bySeason.get(season.id) ?? [])
   );
   const seasonless = orderEpisodes(
-    episodes.filter(
-      episode => episode.seasonId === null || !activeSeasonIds.has(episode.seasonId)
-    )
+    episodes.filter(episode => episode.seasonId === null || !activeSeasonIds.has(episode.seasonId))
   );
 
   return {
@@ -221,6 +230,55 @@ export function computeStructureFingerprint(state: ConversionStructureState): st
   };
 
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+// ----- plan digest -----------------------------------------------------------
+
+/**
+ * Deterministic digest of a conversion plan.
+ *
+ * Everything the administrator was shown is covered: the target structure, the
+ * strategy, the seasons that will exist, and the episode assignment, number,
+ * and position each episode will have. The source fingerprint is part of the
+ * digest as well, so a digest is only valid for the structure it was computed
+ * from.
+ *
+ * Fields that are not part of the result (warnings, snapshot lifecycle labels)
+ * are excluded: they describe the preview, not the conversion that is applied.
+ */
+export function computePlanDigest(plan: ConversionPlanContent): string {
+  const payload = {
+    dramaId: plan.dramaId,
+    fingerprint: plan.fingerprint,
+    currentStructureType: plan.currentStructureType,
+    targetStructureType: plan.targetStructureType,
+    strategy: plan.strategy,
+    seasons: [...plan.seasons]
+      .sort((left, right) => left.key.localeCompare(right.key))
+      .map(season => ({
+        key: season.key,
+        id: season.id,
+        title: season.title,
+        position: season.position,
+        episodeCount: season.episodeCount,
+        publicationStatus: season.publicationStatus,
+      })),
+    episodes: [...plan.episodes]
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map(episode => ({
+        id: episode.id,
+        toSeasonKey: episode.toSeasonKey,
+        toEpisodeNumber: episode.toEpisodeNumber,
+        toPosition: episode.toPosition,
+      })),
+  };
+
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+/** Attach the digest of a plan to the plan itself. */
+function withPlanDigest(plan: ConversionPlanContent): ConversionPlan {
+  return { ...plan, planDigest: computePlanDigest(plan) };
 }
 
 // ----- distribution ---------------------------------------------------------
@@ -299,10 +357,9 @@ export function normalizeDistribution(
     }
 
     if (!keys.has(assignment.seasonKey)) {
-      invalidDistribution(
-        `Assignment references unknown season key "${assignment.seasonKey}".`,
-        { assignments: [`Assignment references unknown season key "${assignment.seasonKey}".`] }
-      );
+      invalidDistribution(`Assignment references unknown season key "${assignment.seasonKey}".`, {
+        assignments: [`Assignment references unknown season key "${assignment.seasonKey}".`],
+      });
     }
 
     assignments.set(assignment.episodeId, assignment.seasonKey);
@@ -310,10 +367,9 @@ export function normalizeDistribution(
 
   const missing = [...activeEpisodeIds].filter(id => !assignments.has(id));
   if (missing.length > 0) {
-    invalidDistribution(
-      `${missing.length} active episode(s) are not assigned to a season.`,
-      { assignments: ['Every active episode must be assigned to exactly one season.'] }
-    );
+    invalidDistribution(`${missing.length} active episode(s) are not assigned to a season.`, {
+      assignments: ['Every active episode must be assigned to exactly one season.'],
+    });
   }
 
   return { seasons, assignments };
@@ -350,10 +406,12 @@ export function buildFlatConversionPlan(state: ConversionStructureState): Conver
     );
   }
   if (ordered.seasons.some(season => season.position === null)) {
-    warnings.push('Some seasons have no position; creation order and id are used as a tie-breaker.');
+    warnings.push(
+      'Some seasons have no position; creation order and id are used as a tie-breaker.'
+    );
   }
 
-  return {
+  return withPlanDigest({
     dramaId: state.dramaId,
     currentStructureType: state.structureType,
     targetStructureType: 'flat',
@@ -374,7 +432,7 @@ export function buildFlatConversionPlan(state: ConversionStructureState): Conver
     },
     snapshot: null,
     warnings,
-  };
+  });
 }
 
 /** Preview for flat → season-based using a distribution map. */
@@ -394,7 +452,7 @@ export function buildSeasonConversionPlan(
     episodeCountBySeason.set(key, (episodeCountBySeason.get(key) ?? 0) + 1);
   }
 
-  return {
+  return withPlanDigest({
     dramaId: state.dramaId,
     currentStructureType: state.structureType,
     targetStructureType: 'season_based',
@@ -420,7 +478,7 @@ export function buildSeasonConversionPlan(
     },
     snapshot: null,
     warnings: [],
-  };
+  });
 }
 
 /** Preview for flat → season-based by restoring a stored snapshot. */
@@ -480,7 +538,7 @@ export function buildRestoreSnapshotPlan(
     warnings.push(staleReason);
   }
 
-  return {
+  return withPlanDigest({
     dramaId: state.dramaId,
     currentStructureType: state.structureType,
     targetStructureType: 'season_based',
@@ -525,7 +583,7 @@ export function buildRestoreSnapshotPlan(
       restorable,
     },
     warnings,
-  };
+  });
 }
 
 // ----- snapshot payload -----------------------------------------------------
@@ -539,31 +597,27 @@ export function buildSnapshotPayload(
   const activeSeasonIds = new Set(ordered.seasons.map(season => season.id));
 
   return {
-    seasons: ordered.seasons.map(
-      (season): SnapshotSeasonPayload => ({
-        id: season.id,
-        title: season.title,
-        position: season.position,
-        publication_status: season.publicationStatus,
-        created_at: season.createdAt,
-        updated_at: season.updatedAt,
-      })
-    ),
-    episodes: ordered.episodes.map(
-      (episode): SnapshotEpisodePayload => ({
-        id: episode.id,
-        // A stored season id always refers to a season in the same payload.
-        // An episode attached to an inactive season is stored as seasonless,
-        // because that season is not restored and would dangle otherwise.
-        season_id:
-          episode.seasonId !== null && activeSeasonIds.has(episode.seasonId)
-            ? episode.seasonId
-            : null,
-        episode_number: episode.episodeNumber,
-        position: episode.position,
-        title: episode.title,
-      })
-    ),
+    seasons: ordered.seasons.map((season): SnapshotSeasonPayload => ({
+      id: season.id,
+      title: season.title,
+      position: season.position,
+      publication_status: season.publicationStatus,
+      created_at: season.createdAt,
+      updated_at: season.updatedAt,
+    })),
+    episodes: ordered.episodes.map((episode): SnapshotEpisodePayload => ({
+      id: episode.id,
+      // A stored season id always refers to a season in the same payload.
+      // An episode attached to an inactive season is stored as seasonless,
+      // because that season is not restored and would dangle otherwise.
+      season_id:
+        episode.seasonId !== null && activeSeasonIds.has(episode.seasonId)
+          ? episode.seasonId
+          : null,
+      episode_number: episode.episodeNumber,
+      position: episode.position,
+      title: episode.title,
+    })),
   };
 }
 

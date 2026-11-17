@@ -7,12 +7,7 @@ import { requirePermission, type ActorContext } from '@/modules/authorization';
 import { ConflictError, InternalError, NotFoundError, ValidationError } from '@/platform/errors';
 
 import { z } from 'zod';
-import {
-  dramas,
-  episodes,
-  seasons,
-  structureConversionSnapshots,
-} from '@/modules/content/schema';
+import { dramas, episodes, seasons, structureConversionSnapshots } from '@/modules/content/schema';
 import {
   buildFlatConversionPlan,
   buildRestoreSnapshotPlan,
@@ -164,7 +159,10 @@ async function readActiveSeasonsTx(tx: DbOrTx, dramaId: string): Promise<Convers
   }));
 }
 
-async function readActiveEpisodesTx(tx: DbOrTx, dramaId: string): Promise<ConversionEpisodeState[]> {
+async function readActiveEpisodesTx(
+  tx: DbOrTx,
+  dramaId: string
+): Promise<ConversionEpisodeState[]> {
   const rows = await tx
     .select()
     .from(episodes)
@@ -181,10 +179,7 @@ async function readActiveEpisodesTx(tx: DbOrTx, dramaId: string): Promise<Conver
   }));
 }
 
-async function readAvailableSnapshotTx(
-  tx: DbOrTx,
-  dramaId: string
-): Promise<SnapshotRow | null> {
+async function readAvailableSnapshotTx(tx: DbOrTx, dramaId: string): Promise<SnapshotRow | null> {
   const [row] = await tx
     .select()
     .from(structureConversionSnapshots)
@@ -323,10 +318,7 @@ export async function listConversionCandidates(
       activeEpisodes: count(episodes.id),
     })
     .from(dramas)
-    .leftJoin(
-      episodes,
-      and(eq(episodes.drama_id, dramas.id), isNull(episodes.deleted_at))
-    )
+    .leftJoin(episodes, and(eq(episodes.drama_id, dramas.id), isNull(episodes.deleted_at)))
     .where(and(...conditions))
     .groupBy(dramas.id)
     // The id is a stable tiebreaker: without it, two dramas with the same
@@ -377,10 +369,7 @@ function resolveStrategy(
       if (request.distribution !== undefined) {
         throw new ValidationError('A snapshot restore cannot include a distribution.');
       }
-      if (
-        request.snapshotId !== undefined &&
-        request.snapshotId !== context.availableSnapshot.id
-      ) {
+      if (request.snapshotId !== undefined && request.snapshotId !== context.availableSnapshot.id) {
         throw new ValidationError('The requested snapshot is not available for this drama.');
       }
       return { strategy: 'restore_snapshot', snapshot: context.availableSnapshot };
@@ -553,6 +542,40 @@ export async function previewConversion(
 
 // ----- apply ----------------------------------------------------------------
 
+/**
+ * Rebuild the plan an apply request claims to preview.
+ *
+ * The same builders the preview uses are used here, with the locked state, so
+ * the digest of the rebuilt plan is the digest of the plan the administrator
+ * saw. The restore path ignores whether the snapshot is still restorable: that
+ * flag is a preview message, not part of the conversion that is applied.
+ */
+function buildExpectedPlan(
+  state: ConversionStructureState,
+  request: ConversionRequest,
+  strategy: ConversionStrategy,
+  snapshot: SnapshotRow | null
+): ConversionPlan {
+  if (request.targetStructureType === 'flat') {
+    return buildFlatConversionPlan(state);
+  }
+
+  if (strategy === 'restore_snapshot' && snapshot) {
+    return buildRestoreSnapshotPlan(
+      state,
+      {
+        id: snapshot.id,
+        status: snapshot.status as SnapshotStatus,
+        createdAt: snapshot.created_at.toISOString(),
+        payload: parseStoredSnapshot(snapshot),
+      },
+      true
+    );
+  }
+
+  return buildSeasonConversionPlan(state, request.distribution);
+}
+
 function postgresCode(error: unknown): string | null {
   let current: unknown = error;
 
@@ -622,6 +645,11 @@ export async function applyConversion(
       fingerprint: ['A preview fingerprint is required to apply a conversion.'],
     });
   }
+  if (request.planDigest === undefined) {
+    throw new ValidationError('A preview digest is required to apply a conversion.', {
+      planDigest: ['A preview digest is required to apply a conversion.'],
+    });
+  }
 
   try {
     return await db.transaction(
@@ -629,12 +657,7 @@ export async function applyConversion(
         const drama = await readDramaForUpdateTx(tx, request.dramaId);
         const seasonRows = await readActiveSeasonsTx(tx, drama.id);
         const episodeRows = await readActiveEpisodesTx(tx, drama.id);
-        const state = toStructureState(
-          drama.id,
-          drama.structure_type,
-          seasonRows,
-          episodeRows
-        );
+        const state = toStructureState(drama.id, drama.structure_type, seasonRows, episodeRows);
         const availableSnapshot = await readAvailableSnapshotTx(tx, drama.id);
         const context: ConversionContext = {
           drama: {
@@ -659,6 +682,19 @@ export async function applyConversion(
         }
 
         const { strategy, snapshot } = resolveStrategy(request, context);
+
+        // The fingerprint proves the source structure is unchanged; the plan
+        // digest proves that the plan being applied is the plan that was
+        // previewed. Without it, a distribution edited after the preview would
+        // be applied silently (SUP-01).
+        const expectedPlan = buildExpectedPlan(state, request, strategy, snapshot);
+
+        if (request.planDigest !== expectedPlan.planDigest) {
+          throw new ConflictError(
+            'The previewed conversion no longer matches the requested change. Request a new preview.'
+          );
+        }
+
         const now = new Date();
 
         if (request.targetStructureType === 'flat') {
@@ -669,14 +705,7 @@ export async function applyConversion(
           return applyRestore(tx, drama.id, snapshot, state, now);
         }
 
-        return applySeasonConvert(
-          tx,
-          drama.id,
-          request,
-          state,
-          snapshot?.id ?? null,
-          now
-        );
+        return applySeasonConvert(tx, drama.id, request, state, snapshot?.id ?? null, now);
       },
       { isolationLevel: 'serializable' }
     );
@@ -732,6 +761,21 @@ async function applyFlat(
 
   if (!snapshot) {
     throw new Error('Conversion snapshot insert returned no row.');
+  }
+
+  // Two phases: release every number first, then assign. A single pass can
+  // collide with the drama-scoped unique index mid-statement (episode 7 → 1
+  // while episode 1 has not moved to 3 yet), which PostgreSQL rejects.
+  if (plan.episodes.length > 0) {
+    await tx
+      .update(episodes)
+      .set({ episode_number: null, updated_at: now })
+      .where(
+        inArray(
+          episodes.id,
+          plan.episodes.map(planned => planned.id)
+        )
+      );
   }
 
   for (const planned of plan.episodes) {
@@ -799,10 +843,10 @@ async function applySeasonConvert(
   }
 
   for (const plannedEpisode of plan.episodes) {
-    const seasonId =
-      plannedEpisode.toSeasonKey === null
-        ? null
-        : keyToId.get(plannedEpisode.toSeasonKey) ?? null;
+    let seasonId: string | null = null;
+    if (plannedEpisode.toSeasonKey !== null) {
+      seasonId = keyToId.get(plannedEpisode.toSeasonKey) ?? null;
+    }
 
     await tx
       .update(episodes)
@@ -825,13 +869,15 @@ async function applySeasonConvert(
   }));
   const episodeState: ConversionEpisodeState[] = plan.episodes.map(plannedEpisode => {
     const current = state.episodes.find(episode => episode.id === plannedEpisode.id);
+    let seasonId: string | null = null;
+    if (plannedEpisode.toSeasonKey !== null) {
+      seasonId = keyToId.get(plannedEpisode.toSeasonKey) ?? null;
+    }
+
     return {
       id: plannedEpisode.id,
       title: plannedEpisode.title,
-      seasonId:
-        plannedEpisode.toSeasonKey === null
-          ? null
-          : keyToId.get(plannedEpisode.toSeasonKey) ?? null,
+      seasonId,
       episodeNumber: plannedEpisode.toEpisodeNumber,
       position: plannedEpisode.toPosition,
       createdAt: current?.createdAt ?? now.toISOString(),
@@ -878,6 +924,39 @@ async function applyRestore(
     },
     true
   );
+
+  // Positions and numbers can be restored into values that other rows still
+  // hold (a swap), so release them in one statement before reassigning. Both
+  // columns are nullable and their unique indexes skip null values.
+  if (payload.seasons.length > 0) {
+    await tx
+      .update(seasons)
+      .set({ position: null, updated_at: now })
+      .where(
+        and(
+          eq(seasons.drama_id, dramaId),
+          inArray(
+            seasons.id,
+            payload.seasons.map(season => season.id)
+          )
+        )
+      );
+  }
+
+  if (payload.episodes.length > 0) {
+    await tx
+      .update(episodes)
+      .set({ episode_number: null, updated_at: now })
+      .where(
+        and(
+          eq(episodes.drama_id, dramaId),
+          inArray(
+            episodes.id,
+            payload.episodes.map(episode => episode.id)
+          )
+        )
+      );
+  }
 
   for (const season of payload.seasons) {
     await tx

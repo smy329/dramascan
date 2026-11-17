@@ -14,14 +14,14 @@ This document is the source of truth for the implemented database. The table cat
 
 ## 1. Status
 
-| Item                   | Status                                             |
-| ---------------------- | -------------------------------------------------- |
-| PostgreSQL connection  | Configured (Prompt 019)                            |
-| Drizzle schema modules | Implemented, 42 tables (Prompts 020–029)           |
-| Migrations             | Configured and applied (Prompt 040)                |
-| Tables                 | 42 implemented (see §8)                           |
-| Seed data              | Reference data only; no seed command yet           |
-| Test database          | Builds from migrations (`TEST_DATABASE_URL`)       |
+| Item                   | Status                                       |
+| ---------------------- | -------------------------------------------- |
+| PostgreSQL connection  | Configured (Prompt 019)                      |
+| Drizzle schema modules | Implemented, 42 tables (Prompts 020–029)     |
+| Migrations             | Configured and applied (Prompt 040)          |
+| Tables                 | 42 implemented (see §8)                      |
+| Seed data              | Reference data only; no seed command yet     |
+| Test database          | Builds from migrations (`TEST_DATABASE_URL`) |
 
 Do not describe planned tables as existing. Update this document when each schema module is implemented.
 
@@ -129,6 +129,7 @@ Do not merge unrelated entities into one table. Do not create a single polymorph
     **Chosen in Prompt 020:** typed FK columns plus a check constraint. Each relationship table has nullable `drama_id` and `movie_id` foreign keys and a `CHECK` constraint enforcing that exactly one is non-NULL. Uniqueness uses partial unique indexes for the active drama and movie cases. A generic polymorphic `content_type` + `content_id` pair is forbidden unless real referential integrity is enforced by another documented mechanism.
 - Deleting a season moves the season and its episodes to Trash together; permanent deletion cleanup is explicit and transactional.
 - Do not rely on `ON DELETE CASCADE` across module ownership boundaries. Destructive cleanup is performed by the owning module inside `workflows/permanently-delete-content`.
+- The hierarchy is enforced by the database as of migration `0009`: `seasons.drama_id` and `episodes.drama_id` reference `dramas.id` with `ON DELETE RESTRICT`, and the composite foreign key `episodes(drama_id, season_id) → seasons(drama_id, id)` makes an episode whose season belongs to another drama impossible. The workflows still check the parent themselves; the constraint is the backstop. See `DATA_INTEGRITY.md`.
 - Stable IDs survive edits, reordering, moving, conversion, and source replacement.
 - Soft-deleted rows are excluded from normal queries and do not block reuse of slugs or names (partial unique indexes).
 
@@ -158,11 +159,11 @@ production list query in that prompt. It is defined in
 CREATE INDEX "idx_users_active_created_at" ON "users" USING btree ("created_at" DESC NULLS LAST) WHERE "users"."deleted_at" is null;
 ```
 
-| Serves | Does not serve |
-| --- | --- |
-| The default scope `deleted_at IS NULL` (the index predicate), used when `status` is absent, `active`, or `deactivated`. | The `deleted` filter: its predicate is `deleted_at IS NOT NULL`, the complement of the index predicate. No btree index on `created_at` can support it, so the filter is a sequential scan over the deleted subset. |
-| The default sort `created_at DESC`. | The free-text search: `ILIKE` against `name` and `email` with escaped wildcards. It remains a sequential scan until query-plan evidence justifies a trigram index. |
-| The default listing's access path (`deleted_at IS NULL` → `created_at DESC`); a sort step remains for tied rows (limitation 2 below). | The residual `active` / `deactivated` / `superAdmin` predicates, which are evaluated after the index scan rather than by the index. |
+| Serves                                                                                                                                | Does not serve                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The default scope `deleted_at IS NULL` (the index predicate), used when `status` is absent, `active`, or `deactivated`.               | The `deleted` filter: its predicate is `deleted_at IS NOT NULL`, the complement of the index predicate. No btree index on `created_at` can support it, so the filter is a sequential scan over the deleted subset. |
+| The default sort `created_at DESC`.                                                                                                   | The free-text search: `ILIKE` against `name` and `email` with escaped wildcards. It remains a sequential scan until query-plan evidence justifies a trigram index.                                                 |
+| The default listing's access path (`deleted_at IS NULL` → `created_at DESC`); a sort step remains for tied rows (limitation 2 below). | The residual `active` / `deactivated` / `superAdmin` predicates, which are evaluated after the index scan rather than by the index.                                                                                |
 
 Two known limitations are recorded rather than hidden:
 
@@ -183,12 +184,12 @@ deleted), which were removed afterwards. On a table that small PostgreSQL chose
 a sequential scan for every case, so the plans record the access path and its
 estimated cost, **not** evidence that the index is used at today's data volume.
 
-| Query (filter, sort, page) | Chosen path | Partial index used? | Execution time |
-| --- | --- | --- | --- |
-| `deleted_at IS NULL`, `ORDER BY created_at DESC, id ASC`, `LIMIT 20 OFFSET 0` | Seq Scan + sort | No | 0.210 ms |
-| `deleted_at IS NULL AND is_active`, same sort and page | Seq Scan + sort | No | 0.056 ms |
-| `deleted_at IS NULL AND NOT is_active`, same sort and page | Seq Scan + sort | No | 0.067 ms |
-| `deleted_at IS NOT NULL`, same sort and page | Seq Scan + sort | No | 0.054 ms |
+| Query (filter, sort, page)                                                    | Chosen path     | Partial index used? | Execution time |
+| ----------------------------------------------------------------------------- | --------------- | ------------------- | -------------- |
+| `deleted_at IS NULL`, `ORDER BY created_at DESC, id ASC`, `LIMIT 20 OFFSET 0` | Seq Scan + sort | No                  | 0.210 ms       |
+| `deleted_at IS NULL AND is_active`, same sort and page                        | Seq Scan + sort | No                  | 0.056 ms       |
+| `deleted_at IS NULL AND NOT is_active`, same sort and page                    | Seq Scan + sort | No                  | 0.067 ms       |
+| `deleted_at IS NOT NULL`, same sort and page                                  | Seq Scan + sort | No                  | 0.054 ms       |
 
 Verbatim plan for the default listing (the case the index exists for):
 
@@ -235,6 +236,8 @@ Migration tooling and practices are defined in `CONVENTIONS.md` §10. Database-s
 - `drizzle/0003_needy_infant_terrible.sql` adds one partial index, `idx_users_active_created_at`, for the admin user listing (Prompt 051). Reversible: `DROP INDEX idx_users_active_created_at;` — the index is the migration's only statement, so the rollback restores `0002` exactly (the `CREATE INDEX` is not `CONCURRENTLY`, so neither is this drop). See §6.1 for the queries it serves, the queries it does not serve, and the measured plans.
 - `drizzle/0005_yielding_mimic.sql` adds `structure_conversion_snapshots`, the drama structure-conversion snapshot table (Prompt 066). Reversible: `DROP TABLE structure_conversion_snapshots;` — the table has no dependents, so the rollback restores `0004` exactly. The migration is forward-only in practice: dropping the table discards the snapshots, and a drama that was converted season-based → flat cannot be restored to its previous season structure afterwards.
 - `drizzle/0006_cute_kabuki.sql` makes `ratings.drama_id` and `reviews.drama_id` nullable, adds their `movie_id` columns and exactly-one CHECK constraints, adds `movies.converted_from_drama_id` with its FK and partial unique index, and replaces the per-target unique/lookup indexes (Prompt 067). Reversible with the inverse statements after moving every row back to a drama target; no column or row is dropped.
+- `drizzle/0009_content_integrity_and_typed_targets.sql` adds the content hierarchy foreign keys (including the composite `episodes(drama_id, season_id)` → `seasons(drama_id, id)` target), taxonomy and similar-drama foreign keys, scoped unique indexes, `review_reports` lifecycle columns, typed `drama_id`/`movie_id` targets on the four user-content tables, and nullable `published_at` on the four publishable content tables. Foreign keys and CHECK constraints are added `NOT VALID` and unique indexes are created in guarded blocks, so the migration cannot abort on legacy data. Forward-fix-only; the operator procedure is `docs/development/DATA_INTEGRITY.md` and the command is `npm run db:integrity`.
+- `drizzle/0010_typed_analytics_targets_and_report_state.sql` extends `0009` with typed `drama_id`/`movie_id` targets on the three analytics tables (`content_view_events`, `playback_analytics_events`, `analytics_daily_aggregates`), the full `review_reports` state (`description`, `resolved_by`, `resolution_outcome`, `reported_at`, and the lifecycle CHECK), and replaces the report → review foreign key with an `ON DELETE RESTRICT` one so moderation history survives the removal of a review. `reported_at` is added as a nullable column and only afterwards given `DEFAULT now()`, so legacy reports keep an empty submission time instead of a fabricated one. All foreign keys and CHECK constraints are added `NOT VALID`; forward-fix-only; the operator procedure is `docs/development/DATA_INTEGRITY.md` and the command is `npm run db:integrity`.
 - `npm run db:generate` creates the next numbered migration from schema changes; `npm run db:migrate` applies pending migrations. `npm run db:push` is local-only and must never be used against production.
 - Integration tests build the isolated `_test` database from this same migration chain in `tests/global-setup.ts`, so a broken migration fails CI.
 - Applied migrations are never edited.
@@ -251,70 +254,70 @@ Migration tooling and practices are defined in `CONVENTIONS.md` §10. Database-s
 
 This catalog is filled in as tables are implemented. Each entry records the table, owning module, purpose, key relationships, indexes, and status.
 
-| Table | Module | Purpose                   | Status  |
-| ----- | ------ | ------------------------- | ------- |
-| dramas              | content      | Dramas ( TV/streaming series ) | ✅ Implemented |
-| seasons             | content      | Seasons per drama              | ✅ Implemented |
-| episodes            | content      | Episodes per season            | ✅ Implemented |
-| movies              | content      Standalone films                 | ✅ Implemented |
-| categories          | content      Content taxonomies           | ✅ Implemented |
-| platforms           | content      Streaming platforms        | ✅ Implemented |
-| drama_categories    | content      Drama–category many-to-many | ✅ Implemented |
-| drama_platforms     | content      Drama–platform many-to-many | ✅ Implemented |
-| movie_categories    | content      Movie–category many-to-many | ✅ Implemented |
-| movie_platforms     | content      Movie–platform many-to-many | ✅ Implemented |
-| similar_dramas      | content      Similarity recommendations | ✅ Implemented |
-| information_pages   | content      Legal/information pages and footer configuration | ✅ Implemented |
-| structure_conversion_snapshots | content | Pre-conversion season structure snapshots for drama structure conversion | ✅ Implemented |
-| content_slug_history| content      Slug change history        | ✅ Implemented |
-| content_seo         | content      SEO metadata per content  | ✅ Implemented |
-| content_assets      | content      Media/assets per content  | ✅ Implemented |
-| sitemap_exclusions  | content      Sitemap URL exclusions    | ✅ Implemented |
-| users_bookmarks     | users        User bookmarks            | ✅ Implemented |
-| users_watch_history | users        Watch history            | ✅ Implemented |
-| users_watched_state | users        Per-episode watched state | ✅ Implemented |
-| users_bookmarks     | users        User bookmarks           | ✅ Implemented |
-| ratings             | reviews      User ratings (1–5)        | ✅ Implemented |
-| reviews             | reviews      User reviews            | ✅ Implemented |
-| review_reactions    | reviews      Review reactions (likes) | ✅ Implemented |
-| review_reports      | reviews      Review reports         | ✅ Implemented |
-| content_reports     | moderation   User content reports   | ✅ Implemented |
-| moderation_actions  | moderation   Admin moderation actions | ✅ Implemented |
-| notification_preferences | notifications | User notification preferences | ✅ Implemented |
-| notifications       | notifications   In-app notifications | ✅ Implemented |
-| push_subscriptions  | notifications   Push subscription endpoints | ✅ Implemented |
-| notification_deliveries | notifications   Delivery tracking records | ✅ Implemented |
-| announcements       | notifications   Site-wide announcements | ✅ Implemented |
-| admin_notifications | notifications   Admin-targeted notifications | ✅ Implemented |
-| users               | auth         Auth users (Better Auth) | ✅ Implemented |
-| accounts            | auth         OAuth/account linking   | ✅ Implemented |
-| sessions            | auth         Auth sessions           | ✅ Implemented |
-| verifications       | auth         Email/email OTP verifications | ✅ Implemented |
-| roles               | authorization | Role definitions (built-in and custom) | ✅ Implemented |
-| permissions         | authorization | Per-role `(resource, action)` grants and revocations | ✅ Implemented |
-| user_roles          | authorization | User ↔ role assignments (many-to-many) | ✅ Implemented |
-| guest_sessions      | analytics    Anonymous guest sessions | ✅ Implemented |
-| content_view_events | analytics    Content view events        | ✅ Implemented |
-| playback_analytics_events | analytics   Playback analytics events | ✅ Implemented |
-| analytics_daily_aggregates | analytics   Daily aggregate metrics | ✅ Implemented |
-| search_events       | analytics    Search event logs        | ✅ Implemented |
-| users_playback_progress | playback   Playback progress tracking | ✅ Implemented |
-| users_subtitle_tracks | playback   Subtitle track assignments | ✅ Implemented |
-| admin_accounts      | administration   Admin user accounts  | ⏳ Pending migration |
-| admin_login_attempts| administration   Admin login attempts | ⏳ Pending migration |
-| admin_session_events| administration   Admin session events | ⏳ Pending migration |
-| system_settings     | administration   System configuration | ⏳ Pending migration |
-| system_setting_versions | administration   System setting versions | ⏳ Pending migration |
-| admin_dashboard_layouts | administration   Admin dashboard layouts | ⏳ Pending migration |
-| admin_audit_log     | administration   Admin audit log    | ⏳ Pending migration |
-| maintenance_task_runs | maintenance   Scheduled maintenance runs | ⏳ Pending migration |
-| backup_manifests    | maintenance   Backup file manifests | ⏳ Pending migration |
-| system_alerts       | maintenance   System alerts          | ⏳ Pending migration |
-| incidents           | maintenance   Incident reports       | ⏳ Pending migration |
-| incident_notes      | maintenance   Incident notes         | ⏳ Pending migration |
-| incident_attachments| maintenance   Incident attachments   | ⏳ Pending migration |
-| error_records       | maintenance   Error record log       | ⏳ Pending migration |
-| health_snapshots    | maintenance   Health check snapshots | ⏳ Pending migration |
+| Table                          | Module                                                   | Purpose                                                                  | Status         |
+| ------------------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------ | -------------- |
+| dramas                         | content                                                  | Dramas ( TV/streaming series )                                           | ✅ Implemented |
+| seasons                        | content                                                  | Seasons per drama                                                        | ✅ Implemented |
+| episodes                       | content                                                  | Episodes per season                                                      | ✅ Implemented |
+| movies                         | content Standalone films                                 | ✅ Implemented                                                           |
+| categories                     | content Content taxonomies                               | ✅ Implemented                                                           |
+| platforms                      | content Streaming platforms                              | ✅ Implemented                                                           |
+| drama_categories               | content Drama–category many-to-many                      | ✅ Implemented                                                           |
+| drama_platforms                | content Drama–platform many-to-many                      | ✅ Implemented                                                           |
+| movie_categories               | content Movie–category many-to-many                      | ✅ Implemented                                                           |
+| movie_platforms                | content Movie–platform many-to-many                      | ✅ Implemented                                                           |
+| similar_dramas                 | content Similarity recommendations                       | ✅ Implemented                                                           |
+| information_pages              | content Legal/information pages and footer configuration | ✅ Implemented                                                           |
+| structure_conversion_snapshots | content                                                  | Pre-conversion season structure snapshots for drama structure conversion | ✅ Implemented |
+| content_slug_history           | content Slug change history                              | ✅ Implemented                                                           |
+| content_seo                    | content SEO metadata per content                         | ✅ Implemented                                                           |
+| content_assets                 | content Media/assets per content                         | ✅ Implemented                                                           |
+| sitemap_exclusions             | content Sitemap URL exclusions                           | ✅ Implemented                                                           |
+| users_bookmarks                | users User bookmarks                                     | ✅ Implemented                                                           |
+| users_watch_history            | users Watch history                                      | ✅ Implemented                                                           |
+| users_watched_state            | users Per-episode watched state                          | ✅ Implemented                                                           |
+| users_bookmarks                | users User bookmarks                                     | ✅ Implemented                                                           |
+| ratings                        | reviews User ratings (1–5)                               | ✅ Implemented                                                           |
+| reviews                        | reviews User reviews                                     | ✅ Implemented                                                           |
+| review_reactions               | reviews Review reactions (likes)                         | ✅ Implemented                                                           |
+| review_reports                 | reviews Review reports                                   | ✅ Implemented                                                           |
+| content_reports                | moderation User content reports                          | ✅ Implemented                                                           |
+| moderation_actions             | moderation Admin moderation actions                      | ✅ Implemented                                                           |
+| notification_preferences       | notifications                                            | User notification preferences                                            | ✅ Implemented |
+| notifications                  | notifications In-app notifications                       | ✅ Implemented                                                           |
+| push_subscriptions             | notifications Push subscription endpoints                | ✅ Implemented                                                           |
+| notification_deliveries        | notifications Delivery tracking records                  | ✅ Implemented                                                           |
+| announcements                  | notifications Site-wide announcements                    | ✅ Implemented                                                           |
+| admin_notifications            | notifications Admin-targeted notifications               | ✅ Implemented                                                           |
+| users                          | auth Auth users (Better Auth)                            | ✅ Implemented                                                           |
+| accounts                       | auth OAuth/account linking                               | ✅ Implemented                                                           |
+| sessions                       | auth Auth sessions                                       | ✅ Implemented                                                           |
+| verifications                  | auth Email/email OTP verifications                       | ✅ Implemented                                                           |
+| roles                          | authorization                                            | Role definitions (built-in and custom)                                   | ✅ Implemented |
+| permissions                    | authorization                                            | Per-role `(resource, action)` grants and revocations                     | ✅ Implemented |
+| user_roles                     | authorization                                            | User ↔ role assignments (many-to-many)                                   | ✅ Implemented |
+| guest_sessions                 | analytics Anonymous guest sessions                       | ✅ Implemented                                                           |
+| content_view_events            | analytics Content view events                            | ✅ Implemented                                                           |
+| playback_analytics_events      | analytics Playback analytics events                      | ✅ Implemented                                                           |
+| analytics_daily_aggregates     | analytics Daily aggregate metrics                        | ✅ Implemented                                                           |
+| search_events                  | analytics Search event logs                              | ✅ Implemented                                                           |
+| users_playback_progress        | playback Playback progress tracking                      | ✅ Implemented                                                           |
+| users_subtitle_tracks          | playback Subtitle track assignments                      | ✅ Implemented                                                           |
+| admin_accounts                 | administration Admin user accounts                       | ⏳ Pending migration                                                     |
+| admin_login_attempts           | administration Admin login attempts                      | ⏳ Pending migration                                                     |
+| admin_session_events           | administration Admin session events                      | ⏳ Pending migration                                                     |
+| system_settings                | administration System configuration                      | ⏳ Pending migration                                                     |
+| system_setting_versions        | administration System setting versions                   | ⏳ Pending migration                                                     |
+| admin_dashboard_layouts        | administration Admin dashboard layouts                   | ⏳ Pending migration                                                     |
+| admin_audit_log                | administration Admin audit log                           | ⏳ Pending migration                                                     |
+| maintenance_task_runs          | maintenance Scheduled maintenance runs                   | ⏳ Pending migration                                                     |
+| backup_manifests               | maintenance Backup file manifests                        | ⏳ Pending migration                                                     |
+| system_alerts                  | maintenance System alerts                                | ⏳ Pending migration                                                     |
+| incidents                      | maintenance Incident reports                             | ⏳ Pending migration                                                     |
+| incident_notes                 | maintenance Incident notes                               | ⏳ Pending migration                                                     |
+| incident_attachments           | maintenance Incident attachments                         | ⏳ Pending migration                                                     |
+| error_records                  | maintenance Error record log                             | ⏳ Pending migration                                                     |
+| health_snapshots               | maintenance Health check snapshots                       | ⏳ Pending migration                                                     |
 
 ### 8.1 Authorization (RBAC) canonical model
 
@@ -389,19 +392,19 @@ When a table is added, record:
 for the public footer's legal/information links and the `/information/[slug]`
 pages.
 
-| Item | Detail |
-| ---- | ------ |
-| Purpose | Administrator-managed legal and information pages (Terms, Privacy, Community Guidelines, Copyright/DMCA, About, Contact). |
-| Primary key | `id uuid` (`uuidv7()` default). |
-| Key columns | `title`, `slug`, `content`, `publication_status` (`draft`/`published`/`unpublished`), `preview`, `footer_visible`, `position`. |
-| Timestamps / soft delete | `created_at`, `updated_at`, `deleted_at` (`timestamptz`). Trash is `deleted_at IS NOT NULL`. |
-| Constraints | `uq_information_pages_slug_active` — partial unique index on `slug WHERE deleted_at IS NULL`, so a slug may be reused after soft delete. |
-| Indexes | `idx_information_pages_footer` — partial index on `position WHERE deleted_at IS NULL AND publication_status = 'published' AND footer_visible = true`, supporting the public footer query. |
-| Ordering | `position` ascending; null positions sort last, then title and id for determinism. Reordering is transactional. |
-| Migration | `drizzle/0002_information_page_footer_links.sql` (schema + idempotent six-row seed). |
-| Query/service API | `src/modules/content/information-pages.ts` (`listFooterInformationLinks`, `getPublishedInformationPage`, `listInformationPages`, `updateInformationPage`, `reorderInformationPages`). |
-| Admin API | `GET /admin/api/information-pages`, `PATCH /admin/api/information-pages/[id]`, `PUT /admin/api/information-pages/reorder`; requires `settings.manage`. |
-| Public visibility | Published, footer-visible, non-deleted rows with a valid single-segment slug only. Drafts are never rendered publicly. |
+| Item                     | Detail                                                                                                                                                                                    |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Purpose                  | Administrator-managed legal and information pages (Terms, Privacy, Community Guidelines, Copyright/DMCA, About, Contact).                                                                 |
+| Primary key              | `id uuid` (`uuidv7()` default).                                                                                                                                                           |
+| Key columns              | `title`, `slug`, `content`, `publication_status` (`draft`/`published`/`unpublished`), `preview`, `footer_visible`, `position`.                                                            |
+| Timestamps / soft delete | `created_at`, `updated_at`, `deleted_at` (`timestamptz`). Trash is `deleted_at IS NOT NULL`.                                                                                              |
+| Constraints              | `uq_information_pages_slug_active` — partial unique index on `slug WHERE deleted_at IS NULL`, so a slug may be reused after soft delete.                                                  |
+| Indexes                  | `idx_information_pages_footer` — partial index on `position WHERE deleted_at IS NULL AND publication_status = 'published' AND footer_visible = true`, supporting the public footer query. |
+| Ordering                 | `position` ascending; null positions sort last, then title and id for determinism. Reordering is transactional.                                                                           |
+| Migration                | `drizzle/0002_information_page_footer_links.sql` (schema + idempotent six-row seed).                                                                                                      |
+| Query/service API        | `src/modules/content/information-pages.ts` (`listFooterInformationLinks`, `getPublishedInformationPage`, `listInformationPages`, `updateInformationPage`, `reorderInformationPages`).     |
+| Admin API                | `GET /admin/api/information-pages`, `PATCH /admin/api/information-pages/[id]`, `PUT /admin/api/information-pages/reorder`; requires `settings.manage`.                                    |
+| Public visibility        | Published, footer-visible, non-deleted rows with a valid single-segment slug only. Drafts are never rendered publicly.                                                                    |
 
 The seed inserts exactly six published, footer-visible rows with body
 `This page is being prepared.` and positions 1–6. It uses
@@ -414,19 +417,19 @@ statement is harmless and administrator-edited content is never overwritten.
 has no drama, season, or episode parent; it is never modelled as a hidden season
 or episode. Its single direct video source lives on the same row.
 
-| Item | Detail |
-| ---- | ------ |
-| Purpose | Standalone feature films with their own metadata, taxonomies, publication state, and direct playback source. |
-| Primary key | `id uuid` (`uuidv7()` default). |
-| Key columns | `title`, `slug`, `description`, `poster`, `banner`, `publication_status` (`draft`/`published`/`unpublished`), `video_source`. |
-| Timestamps / soft delete | `created_at`, `updated_at`, `deleted_at` (`timestamptz`). Trash is `deleted_at IS NOT NULL`. |
-| Constraints | `uq_movies_slug_active` — partial unique index on `slug WHERE deleted_at IS NULL`, so a slug may be reused after soft delete. |
-| Associations | `movie_categories (movie_id, category_id)` and `movie_platforms (movie_id, platform_id)`, both composite-PK join tables. Associations are replaced wholesale in the same transaction as the movie update. |
-| Video source | Administrator-supplied absolute HTTPS URL. Only syntax and the HTTPS scheme are validated; the server never fetches, proxies, transcodes, or rehosts the media. The browser plays the URL directly. |
-| Migration | `drizzle/0004_redundant_carmella_unuscione.sql` (adds `video_source` and the active-slug index; also adds `dramas.structure_type` and `season.manage`). |
-| Workflow API | `src/workflows/admin/movies.ts` (`createMovie`, `updateMovie`); requires `movie.manage`. Slug changes append `content_slug_history` rows with `content_type = 'movie'`. |
-| Admin API | `POST /admin/api/movies`, `PUT /admin/api/movies`; requires `movie.manage` and same-origin mutations. |
-| Validation | `src/modules/content/validation.ts` (`createMovieSchema`, `updateMovieSchema`, `movieVideoSourceSchema`, `moviePublicationStatusSchema`). Updates are full-payload replaces. |
+| Item                     | Detail                                                                                                                                                                                                    |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Purpose                  | Standalone feature films with their own metadata, taxonomies, publication state, and direct playback source.                                                                                              |
+| Primary key              | `id uuid` (`uuidv7()` default).                                                                                                                                                                           |
+| Key columns              | `title`, `slug`, `description`, `poster`, `banner`, `publication_status` (`draft`/`published`/`unpublished`), `video_source`.                                                                             |
+| Timestamps / soft delete | `created_at`, `updated_at`, `deleted_at` (`timestamptz`). Trash is `deleted_at IS NOT NULL`.                                                                                                              |
+| Constraints              | `uq_movies_slug_active` — partial unique index on `slug WHERE deleted_at IS NULL`, so a slug may be reused after soft delete.                                                                             |
+| Associations             | `movie_categories (movie_id, category_id)` and `movie_platforms (movie_id, platform_id)`, both composite-PK join tables. Associations are replaced wholesale in the same transaction as the movie update. |
+| Video source             | Administrator-supplied absolute HTTPS URL. Only syntax and the HTTPS scheme are validated; the server never fetches, proxies, transcodes, or rehosts the media. The browser plays the URL directly.       |
+| Migration                | `drizzle/0004_redundant_carmella_unuscione.sql` (adds `video_source` and the active-slug index; also adds `dramas.structure_type` and `season.manage`).                                                   |
+| Workflow API             | `src/workflows/admin/movies.ts` (`createMovie`, `updateMovie`); requires `movie.manage`. Slug changes append `content_slug_history` rows with `content_type = 'movie'`.                                   |
+| Admin API                | `POST /admin/api/movies`, `PUT /admin/api/movies`; requires `movie.manage` and same-origin mutations.                                                                                                     |
+| Validation               | `src/modules/content/validation.ts` (`createMovieSchema`, `updateMovieSchema`, `movieVideoSourceSchema`, `moviePublicationStatusSchema`). Updates are full-payload replaces.                              |
 
 Prompt 067 adds the nullable provenance column `converted_from_drama_id`; see §8.5.
 
@@ -437,19 +440,19 @@ season structure of a drama before a season-based → flat conversion so the
 conversion can be reversed. Snapshots are history: they are superseded or
 marked restored, never deleted.
 
-| Item | Detail |
-| ---- | ------ |
-| Purpose | Exact pre-conversion season/episode structure for one drama, plus the fingerprint of the structure that resulted from the conversion. |
-| Primary key | `id uuid` (`uuidv7()` default). |
-| Key columns | `drama_id`, `source_structure_type` (`season_based`), `target_structure_type` (`flat`), `season_data` (`jsonb`), `episode_data` (`jsonb`), `post_conversion_fingerprint` (text), `status` (`available` \| `restored` \| `superseded`), `restored_at`, `superseded_at`. |
-| Timestamps / soft delete | `created_at`, `updated_at` (`timestamptz`). Snapshots are not soft-deleted; the `status` column carries the lifecycle. |
-| Constraints | `ck_structure_conversion_snapshots_status` — status is one of `available`, `restored`, `superseded`. `ck_structure_conversion_snapshots_direction` — the snapshot direction is always season-based → flat. |
-| Relationships | `fk_structure_conversion_snapshots_drama_id` → `dramas.id` `ON DELETE CASCADE` (the first deliberate foreign key in the content hierarchy). `idx_structure_conversion_snapshots_drama_id` supports the per-drama lookup. |
-| Uniqueness | `uq_structure_conversion_snapshots_drama_id_available` — partial unique index on `drama_id WHERE status = 'available'`, so at most one restorable snapshot exists per drama. Superseding and restoring are part of the conversion transaction. |
-| Migration | `drizzle/0005_yielding_mimic.sql`. |
-| Workflow API | `src/workflows/admin/conversion.ts` (`previewConversion`, `applyConversion`); requires `drama.manage`. The apply runs in a serializable transaction with the drama row locked `FOR UPDATE`. |
-| Admin API | `POST /admin/api/dramas/convert`; requires `drama.manage` and same-origin mutations. |
-| Validation | `src/modules/content/validation.ts` (`conversionRequestSchema`, `conversionDistributionSchema`, snapshot payload schemas) and `src/modules/content/conversion.ts` (ordering, plans, fingerprint, snapshot payload build/parse). |
+| Item                     | Detail                                                                                                                                                                                                                                                                 |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Purpose                  | Exact pre-conversion season/episode structure for one drama, plus the fingerprint of the structure that resulted from the conversion.                                                                                                                                  |
+| Primary key              | `id uuid` (`uuidv7()` default).                                                                                                                                                                                                                                        |
+| Key columns              | `drama_id`, `source_structure_type` (`season_based`), `target_structure_type` (`flat`), `season_data` (`jsonb`), `episode_data` (`jsonb`), `post_conversion_fingerprint` (text), `status` (`available` \| `restored` \| `superseded`), `restored_at`, `superseded_at`. |
+| Timestamps / soft delete | `created_at`, `updated_at` (`timestamptz`). Snapshots are not soft-deleted; the `status` column carries the lifecycle.                                                                                                                                                 |
+| Constraints              | `ck_structure_conversion_snapshots_status` — status is one of `available`, `restored`, `superseded`. `ck_structure_conversion_snapshots_direction` — the snapshot direction is always season-based → flat.                                                             |
+| Relationships            | `fk_structure_conversion_snapshots_drama_id` → `dramas.id` `ON DELETE CASCADE` (the first deliberate foreign key in the content hierarchy). `idx_structure_conversion_snapshots_drama_id` supports the per-drama lookup.                                               |
+| Uniqueness               | `uq_structure_conversion_snapshots_drama_id_available` — partial unique index on `drama_id WHERE status = 'available'`, so at most one restorable snapshot exists per drama. Superseding and restoring are part of the conversion transaction.                         |
+| Migration                | `drizzle/0005_yielding_mimic.sql`.                                                                                                                                                                                                                                     |
+| Workflow API             | `src/workflows/admin/conversion.ts` (`previewConversion`, `applyConversion`); requires `drama.manage`. The apply runs in a serializable transaction with the drama row locked `FOR UPDATE`.                                                                            |
+| Admin API                | `POST /admin/api/dramas/convert`; requires `drama.manage` and same-origin mutations.                                                                                                                                                                                   |
+| Validation               | `src/modules/content/validation.ts` (`conversionRequestSchema`, `conversionDistributionSchema`, snapshot payload schemas) and `src/modules/content/conversion.ts` (ordering, plans, fingerprint, snapshot payload build/parse).                                        |
 
 Restoring a snapshot re-applies the stored season rows, episode season
 assignment, episode numbers, and positions only. Episode titles,
@@ -465,34 +468,34 @@ content identity and the single episode's video source, moves the content
 relationships, and soft-deletes the source drama, its seasons, and its
 episodes in the same transaction. The drama UUID is never reused.
 
-| Item | Detail |
-| ---- | ------ |
-| Provenance column | `movies.converted_from_drama_id uuid NULL`. |
-| Provenance FK | `fk_movies_converted_from_drama_id` → `dramas.id` `ON DELETE RESTRICT`, so a movie blocks permanent deletion of its source drama. |
-| Provenance uniqueness | `uq_movies_converted_from_drama_id` — partial unique index where the column is not null; one drama converts at most once. |
-| Eligibility | Exactly one active episode (`episodes.deleted_at IS NULL`). Zero or more than one is a `409`; trashed episodes and seasons are excluded and left untouched. An already converted drama is permanently ineligible. |
-| Slug | Copied verbatim. `uq_movies_slug_active` rejects a collision with another active movie (`409`); the slug is never auto-suffixed. |
-| Publication state | `draft`, `published`, and `unpublished` carry over; any other stored value becomes `draft` with a preview warning. |
-| Source lifecycle | `dramas`, `seasons`, and `episodes` are soft-deleted (`deleted_at`/`updated_at` set). No hard delete occurs; the source remains for audit and future Trash lifecycle work. |
-| User state | `bookmarks`, `playback_progress`, `watched_state`, and `watch_history` move to the movie. Progress and watched-state `episode_id` become `NULL`; `watch_history.episode_id` is preserved as historical fact. |
-| Metadata | `content_slug_history`, `content_seo`, `content_assets`, notifications, admin notifications, content view events, playback analytics events, and daily aggregates move to the movie. `similar_dramas` and `structure_conversion_snapshots` are untouched. |
-| Null types | Only rows with `content_type = 'drama'` are rewritten in polymorphic tables; rows with a `NULL` type are not guessed. |
-| Migration | `drizzle/0006_cute_kabuki.sql`. |
-| Workflow API | `src/workflows/admin/movie-conversion.ts` (`loadMovieConversionContext`, `previewMovieConversion`, `applyMovieConversion`); requires `drama.manage`. Apply uses a serializable transaction with the drama and its active episodes locked `FOR UPDATE` and verifies a SHA-256 fingerprint before any write. |
-| Admin API | `POST /admin/api/dramas/convert-to-movie`; requires `drama.manage` and same-origin mutations. |
-| Admin page | `/admin/dramas/[id]/convert-to-movie`; the `/admin/dramas` listing shows the action only when `activeEpisodes === 1`. |
-| Validation | `src/modules/content/validation.ts` (`movieConversionRequestSchema`) and `src/modules/content/movie-conversion.ts` (plan, publication mapping, fingerprint). |
+| Item                  | Detail                                                                                                                                                                                                                                                                                                     |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provenance column     | `movies.converted_from_drama_id uuid NULL`.                                                                                                                                                                                                                                                                |
+| Provenance FK         | `fk_movies_converted_from_drama_id` → `dramas.id` `ON DELETE RESTRICT`, so a movie blocks permanent deletion of its source drama.                                                                                                                                                                          |
+| Provenance uniqueness | `uq_movies_converted_from_drama_id` — partial unique index where the column is not null; one drama converts at most once.                                                                                                                                                                                  |
+| Eligibility           | Exactly one active episode (`episodes.deleted_at IS NULL`). Zero or more than one is a `409`; trashed episodes and seasons are excluded and left untouched. An already converted drama is permanently ineligible.                                                                                          |
+| Slug                  | Copied verbatim. `uq_movies_slug_active` rejects a collision with another active movie (`409`); the slug is never auto-suffixed.                                                                                                                                                                           |
+| Publication state     | `draft`, `published`, and `unpublished` carry over; any other stored value becomes `draft` with a preview warning.                                                                                                                                                                                         |
+| Source lifecycle      | `dramas`, `seasons`, and `episodes` are soft-deleted (`deleted_at`/`updated_at` set). No hard delete occurs; the source remains for audit and future Trash lifecycle work.                                                                                                                                 |
+| User state            | `bookmarks`, `playback_progress`, `watched_state`, and `watch_history` move to the movie. Progress and watched-state `episode_id` become `NULL`; `watch_history.episode_id` is preserved as historical fact.                                                                                               |
+| Metadata              | `content_slug_history`, `content_seo`, `content_assets`, notifications, admin notifications, content view events, playback analytics events, and daily aggregates move to the movie. `similar_dramas` and `structure_conversion_snapshots` are untouched.                                                  |
+| Null types            | Only rows with `content_type = 'drama'` are rewritten in polymorphic tables; rows with a `NULL` type are not guessed.                                                                                                                                                                                      |
+| Migration             | `drizzle/0006_cute_kabuki.sql`.                                                                                                                                                                                                                                                                            |
+| Workflow API          | `src/workflows/admin/movie-conversion.ts` (`loadMovieConversionContext`, `previewMovieConversion`, `applyMovieConversion`); requires `drama.manage`. Apply uses a serializable transaction with the drama and its active episodes locked `FOR UPDATE` and verifies a SHA-256 fingerprint before any write. |
+| Admin API             | `POST /admin/api/dramas/convert-to-movie`; requires `drama.manage` and same-origin mutations.                                                                                                                                                                                                              |
+| Admin page            | `/admin/dramas/[id]/convert-to-movie`; the `/admin/dramas` listing shows the action only when `activeEpisodes === 1`.                                                                                                                                                                                      |
+| Validation            | `src/modules/content/validation.ts` (`movieConversionRequestSchema`) and `src/modules/content/movie-conversion.ts` (plan, publication mapping, fingerprint).                                                                                                                                               |
 
 `ratings` and `reviews` are now dual-target tables (D-020):
 
-| Item | Detail |
-| ---- | ------ |
-| Target columns | `drama_id uuid NULL`, `movie_id uuid NULL`. |
-| Exactly-one CHECK | `ck_ratings_target` / `ck_reviews_target` require exactly one non-null target. |
-| FKs | `fk_*_drama_id` → `dramas.id`, `fk_*_movie_id` → `movies.id` (cross-module FKs in SQL). |
-| Uniqueness | `uq_ratings_user_id_drama_id_active` / `uq_ratings_user_id_movie_id_active` (soft delete aware) and `uq_reviews_user_id_drama_id` / `uq_reviews_user_id_movie_id` (reviews have no soft delete). |
-| Lookup indexes | `idx_ratings_drama_id`, `idx_ratings_movie_id`, `idx_reviews_drama_id`, `idx_reviews_movie_id`. |
-| Conversion write | One `UPDATE` per table sets `movie_id` and clears `drama_id`, preserving moderation state, timestamps, and soft-delete flags. `review_reactions` and `review_reports` reference `review_id` only and follow their review untouched. |
+| Item              | Detail                                                                                                                                                                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Target columns    | `drama_id uuid NULL`, `movie_id uuid NULL`.                                                                                                                                                                                         |
+| Exactly-one CHECK | `ck_ratings_target` / `ck_reviews_target` require exactly one non-null target.                                                                                                                                                      |
+| FKs               | `fk_*_drama_id` → `dramas.id`, `fk_*_movie_id` → `movies.id` (cross-module FKs in SQL).                                                                                                                                             |
+| Uniqueness        | `uq_ratings_user_id_drama_id_active` / `uq_ratings_user_id_movie_id_active` (soft delete aware) and `uq_reviews_user_id_drama_id` / `uq_reviews_user_id_movie_id` (reviews have no soft delete).                                    |
+| Lookup indexes    | `idx_ratings_drama_id`, `idx_ratings_movie_id`, `idx_reviews_drama_id`, `idx_reviews_movie_id`.                                                                                                                                     |
+| Conversion write  | One `UPDATE` per table sets `movie_id` and clears `drama_id`, preserving moderation state, timestamps, and soft-delete flags. `review_reactions` and `review_reports` reference `review_id` only and follow their review untouched. |
 
 The reviews, users, notifications, and analytics modules export narrow
 content-ownership services that accept the workflow's transaction; the
@@ -514,12 +517,11 @@ one-way; no movie→drama path exists.
 
 Do not modify another module's table. Do not add a cross-module write to avoid a workflow.
 
-
 ## 8. Index and Search Strategy (Updated)
 
 - **Every foreign key** has an index on the referencing column (per CONVENTIONS.md §5.4).
 - **Partial unique indexes** WHERE deleted_at IS NULL enforce active-row uniqueness for slugs, names, and per-user/per-content constraints.
-- **Full-text indexes** (idx_*_search, GIN on 	svector) support title/description search on dramas, episodes, and movies.
+- **Full-text indexes** (idx_*_search, GIN on svector) support title/description search on dramas, episodes, and movies.
 - **Trigram indexes** (idx_*_title_trgm, GIN on pg_trgm) support autocomplete and fuzzy matching on title columns.
 - **Composite indexes** support common query patterns: drama-level lookups, season/episode ordering, category/platform joins, and user-specific filtering.
 - **Case-insensitive uniqueness** on lower(name) is enforced via partial unique indexes where names must be unique among active rows.

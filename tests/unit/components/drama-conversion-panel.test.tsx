@@ -48,6 +48,7 @@ function flatPlan(): ConversionPlanDto {
     targetStructureType: 'flat',
     strategy: 'convert',
     fingerprint: 'a'.repeat(64),
+    planDigest: 'd'.repeat(64),
     seasons: [],
     episodes: EPISODES.map((episode, index) => ({
       id: episode.id,
@@ -72,6 +73,7 @@ function seasonPlan(): ConversionPlanDto {
     targetStructureType: 'season_based',
     strategy: 'convert',
     fingerprint: 'b'.repeat(64),
+    planDigest: 'e'.repeat(64),
     seasons: [{ key: 'season-1', id: null, title: 'Season 1', position: 0, episodeCount: 2 }],
     episodes: EPISODES.map(episode => ({
       id: episode.id,
@@ -152,6 +154,8 @@ describe('season-based drama conversion', () => {
       mode: 'apply',
       targetStructureType: 'flat',
       fingerprint: 'a'.repeat(64),
+      // The digest binds the apply request to the previewed plan.
+      planDigest: 'd'.repeat(64),
     });
 
     await screen.findByText('Conversion applied.');
@@ -283,6 +287,107 @@ describe('flat drama conversion', () => {
     expect(actionMocks.preview).not.toHaveBeenCalled();
   });
 
+  it('disables the distribution editor while a preview is pending', async () => {
+    // The request never settles: the panel stays in its pending state.
+    actionMocks.preview.mockImplementation(() => new Promise(() => {}));
+
+    render(
+      <DramaConversionPanel
+        dramaId="aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa"
+        dramaTitle="Test Drama"
+        currentStructureType="flat"
+        episodes={EPISODES}
+        hasAvailableSnapshot={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview conversion' }));
+
+    await screen.findByRole('button', { name: 'Building preview…' });
+
+    // Editing the distribution while the preview is in flight would send a
+    // plan that no longer matches the one the server is building.
+    expect((screen.getByLabelText('Season title') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Position') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText(/Episode 1/) as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Add season' }) as HTMLButtonElement).disabled).toBe(
+      true
+    );
+    expect((screen.getByRole('button', { name: 'Remove' }) as HTMLButtonElement).disabled).toBe(
+      true
+    );
+  });
+
+  it('asks before the episodes of a removed season are reassigned', async () => {
+    render(
+      <DramaConversionPanel
+        dramaId="aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa"
+        dramaTitle="Test Drama"
+        currentStructureType="flat"
+        episodes={EPISODES}
+        hasAvailableSnapshot={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add season' }));
+
+    const assignment = screen.getByLabelText(/Episode 2/) as HTMLSelectElement;
+    fireEvent.change(assignment, { target: { value: 'season-2' } });
+
+    const secondSeasonRow = screen.getAllByLabelText('Season title')[1]!.closest('li')!;
+    fireEvent.click(secondSeasonRow.querySelector('button')!);
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog.textContent).toContain('Episode 2');
+    expect(dialog.textContent).toContain('Season 1');
+
+    // The season is still there: nothing was removed behind the administrator's
+    // back.
+    expect(screen.getAllByLabelText('Season title')).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+    });
+
+    expect(screen.getAllByLabelText('Season title')).toHaveLength(2);
+
+    // Removing it again and confirming performs the reassignment.
+    fireEvent.click(secondSeasonRow.querySelector('button')!);
+    await screen.findByRole('alertdialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove season' }));
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText('Season title')).toHaveLength(1);
+    });
+
+    expect((screen.getByLabelText(/Episode 2/) as HTMLSelectElement).value).toBe('season-1');
+  });
+
+  it('removes a season without episodes without asking', async () => {
+    render(
+      <DramaConversionPanel
+        dramaId="aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa"
+        dramaTitle="Test Drama"
+        currentStructureType="flat"
+        episodes={EPISODES}
+        hasAvailableSnapshot={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add season' }));
+
+    const secondSeasonRow = screen.getAllByLabelText('Season title')[1]!.closest('li')!;
+    fireEvent.click(secondSeasonRow.querySelector('button')!);
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText('Season title')).toHaveLength(1);
+    });
+
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
   it('clears the preview and shows the new structure after a conversion is applied', async () => {
     actionMocks.preview.mockResolvedValue({ ok: true, data: flatPlan() });
     actionMocks.apply.mockResolvedValue({
@@ -320,10 +425,12 @@ describe('flat drama conversion', () => {
 
     // The preview is stale once the conversion is applied: the plan is cleared
     // and a new preview is required before another conversion.
-    expect(screen.getByText('No preview yet. Build a preview before confirming a conversion.')).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Confirm conversion' }) as HTMLButtonElement).disabled).toBe(
-      true
-    );
+    expect(
+      screen.getByText('No preview yet. Build a preview before confirming a conversion.')
+    ).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: 'Confirm conversion' }) as HTMLButtonElement).disabled
+    ).toBe(true);
 
     // The panel now describes the converted structure.
     expect(screen.getByText(/Current structure: Flat/)).toBeTruthy();

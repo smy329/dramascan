@@ -141,6 +141,11 @@ export async function seedDrama(options = {}) {
           const episodeId = randomUUID();
           episodeIds.push(episodeId);
 
+          // Episode numbers are drama-wide (D-032): Season 2 continues after
+          // Season 1, and the database enforces the uniqueness per drama. The
+          // position stays inside the episode's own season scope.
+          const episodeNumber = seasonIndex * episodesPerSeason + episodeIndex + 1;
+
           await run(
             client,
             'insert the seeded episode',
@@ -152,7 +157,7 @@ export async function seedDrama(options = {}) {
               id,
               structureType === 'season_based' ? seasonId : null,
               `Episode ${seasonIndex + 1}.${episodeIndex + 1}`,
-              episodeIndex + 1,
+              episodeNumber,
               episodeIndex,
               episodePublicationStatus,
               episodeVideoSource,

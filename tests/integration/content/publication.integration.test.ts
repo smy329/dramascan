@@ -24,19 +24,15 @@ vi.hoisted(() => {
 
 vi.mock('server-only', () => ({}));
 
-import { eq, inArray, like } from 'drizzle-orm';
+import { eq, inArray, like, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import type { ActorContext } from '@/modules/authorization';
 import { AuthorizationError, ValidationError } from '@/platform/errors';
 import { closePool } from '@/platform/db/pool';
-import {
-  dramas,
-  episodes,
-  movies,
-  seasons,
-} from '@/modules/content/schema';
+import { dramas, episodes, movies, seasons } from '@/modules/content/schema';
 import { updatePublication } from '@/workflows/admin/publication';
+import { updateDrama } from '@/workflows/admin/dramas';
 import { listSeasons } from '@/workflows/admin/seasons';
 import { listEpisodes } from '@/workflows/admin/episodes';
 
@@ -73,13 +69,27 @@ async function insertDrama(publicationStatus: 'draft' | 'published' = 'draft'): 
   return row.id;
 }
 
-async function insertSeason(dramaId: string, publicationStatus: 'draft' | 'published' = 'draft'): Promise<string> {
+// Season positions are unique per drama, so a fixture that always inserts
+// position 0 would collide as soon as one drama has two seasons.
+async function nextSeasonPosition(dramaId: string): Promise<number> {
+  const [row] = await db
+    .select({ max: sql<number | null>`max(${seasons.position})` })
+    .from(seasons)
+    .where(eq(seasons.drama_id, dramaId));
+
+  return Number(row?.max ?? -1) + 1;
+}
+
+async function insertSeason(
+  dramaId: string,
+  publicationStatus: 'draft' | 'published' = 'draft'
+): Promise<string> {
   const row = await db
     .insert(seasons)
     .values({
       drama_id: dramaId,
       title: `Season ${randomUUID().slice(0, 8)}`,
-      position: 0,
+      position: await nextSeasonPosition(dramaId),
       publication_status: publicationStatus,
     })
     .returning();
@@ -89,6 +99,17 @@ async function insertSeason(dramaId: string, publicationStatus: 'draft' | 'publi
   }
 
   return row[0].id;
+}
+
+// Episode numbers are drama-wide (a season 2 episode continues after season 1),
+// so fixtures allocate the next free number instead of hard-coding 1.
+async function nextEpisodeNumber(dramaId: string): Promise<number> {
+  const [row] = await db
+    .select({ max: sql<number | null>`max(${episodes.episode_number})` })
+    .from(episodes)
+    .where(eq(episodes.drama_id, dramaId));
+
+  return Number(row?.max ?? 0) + 1;
 }
 
 async function insertEpisode(
@@ -103,7 +124,7 @@ async function insertEpisode(
       drama_id: dramaId,
       season_id: seasonId,
       title: `Episode ${randomUUID().slice(0, 8)}`,
-      episode_number: 1,
+      episode_number: await nextEpisodeNumber(dramaId),
       position: 0,
       publication_status: publicationStatus,
       video_source: videoSource,
@@ -139,11 +160,22 @@ async function insertMovie(
 }
 
 async function cleanup(): Promise<void> {
-  const movieRows = await db.select({ id: movies.id }).from(movies).where(like(movies.slug, 'it-pub-%'));
-  const dramaRows = await db.select({ id: dramas.id }).from(dramas).where(like(dramas.slug, 'it-pub-%'));
+  const movieRows = await db
+    .select({ id: movies.id })
+    .from(movies)
+    .where(like(movies.slug, 'it-pub-%'));
+  const dramaRows = await db
+    .select({ id: dramas.id })
+    .from(dramas)
+    .where(like(dramas.slug, 'it-pub-%'));
 
   if (movieRows.length > 0) {
-    await db.delete(movies).where(inArray(movies.id, movieRows.map(row => row.id)));
+    await db.delete(movies).where(
+      inArray(
+        movies.id,
+        movieRows.map(row => row.id)
+      )
+    );
   }
 
   if (dramaRows.length > 0) {
@@ -282,7 +314,12 @@ describe('publication workflows', () => {
   it('skips an episode with a non-HTTPS source with reason invalid_source', async () => {
     const dramaId = await insertDrama('draft');
     const seasonId = await insertSeason(dramaId, 'published');
-    const episodeId = await insertEpisode(dramaId, seasonId, 'draft', 'http://media.example.com/episodes/1.mp4');
+    const episodeId = await insertEpisode(
+      dramaId,
+      seasonId,
+      'draft',
+      'http://media.example.com/episodes/1.mp4'
+    );
 
     const result = await updatePublication(managerActor, {
       contentType: 'episode',
@@ -307,7 +344,10 @@ describe('publication workflows', () => {
       action: 'publish',
       ids: [episodeId],
     });
-    expect(publishResult.results[0]).toMatchObject({ status: 'skipped', reason: 'already_published' });
+    expect(publishResult.results[0]).toMatchObject({
+      status: 'skipped',
+      reason: 'already_published',
+    });
 
     const unpublishResult = await updatePublication(managerActor, {
       contentType: 'drama',
@@ -524,8 +564,116 @@ describe('publication workflows', () => {
   it('rejects a legacy episode publication status filter', async () => {
     const dramaId = await insertDrama('draft');
 
-    await expect(listEpisodes(managerActor, dramaId, { publication_status: 'ongoing' })).rejects.toBeInstanceOf(
-      ValidationError
-    );
+    await expect(
+      listEpisodes(managerActor, dramaId, { publication_status: 'ongoing' })
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+});
+
+describe('published_at (SCOPE-D01)', () => {
+  it('records the first successful publication', async () => {
+    const dramaId = await insertDrama('draft');
+    const before = Date.now();
+
+    const result = await updatePublication(managerActor, {
+      contentType: 'drama',
+      action: 'publish',
+      ids: [dramaId],
+    });
+
+    expect(result.summary.succeeded).toBe(1);
+
+    const [row] = await db.select().from(dramas).where(eq(dramas.id, dramaId));
+
+    expect(row?.published_at).not.toBeNull();
+    expect(row?.published_at?.getTime()).toBeGreaterThanOrEqual(before);
+    expect(row?.published_at?.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('preserves the original instant across an ordinary edit', async () => {
+    const dramaId = await insertDrama('draft');
+
+    await updatePublication(managerActor, {
+      contentType: 'drama',
+      action: 'publish',
+      ids: [dramaId],
+    });
+
+    const [published] = await db.select().from(dramas).where(eq(dramas.id, dramaId));
+    const publishedAt = published?.published_at;
+
+    const updated = await updateDrama(managerActor, dramaId, {
+      title: 'Seasons of Glass (Revised)',
+      slug: published?.slug,
+    });
+
+    expect(updated.ok).toBe(true);
+
+    const [row] = await db.select().from(dramas).where(eq(dramas.id, dramaId));
+
+    expect(row?.published_at?.getTime()).toBe(publishedAt?.getTime());
+  });
+
+  it('keeps the first publication instant when the content is unpublished and published again', async () => {
+    const dramaId = await insertDrama('draft');
+
+    await updatePublication(managerActor, {
+      contentType: 'drama',
+      action: 'publish',
+      ids: [dramaId],
+    });
+
+    const [published] = await db.select().from(dramas).where(eq(dramas.id, dramaId));
+    const publishedAt = published?.published_at?.getTime();
+
+    const unpublished = await updatePublication(managerActor, {
+      contentType: 'drama',
+      action: 'unpublish',
+      ids: [dramaId],
+    });
+
+    expect(unpublished.summary.succeeded).toBe(1);
+
+    const [afterUnpublish] = await db.select().from(dramas).where(eq(dramas.id, dramaId));
+
+    expect(afterUnpublish?.publication_status).toBe('unpublished');
+    expect(afterUnpublish?.published_at?.getTime()).toBe(publishedAt);
+
+    const republished = await updatePublication(managerActor, {
+      contentType: 'drama',
+      action: 'publish',
+      ids: [dramaId],
+    });
+
+    expect(republished.summary.succeeded).toBe(1);
+
+    const [afterRepublish] = await db.select().from(dramas).where(eq(dramas.id, dramaId));
+
+    expect(afterRepublish?.publication_status).toBe('published');
+    expect(afterRepublish?.published_at?.getTime()).toBe(publishedAt);
+  });
+
+  it('records the first publication of an episode and leaves existing published rows null', async () => {
+    const dramaId = await insertDrama('published');
+    const seasonId = await insertSeason(dramaId, 'published');
+    const episodeId = await insertEpisode(dramaId, seasonId, 'draft', VALID_SOURCE);
+
+    // A row that was published before `published_at` existed keeps a null
+    // value: no date is invented for legacy data.
+    const [legacy] = await db.select().from(dramas).where(eq(dramas.id, dramaId));
+
+    expect(legacy?.published_at).toBeNull();
+
+    const result = await updatePublication(managerActor, {
+      contentType: 'episode',
+      action: 'publish',
+      ids: [episodeId],
+    });
+
+    expect(result.summary.succeeded).toBe(1);
+
+    const [episode] = await db.select().from(episodes).where(eq(episodes.id, episodeId));
+
+    expect(episode?.published_at).not.toBeNull();
   });
 });

@@ -16,9 +16,12 @@ import {
 /**
  * Admin drama structure conversion API.
  *
- * `POST` with `mode: "preview"` returns the planned structure and fingerprint.
- * `POST` with `mode: "apply"` requires that fingerprint and applies the
- * conversion transactionally. Authorization is enforced server-side here and
+ * `POST` with `mode: "preview"` returns the planned structure, the structure
+ * fingerprint, and the plan digest.
+ * `POST` with `mode: "apply"` requires that fingerprint and that digest, and
+ * applies the previewed conversion transactionally. The fingerprint proves the
+ * source structure did not change; the digest proves the plan being applied is
+ * the plan that was previewed. Authorization is enforced server-side here and
  * again inside the workflow.
  */
 
@@ -61,9 +64,7 @@ export async function POST(request: Request): Promise<Response> {
     body = await readJsonBody(request);
     const mode = requestMode(body);
     const result =
-      mode === 'apply'
-        ? await applyConversion(actor, body)
-        : await previewConversion(actor, body);
+      mode === 'apply' ? await applyConversion(actor, body) : await previewConversion(actor, body);
 
     return jsonResponse({ data: result }, 200, requestId);
   } catch (error) {

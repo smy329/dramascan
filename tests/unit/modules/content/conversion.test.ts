@@ -16,10 +16,7 @@ import {
 } from '@/modules/content/conversion';
 import { ValidationError } from '@/platform/errors';
 
-function season(
-  id: string,
-  overrides: Partial<ConversionSeasonState> = {}
-): ConversionSeasonState {
+function season(id: string, overrides: Partial<ConversionSeasonState> = {}): ConversionSeasonState {
   return {
     id,
     title: `Season ${id}`,
@@ -47,9 +44,7 @@ function episode(
   };
 }
 
-function state(
-  overrides: Partial<ConversionStructureState> = {}
-): ConversionStructureState {
+function state(overrides: Partial<ConversionStructureState> = {}): ConversionStructureState {
   return {
     dramaId: '11111111-1111-7111-8111-111111111111',
     structureType: 'season_based',
@@ -86,11 +81,7 @@ describe('orderSeasonStructure', () => {
       episode('c', { position: 0, episodeNumber: 2 }),
     ];
 
-    expect(orderSeasonStructure([], episodes).episodes.map(row => row.id)).toEqual([
-      'c',
-      'a',
-      'b',
-    ]);
+    expect(orderSeasonStructure([], episodes).episodes.map(row => row.id)).toEqual(['c', 'a', 'b']);
   });
 
   it('treats an episode attached to an inactive season as seasonless', () => {
@@ -330,7 +321,14 @@ describe('buildSeasonConversionPlan', () => {
     );
 
     expect(plan.seasons).toEqual([
-      { key: 's1', id: null, title: 'Season 1', position: 0, episodeCount: 2, publicationStatus: 'draft' },
+      {
+        key: 's1',
+        id: null,
+        title: 'Season 1',
+        position: 0,
+        episodeCount: 2,
+        publicationStatus: 'draft',
+      },
     ]);
     expect(plan.episodes.map(row => row.toEpisodeNumber)).toEqual([4, 5]);
     expect(plan.counts.seasonsCreated).toBe(1);
@@ -362,6 +360,76 @@ describe('buildSeasonConversionPlan', () => {
   });
 });
 
+describe('computePlanDigest', () => {
+  const flatState = state({
+    structureType: 'flat',
+    episodes: [
+      episode('e1', { position: 0, episodeNumber: 1 }),
+      episode('e2', { position: 1, episodeNumber: 2 }),
+    ],
+  });
+
+  const distribution = {
+    seasons: [
+      { key: 's1', title: 'First', position: 0 },
+      { key: 's2', title: 'Second', position: 1 },
+    ],
+    assignments: [
+      { episodeId: 'e1', seasonKey: 's1' },
+      { episodeId: 'e2', seasonKey: 's2' },
+    ],
+  };
+
+  it('is deterministic for the same plan', () => {
+    const first = buildSeasonConversionPlan(flatState, distribution);
+    const second = buildSeasonConversionPlan(flatState, distribution);
+
+    expect(first.planDigest).toBe(second.planDigest);
+    expect(first.planDigest).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('changes when the distribution changes', () => {
+    const previewed = buildSeasonConversionPlan(flatState, distribution);
+    const edited = buildSeasonConversionPlan(flatState, {
+      ...distribution,
+      assignments: [
+        { episodeId: 'e1', seasonKey: 's2' },
+        { episodeId: 'e2', seasonKey: 's1' },
+      ],
+    });
+
+    expect(edited.planDigest).not.toBe(previewed.planDigest);
+  });
+
+  it('changes when the source structure changes', () => {
+    const previewed = buildSeasonConversionPlan(flatState, distribution);
+    const changed = buildSeasonConversionPlan(
+      state({
+        structureType: 'flat',
+        episodes: [
+          episode('e1', { position: 0, episodeNumber: 1 }),
+          episode('e2', { position: 1, episodeNumber: 3 }),
+        ],
+      }),
+      distribution
+    );
+
+    expect(changed.planDigest).not.toBe(previewed.planDigest);
+  });
+
+  it('changes when the target structure changes', () => {
+    const flat = buildFlatConversionPlan(
+      state({
+        structureType: 'season_based',
+        seasons: [season('s1', { position: 0 })],
+        episodes: [episode('e1', { seasonId: 's1', position: 0, episodeNumber: 1 })],
+      })
+    );
+
+    expect(flat.planDigest).not.toBe(buildSeasonConversionPlan(flatState, distribution).planDigest);
+  });
+});
+
 describe('snapshot payload', () => {
   it('round-trips an ordered payload', () => {
     const seasonOne = '11111111-1111-7111-8111-111111111111';
@@ -369,10 +437,7 @@ describe('snapshot payload', () => {
     const episodeOne = '33333333-3333-7333-8333-333333333333';
     const episodeTwo = '44444444-4444-7444-8444-444444444444';
 
-    const seasons = [
-      season(seasonTwo, { position: 1 }),
-      season(seasonOne, { position: 0 }),
-    ];
+    const seasons = [season(seasonTwo, { position: 1 }), season(seasonOne, { position: 0 })];
     const episodes = [
       episode(episodeTwo, { seasonId: seasonOne, episodeNumber: 2, position: 1 }),
       episode(episodeOne, { seasonId: seasonOne, episodeNumber: 1, position: 0 }),
@@ -435,7 +500,11 @@ describe('snapshot payload', () => {
       [season(seasonId, { position: 0 })],
       [
         episode(episodeOne, { seasonId, episodeNumber: 1, position: 0 }),
-        episode(episodeTwo, { seasonId: '44444444-4444-7444-8444-444444444444', episodeNumber: 2, position: 1 }),
+        episode(episodeTwo, {
+          seasonId: '44444444-4444-7444-8444-444444444444',
+          episodeNumber: 2,
+          position: 1,
+        }),
       ]
     );
 

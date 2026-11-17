@@ -8,13 +8,11 @@ import {
 } from '@/modules/content/validation';
 import { ValidationError } from '@/platform/errors';
 
-const VALID_DRAMA_ID = '0198f3a2-0000-7000-8000-000000000010';
 const VALID_EPISODE_ID = '0198f3a2-0000-7000-8000-000000000011';
 
 function validEpisode(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     title: 'Episode 1',
-    drama_id: VALID_DRAMA_ID,
     ...overrides,
   };
 }
@@ -72,6 +70,22 @@ describe('createEpisodeSchema', () => {
     expect(parsed).not.toHaveProperty('publication_status');
   });
 
+  it('rejects a drama_id in the payload, because the parent drama comes from the route', () => {
+    // A second, ignored parent source is how an episode ends up validated
+    // against the wrong drama (H-05), so the field is not part of the contract.
+    expect(
+      createEpisodeSchema.safeParse(
+        validEpisode({ drama_id: '0198f3a2-0000-7000-8000-000000000010' })
+      ).success
+    ).toBe(false);
+  });
+
+  it('leaves position unset so the workflow can append inside the target scope', () => {
+    const parsed = createEpisodeSchema.parse(validEpisode());
+
+    expect(parsed.position).toBeUndefined();
+  });
+
   it('rejects an HTTP video source', () => {
     expect(
       createEpisodeSchema.safeParse(
@@ -91,9 +105,9 @@ describe('createEpisodeSchema', () => {
   it.each(['ongoing', 'completed', 'draft', 'published', 'unpublished'] as const)(
     'rejects publication status %s on create',
     status => {
-      expect(createEpisodeSchema.safeParse(validEpisode({ publication_status: status })).success).toBe(
-        false
-      );
+      expect(
+        createEpisodeSchema.safeParse(validEpisode({ publication_status: status })).success
+      ).toBe(false);
     }
   );
 });
@@ -111,12 +125,18 @@ describe('publicationRequestSchema', () => {
     expect(parsed.ids).toEqual([VALID_EPISODE_ID]);
   });
 
-  it.each(['drama', 'season', 'episode', 'movie'] as const)('accepts content type %s', contentType => {
-    expect(
-      publicationRequestSchema.safeParse({ contentType, action: 'unpublish', ids: [VALID_EPISODE_ID] })
-        .success
-    ).toBe(true);
-  });
+  it.each(['drama', 'season', 'episode', 'movie'] as const)(
+    'accepts content type %s',
+    contentType => {
+      expect(
+        publicationRequestSchema.safeParse({
+          contentType,
+          action: 'unpublish',
+          ids: [VALID_EPISODE_ID],
+        }).success
+      ).toBe(true);
+    }
+  );
 
   it('rejects an unsupported content type', () => {
     expect(
@@ -183,8 +203,8 @@ describe('parsePublicationRequest', () => {
   });
 
   it('throws a ValidationError for an invalid request', () => {
-    expect(() => parsePublicationRequest({ contentType: 'movie', action: 'publish', ids: [] })).toThrow(
-      ValidationError
-    );
+    expect(() =>
+      parsePublicationRequest({ contentType: 'movie', action: 'publish', ids: [] })
+    ).toThrow(ValidationError);
   });
 });

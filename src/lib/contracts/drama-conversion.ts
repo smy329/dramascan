@@ -58,6 +58,11 @@ export type ConversionPlanDto = {
   targetStructureType: ConversionStructureTypeDto;
   strategy: ConversionStrategyDto;
   fingerprint: string;
+  /**
+   * Digest of the previewed plan. It has to be echoed back on apply so the
+   * server can prove that the plan being applied is the plan that was shown.
+   */
+  planDigest: string;
   seasons: ConversionPlanSeasonDto[];
   episodes: ConversionPlanEpisodeDto[];
   counts: {
@@ -107,6 +112,7 @@ export type ConversionRequestDto = {
   targetStructureType: ConversionStructureTypeDto;
   strategy?: ConversionStrategyDto;
   fingerprint?: string;
+  planDigest?: string;
   snapshotId?: string;
   distribution?: ConversionDistributionDto;
 };
@@ -143,6 +149,4 @@ export const conversionDistributionSchema = z.strictObject({
     .max(10_000),
 });
 
-export type ConversionDistributionFormValues = z.infer<
-  typeof conversionDistributionSchema
->;
+export type ConversionDistributionFormValues = z.infer<typeof conversionDistributionSchema>;

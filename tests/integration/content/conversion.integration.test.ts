@@ -23,17 +23,13 @@ vi.hoisted(() => {
 
 vi.mock('server-only', () => ({}));
 
-import { and, eq, inArray, isNull, like, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, like, or, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import type { ActorContext } from '@/modules/authorization';
-import {
-  dramas,
-  episodes,
-  seasons,
-  structureConversionSnapshots,
-} from '@/modules/content/schema';
+import { dramas, episodes, seasons, structureConversionSnapshots } from '@/modules/content/schema';
 import { playback_progress, watched_state, watch_history, bookmarks } from '@/modules/users/schema';
+import { users } from '@/modules/auth/schema';
 import { computeStructureFingerprint } from '@/modules/content/conversion';
 import {
   AuthenticationError,
@@ -52,6 +48,7 @@ import {
 } from '@/workflows/admin/conversion';
 
 const TEST_SLUG_PREFIX = 'it-conv-wf-';
+const TEST_EMAIL_PREFIX = 'it-conv-user-';
 
 const anonymousActor: ActorContext = {
   userId: null,
@@ -85,10 +82,7 @@ function testSlug(label: string): string {
   return `${TEST_SLUG_PREFIX}${label}-${randomUUID().slice(0, 8)}`;
 }
 
-async function insertDrama(
-  label: string,
-  structureType: 'flat' | 'season_based' = 'season_based'
-) {
+async function insertDrama(label: string, structureType: 'flat' | 'season_based' = 'season_based') {
   const [row] = await db
     .insert(dramas)
     .values({ title: `Test ${label}`, slug: testSlug(label), structure_type: structureType })
@@ -102,10 +96,7 @@ async function insertDrama(
 }
 
 async function insertSeason(dramaId: string, title: string, position: number | null = 0) {
-  const [row] = await db
-    .insert(seasons)
-    .values({ drama_id: dramaId, title, position })
-    .returning();
+  const [row] = await db.insert(seasons).values({ drama_id: dramaId, title, position }).returning();
 
   if (!row) {
     throw new Error('Season insert returned no row.');
@@ -143,6 +134,22 @@ async function insertEpisode(
   return row;
 }
 
+async function insertUser(label: string): Promise<string> {
+  const [row] = await db
+    .insert(users)
+    .values({
+      name: `Test ${label}`,
+      email: `${TEST_EMAIL_PREFIX}${label}-${randomUUID().slice(0, 8)}@example.com`,
+    })
+    .returning({ id: users.id });
+
+  if (!row) {
+    throw new Error('Test user insert returned no row.');
+  }
+
+  return row.id;
+}
+
 async function cleanupTestContent(): Promise<void> {
   const rows = await db
     .select({ id: dramas.id })
@@ -150,20 +157,32 @@ async function cleanupTestContent(): Promise<void> {
     .where(like(dramas.slug, `${TEST_SLUG_PREFIX}%`));
   const ids = rows.map(row => row.id);
 
-  if (ids.length === 0) {
-    return;
+  if (ids.length > 0) {
+    // Typed targets are the new source of truth, but the legacy pair is still
+    // written by these fixtures, so both have to be matched.
+    await db
+      .delete(playback_progress)
+      .where(
+        or(inArray(playback_progress.content_id, ids), inArray(playback_progress.drama_id, ids))
+      );
+    await db
+      .delete(watched_state)
+      .where(or(inArray(watched_state.content_id, ids), inArray(watched_state.drama_id, ids)));
+    await db
+      .delete(watch_history)
+      .where(or(inArray(watch_history.content_id, ids), inArray(watch_history.drama_id, ids)));
+    await db
+      .delete(bookmarks)
+      .where(or(inArray(bookmarks.content_id, ids), inArray(bookmarks.drama_id, ids)));
+    await db.delete(episodes).where(inArray(episodes.drama_id, ids));
+    await db.delete(seasons).where(inArray(seasons.drama_id, ids));
+    await db
+      .delete(structureConversionSnapshots)
+      .where(inArray(structureConversionSnapshots.drama_id, ids));
+    await db.delete(dramas).where(inArray(dramas.id, ids));
   }
 
-  await db.delete(playback_progress).where(inArray(playback_progress.content_id, ids));
-  await db.delete(watched_state).where(inArray(watched_state.content_id, ids));
-  await db.delete(watch_history).where(inArray(watch_history.content_id, ids));
-  await db.delete(bookmarks).where(inArray(bookmarks.content_id, ids));
-  await db.delete(episodes).where(inArray(episodes.drama_id, ids));
-  await db.delete(seasons).where(inArray(seasons.drama_id, ids));
-  await db
-    .delete(structureConversionSnapshots)
-    .where(inArray(structureConversionSnapshots.drama_id, ids));
-  await db.delete(dramas).where(inArray(dramas.id, ids));
+  await db.delete(users).where(like(users.email, `${TEST_EMAIL_PREFIX}%`));
 }
 
 async function snapshotRows(dramaId: string) {
@@ -186,27 +205,29 @@ async function activeSeasonRows(dramaId: string) {
  * The trigger is scoped to the drama so parallel test files are unaffected.
  */
 async function installEpisodeUpdateFailure(dramaId: string): Promise<void> {
-  await db.execute(sql.raw(`
+  await db.execute(
+    sql.raw(`
     CREATE OR REPLACE FUNCTION it_fail_episode_update() RETURNS trigger AS $$
     BEGIN
       RAISE EXCEPTION 'injected conversion failure';
     END;
     $$ LANGUAGE plpgsql;
-  `));
+  `)
+  );
 
-  await db.execute(sql.raw(`
+  await db.execute(
+    sql.raw(`
     CREATE TRIGGER it_fail_episode_update_trigger
     BEFORE UPDATE ON episodes
     FOR EACH ROW
     WHEN (OLD.drama_id = '${dramaId}'::uuid)
     EXECUTE FUNCTION it_fail_episode_update();
-  `));
+  `)
+  );
 }
 
 async function removeEpisodeUpdateFailure(): Promise<void> {
-  await db.execute(
-    sql.raw('DROP TRIGGER IF EXISTS it_fail_episode_update_trigger ON episodes;')
-  );
+  await db.execute(sql.raw('DROP TRIGGER IF EXISTS it_fail_episode_update_trigger ON episodes;'));
   await db.execute(sql.raw('DROP FUNCTION IF EXISTS it_fail_episode_update();'));
 }
 
@@ -266,7 +287,7 @@ describe('season-based → flat', () => {
     const s2 = await insertSeason(drama.id, 'Season 2', 1);
     const e1 = await insertEpisode(drama.id, s1.id, 'E1', 1, 0);
     const e2 = await insertEpisode(drama.id, s1.id, 'E2', 2, 1);
-    const e3 = await insertEpisode(drama.id, s2.id, 'E3', 1, 0);
+    const e3 = await insertEpisode(drama.id, s2.id, 'E3', 7, 0);
 
     const plan = await previewConversion(managerActor, {
       dramaId: drama.id,
@@ -297,12 +318,13 @@ describe('season-based → flat', () => {
       description: 'First episode',
     });
     const e2 = await insertEpisode(drama.id, s1.id, 'E2', 2, 1);
-    const e3 = await insertEpisode(drama.id, s2.id, 'E3', 1, 0);
+    const e3 = await insertEpisode(drama.id, s2.id, 'E3', 7, 0);
 
     await db.insert(playback_progress).values({
-      user_id: randomUUID(),
+      user_id: await insertUser('progress-owner'),
       content_type: 'drama',
       content_id: drama.id,
+      drama_id: drama.id,
       episode_id: e1.id,
       position: 42,
       duration: 600,
@@ -318,6 +340,7 @@ describe('season-based → flat', () => {
       mode: 'apply',
       targetStructureType: 'flat',
       fingerprint: plan.fingerprint,
+      planDigest: plan.planDigest,
     });
 
     expect(result.newFingerprint).toMatch(/^[a-f0-9]{64}$/);
@@ -325,10 +348,7 @@ describe('season-based → flat', () => {
     const [dramaRow] = await db.select().from(dramas).where(eq(dramas.id, drama.id));
     expect(dramaRow?.structure_type).toBe('flat');
 
-    const episodeRows = await db
-      .select()
-      .from(episodes)
-      .where(eq(episodes.drama_id, drama.id));
+    const episodeRows = await db.select().from(episodes).where(eq(episodes.drama_id, drama.id));
     const byId = new Map(episodeRows.map(row => [row.id, row]));
 
     expect(byId.get(e1.id)).toMatchObject({
@@ -376,10 +396,7 @@ describe('season-based → flat', () => {
       targetStructureType: 'flat',
     });
 
-    await db
-      .update(episodes)
-      .set({ episode_number: 9 })
-      .where(eq(episodes.id, episode.id));
+    await db.update(episodes).set({ episode_number: 9 }).where(eq(episodes.id, episode.id));
 
     await expect(
       applyConversion(managerActor, {
@@ -387,6 +404,7 @@ describe('season-based → flat', () => {
         mode: 'apply',
         targetStructureType: 'flat',
         fingerprint: plan.fingerprint,
+        planDigest: plan.planDigest,
       })
     ).rejects.toBeInstanceOf(ConflictError);
 
@@ -429,16 +447,14 @@ describe('season-based → flat', () => {
         mode: 'apply',
         targetStructureType: 'flat',
         fingerprint: plan.fingerprint,
+        planDigest: plan.planDigest,
       })
     ).rejects.toThrow();
 
     const [dramaRow] = await db.select().from(dramas).where(eq(dramas.id, drama.id));
     expect(dramaRow?.structure_type).toBe('season_based');
 
-    const [episodeRow] = await db
-      .select()
-      .from(episodes)
-      .where(eq(episodes.id, episode.id));
+    const [episodeRow] = await db.select().from(episodes).where(eq(episodes.id, episode.id));
     expect(episodeRow).toMatchObject({
       season_id: season.id,
       episode_number: 1,
@@ -469,10 +485,7 @@ describe('season-based → flat', () => {
 
     // Capture the trashed rows in full: every column must be identical
     // afterwards, not only the fields the conversion is known to touch.
-    const [seasonBefore] = await db
-      .select()
-      .from(seasons)
-      .where(eq(seasons.id, trashedSeason.id));
+    const [seasonBefore] = await db.select().from(seasons).where(eq(seasons.id, trashedSeason.id));
     const [episodeBefore] = await db
       .select()
       .from(episodes)
@@ -488,6 +501,7 @@ describe('season-based → flat', () => {
       mode: 'apply',
       targetStructureType: 'flat',
       fingerprint: plan.fingerprint,
+      planDigest: plan.planDigest,
     });
 
     const [trashedSeasonRow] = await db
@@ -537,6 +551,7 @@ describe('season-based → flat', () => {
       mode: 'apply',
       targetStructureType: 'flat',
       fingerprint: plan.fingerprint,
+      planDigest: plan.planDigest,
     });
 
     const rows = await db
@@ -570,12 +585,13 @@ describe('season-based → flat', () => {
     const drama = await insertDrama('viewing-records');
     const season = await insertSeason(drama.id, 'Season 1', 0);
     const episode = await insertEpisode(drama.id, season.id, 'E1', 1, 0);
-    const userId = '11111111-1111-7111-8111-111111111111';
+    const userId = await insertUser('viewer');
 
     await db.insert(playback_progress).values({
       user_id: userId,
       content_type: 'drama',
       content_id: drama.id,
+      drama_id: drama.id,
       episode_id: episode.id,
       position: 120,
       duration: 2400,
@@ -585,6 +601,7 @@ describe('season-based → flat', () => {
       user_id: userId,
       content_type: 'drama',
       content_id: drama.id,
+      drama_id: drama.id,
       episode_id: episode.id,
       watched_minutes: 120,
       threshold_met: true,
@@ -593,6 +610,7 @@ describe('season-based → flat', () => {
       user_id: userId,
       content_type: 'drama',
       content_id: drama.id,
+      drama_id: drama.id,
       episode_id: episode.id,
       watch_duration: 120,
       session_id: 'session-1',
@@ -601,6 +619,7 @@ describe('season-based → flat', () => {
       user_id: userId,
       content_type: 'drama',
       content_id: drama.id,
+      drama_id: drama.id,
     });
 
     const progressBefore = await db.select().from(playback_progress);
@@ -618,6 +637,7 @@ describe('season-based → flat', () => {
       mode: 'apply',
       targetStructureType: 'flat',
       fingerprint: plan.fingerprint,
+      planDigest: plan.planDigest,
     });
 
     expect(await db.select().from(playback_progress)).toEqual(progressBefore);
@@ -654,6 +674,7 @@ describe('flat → season-based', () => {
       mode: 'apply',
       targetStructureType: 'season_based',
       fingerprint: plan.fingerprint,
+      planDigest: plan.planDigest,
     });
 
     const [dramaRow] = await db.select().from(dramas).where(eq(dramas.id, drama.id));
@@ -664,10 +685,7 @@ describe('flat → season-based', () => {
     expect(seasonRows[0]?.title).toBe('Season 1');
     expect(seasonRows[0]?.position).toBe(0);
 
-    const episodeRows = await db
-      .select()
-      .from(episodes)
-      .where(eq(episodes.drama_id, drama.id));
+    const episodeRows = await db.select().from(episodes).where(eq(episodes.drama_id, drama.id));
     expect(episodeRows.find(row => row.id === e1.id)).toMatchObject({
       season_id: seasonRows[0]?.id,
       episode_number: 4,
@@ -708,8 +726,22 @@ describe('flat → season-based', () => {
     });
 
     expect(plan.seasons).toEqual([
-      { key: 's1', id: null, title: 'First', position: 0, episodeCount: 2, publicationStatus: 'draft' },
-      { key: 's2', id: null, title: 'Second', position: 1, episodeCount: 1, publicationStatus: 'draft' },
+      {
+        key: 's1',
+        id: null,
+        title: 'First',
+        position: 0,
+        episodeCount: 2,
+        publicationStatus: 'draft',
+      },
+      {
+        key: 's2',
+        id: null,
+        title: 'Second',
+        position: 1,
+        episodeCount: 1,
+        publicationStatus: 'draft',
+      },
     ]);
 
     await applyConversion(managerActor, {
@@ -718,6 +750,7 @@ describe('flat → season-based', () => {
       targetStructureType: 'season_based',
       strategy: 'convert',
       fingerprint: plan.fingerprint,
+      planDigest: plan.planDigest,
       distribution: {
         seasons: [
           { key: 's1', title: 'First', position: 0 },
@@ -737,14 +770,85 @@ describe('flat → season-based', () => {
     expect(first).toBeDefined();
     expect(second).toBeDefined();
 
-    const episodeRows = await db
-      .select()
-      .from(episodes)
-      .where(eq(episodes.drama_id, drama.id));
+    const episodeRows = await db.select().from(episodes).where(eq(episodes.drama_id, drama.id));
     const byId = new Map(episodeRows.map(row => [row.id, row]));
     expect(byId.get(e1.id)?.season_id).toBe(first?.id);
     expect(byId.get(e3.id)?.season_id).toBe(first?.id);
     expect(byId.get(e2.id)?.season_id).toBe(second?.id);
+  });
+
+  it('rejects an apply whose distribution differs from the previewed plan', async () => {
+    // SUP-01: the fingerprint proves the structure did not change, but it does
+    // not prove the distribution is the one that was previewed. The plan digest
+    // does, so an edited distribution cannot be applied behind the
+    // administrator's back.
+    const drama = await insertDrama('digest-guard', 'flat');
+    const e1 = await insertEpisode(drama.id, null, 'E1', 1, 0);
+    const e2 = await insertEpisode(drama.id, null, 'E2', 2, 1);
+
+    const previewed = {
+      seasons: [
+        { key: 's1', title: 'First', position: 0 },
+        { key: 's2', title: 'Second', position: 1 },
+      ],
+      assignments: [
+        { episodeId: e1.id, seasonKey: 's1' },
+        { episodeId: e2.id, seasonKey: 's2' },
+      ],
+    };
+
+    const plan = await previewConversion(managerActor, {
+      dramaId: drama.id,
+      mode: 'preview',
+      targetStructureType: 'season_based',
+      strategy: 'convert',
+      distribution: previewed,
+    });
+
+    const edited = {
+      seasons: previewed.seasons,
+      assignments: [
+        { episodeId: e1.id, seasonKey: 's2' },
+        { episodeId: e2.id, seasonKey: 's1' },
+      ],
+    };
+
+    await expect(
+      applyConversion(managerActor, {
+        dramaId: drama.id,
+        mode: 'apply',
+        targetStructureType: 'season_based',
+        strategy: 'convert',
+        fingerprint: plan.fingerprint,
+        planDigest: plan.planDigest,
+        distribution: edited,
+      })
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    // Nothing was written: the drama is still flat and has no seasons.
+    const [dramaRow] = await db.select().from(dramas).where(eq(dramas.id, drama.id));
+    expect(dramaRow?.structure_type).toBe('flat');
+    expect(await activeSeasonRows(drama.id)).toHaveLength(0);
+  });
+
+  it('rejects an apply that carries no plan digest', async () => {
+    const drama = await insertDrama('missing-digest', 'flat');
+    await insertEpisode(drama.id, null, 'E1', 1, 0);
+
+    const plan = await previewConversion(managerActor, {
+      dramaId: drama.id,
+      mode: 'preview',
+      targetStructureType: 'season_based',
+    });
+
+    await expect(
+      applyConversion(managerActor, {
+        dramaId: drama.id,
+        mode: 'apply',
+        targetStructureType: 'season_based',
+        fingerprint: plan.fingerprint,
+      })
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 
   it('rejects incomplete or invalid distributions without writing', async () => {
@@ -841,6 +945,7 @@ describe('flat → season-based', () => {
       mode: 'apply',
       targetStructureType: 'flat',
       fingerprint: flatPlan.fingerprint,
+      planDigest: flatPlan.planDigest,
     });
 
     await expect(
@@ -891,6 +996,7 @@ describe('snapshot restore', () => {
       mode: 'apply',
       targetStructureType: 'flat',
       fingerprint: flatPlan.fingerprint,
+      planDigest: flatPlan.planDigest,
     });
 
     const restorePreview = await previewConversion(managerActor, {
@@ -912,6 +1018,7 @@ describe('snapshot restore', () => {
       targetStructureType: 'season_based',
       strategy: 'restore_snapshot',
       fingerprint: restorePreview.fingerprint,
+      planDigest: restorePreview.planDigest,
     });
 
     expect(result.snapshotStatus).toBe('restored');
@@ -926,10 +1033,7 @@ describe('snapshot restore', () => {
       position: 1,
     });
 
-    const episodeRows = await db
-      .select()
-      .from(episodes)
-      .where(eq(episodes.drama_id, drama.id));
+    const episodeRows = await db.select().from(episodes).where(eq(episodes.drama_id, drama.id));
     const byId = new Map(episodeRows.map(row => [row.id, row]));
     expect(byId.get(e1.id)).toMatchObject({
       season_id: s1.id,
@@ -961,6 +1065,7 @@ describe('snapshot restore', () => {
       mode: 'apply',
       targetStructureType: 'flat',
       fingerprint: flatPlan.fingerprint,
+      planDigest: flatPlan.planDigest,
     });
 
     await insertEpisode(drama.id, null, 'New episode', 4, 3);
@@ -981,6 +1086,7 @@ describe('snapshot restore', () => {
         targetStructureType: 'season_based',
         strategy: 'restore_snapshot',
         fingerprint: stalePreview.fingerprint,
+        planDigest: stalePreview.planDigest,
       })
     ).rejects.toBeInstanceOf(ConflictError);
   });
@@ -1002,16 +1108,14 @@ describe('snapshot restore', () => {
         mode: 'apply',
         targetStructureType: 'flat',
         fingerprint: plan.fingerprint,
+        planDigest: plan.planDigest,
       });
 
       return { drama, e1, e2 };
     }
 
     const trashed = await freshFlatDrama('stale-trash');
-    await db
-      .update(episodes)
-      .set({ deleted_at: new Date() })
-      .where(eq(episodes.id, trashed.e2.id));
+    await db.update(episodes).set({ deleted_at: new Date() }).where(eq(episodes.id, trashed.e2.id));
 
     const trashedPreview = await previewConversion(managerActor, {
       dramaId: trashed.drama.id,
@@ -1027,14 +1131,12 @@ describe('snapshot restore', () => {
         targetStructureType: 'season_based',
         strategy: 'restore_snapshot',
         fingerprint: trashedPreview.fingerprint,
+        planDigest: trashedPreview.planDigest,
       })
     ).rejects.toBeInstanceOf(ConflictError);
 
     const reordered = await freshFlatDrama('stale-reorder');
-    await db
-      .update(episodes)
-      .set({ position: 9 })
-      .where(eq(episodes.id, reordered.e1.id));
+    await db.update(episodes).set({ position: 9 }).where(eq(episodes.id, reordered.e1.id));
 
     const reorderedPreview = await previewConversion(managerActor, {
       dramaId: reordered.drama.id,
@@ -1050,14 +1152,12 @@ describe('snapshot restore', () => {
         targetStructureType: 'season_based',
         strategy: 'restore_snapshot',
         fingerprint: reorderedPreview.fingerprint,
+        planDigest: reorderedPreview.planDigest,
       })
     ).rejects.toBeInstanceOf(ConflictError);
 
     const renumbered = await freshFlatDrama('stale-renumber');
-    await db
-      .update(episodes)
-      .set({ episode_number: 42 })
-      .where(eq(episodes.id, renumbered.e1.id));
+    await db.update(episodes).set({ episode_number: 42 }).where(eq(episodes.id, renumbered.e1.id));
 
     const renumberedPreview = await previewConversion(managerActor, {
       dramaId: renumbered.drama.id,
@@ -1073,6 +1173,7 @@ describe('snapshot restore', () => {
         targetStructureType: 'season_based',
         strategy: 'restore_snapshot',
         fingerprint: renumberedPreview.fingerprint,
+        planDigest: renumberedPreview.planDigest,
       })
     ).rejects.toBeInstanceOf(ConflictError);
   });
@@ -1092,6 +1193,7 @@ describe('snapshot restore', () => {
       mode: 'apply',
       targetStructureType: 'flat',
       fingerprint: flatPlan.fingerprint,
+      planDigest: flatPlan.planDigest,
     });
 
     await insertEpisode(drama.id, null, 'New', 2, 1);
@@ -1109,6 +1211,7 @@ describe('snapshot restore', () => {
         targetStructureType: 'season_based',
         strategy: 'restore_snapshot',
         fingerprint: preview.fingerprint,
+        planDigest: preview.planDigest,
       })
     ).rejects.toBeInstanceOf(ConflictError);
 
@@ -1132,6 +1235,7 @@ describe('snapshot restore', () => {
       mode: 'apply',
       targetStructureType: 'flat',
       fingerprint: firstFlat.fingerprint,
+      planDigest: firstFlat.planDigest,
     });
 
     const restore = await previewConversion(managerActor, {
@@ -1146,6 +1250,7 @@ describe('snapshot restore', () => {
       targetStructureType: 'season_based',
       strategy: 'restore_snapshot',
       fingerprint: restore.fingerprint,
+      planDigest: restore.planDigest,
     });
 
     const secondFlat = await previewConversion(managerActor, {
@@ -1158,6 +1263,7 @@ describe('snapshot restore', () => {
       mode: 'apply',
       targetStructureType: 'flat',
       fingerprint: secondFlat.fingerprint,
+      planDigest: secondFlat.planDigest,
     });
 
     const snapshots = await snapshotRows(drama.id);
@@ -1185,12 +1291,14 @@ describe('concurrency and database constraints', () => {
         mode: 'apply',
         targetStructureType: 'flat',
         fingerprint: plan.fingerprint,
+        planDigest: plan.planDigest,
       }),
       applyConversion(managerActor, {
         dramaId: drama.id,
         mode: 'apply',
         targetStructureType: 'flat',
         fingerprint: plan.fingerprint,
+        planDigest: plan.planDigest,
       }),
     ]);
 
@@ -1221,9 +1329,9 @@ describe('concurrency and database constraints', () => {
 
     await db.insert(structureConversionSnapshots).values(values);
 
-    await expect(
-      db.insert(structureConversionSnapshots).values(values)
-    ).rejects.toMatchObject({ cause: { code: '23505' } });
+    await expect(db.insert(structureConversionSnapshots).values(values)).rejects.toMatchObject({
+      cause: { code: '23505' },
+    });
   });
 });
 
