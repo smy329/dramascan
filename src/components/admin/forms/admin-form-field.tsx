@@ -1,6 +1,7 @@
 'use client';
 
 import type { JSX } from 'react';
+import { useId } from 'react';
 import { useFormContext } from 'react-hook-form';
 
 import { Input } from '@/components/ui/input';
@@ -44,8 +45,9 @@ export function AdminFormField({
   const { register, formState: { errors } } = useFormContext<Record<string, unknown>>();
   const error = errors[name];
   const errorMessage = error && typeof error === 'object' && 'message' in error ? error.message : undefined;
-  const errorId = `${name}-error`;
-  const hintId = `${name}-hint`;
+  const id = useId();
+  const errorId = `${id}-error`;
+  const hintId = `${id}-hint`;
   const describedBy = [error ? errorId : null, hint ? hintId : null]
     .filter((id): id is string => id !== null)
     .join(' ') || undefined;
@@ -54,12 +56,12 @@ export function AdminFormField({
 
   return (
     <div className={cn('space-y-1.5', className)}>
-      <label htmlFor={name} className="text-sm font-medium text-foreground">
+      <label htmlFor={id} className="text-sm font-medium text-foreground">
         {required ? `${label} *` : label}
       </label>
       {multiline ?
         <textarea
-          id={name}
+          id={id}
           className={CONTROL_CLASS_NAME}
           required={required}
           aria-invalid={error ? true : undefined}
@@ -68,7 +70,7 @@ export function AdminFormField({
         />
        :
         <Input
-          id={name}
+          id={id}
           type={type}
           autoComplete={autoComplete}
           required={required}

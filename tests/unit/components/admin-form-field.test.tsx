@@ -59,7 +59,13 @@ describe('AdminFormField', () => {
 
     expect(screen.getByText('Title is required.')).toBeTruthy();
     expect(control.getAttribute('aria-invalid')).toBe('true');
-    expect(control.getAttribute('aria-describedby')).toBe('title-error');
+    // The id is generated per instance so several forms on one page never
+    // collide; the error id still ends with the conventional suffix.
+    const describedBy = control.getAttribute('aria-describedby');
+
+    expect(describedBy).toBeTruthy();
+    expect(describedBy).toMatch(/-error$/);
+    expect(document.getElementById(describedBy!)?.textContent).toBe('Title is required.');
   });
 
   it('appends a marker to the label when the field is required', () => {

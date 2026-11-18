@@ -1,6 +1,7 @@
 'use client';
 
 import type { JSX } from 'react';
+import { useId } from 'react';
 import { useFormContext } from 'react-hook-form';
 
 import { cn } from '@/lib/utils';
@@ -55,18 +56,19 @@ export function AdminFormSelectField({
     formState: { errors },
   } = useFormContext<Record<string, unknown>>();
   const errorMessage = fieldError(errors, name);
-  const errorId = `${name}-error`;
-  const hintId = `${name}-hint`;
+  const id = useId();
+  const errorId = `${id}-error`;
+  const hintId = `${id}-hint`;
   const describedBy =
     [errorMessage ? errorId : null, hint ? hintId : null].filter(Boolean).join(' ') || undefined;
 
   return (
     <div className={cn('space-y-1.5', className)}>
-      <label htmlFor={name} className="text-sm font-medium text-foreground">
+      <label htmlFor={id} className="text-sm font-medium text-foreground">
         {required ? `${label} *` : label}
       </label>
       <select
-        id={name}
+        id={id}
         className={SELECT_CLASS_NAME}
         required={required}
         aria-invalid={errorMessage ? true : undefined}

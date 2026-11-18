@@ -42,7 +42,14 @@ describe('ADMIN_NAVIGATION', () => {
   it('marks only entries whose pages exist as implemented', () => {
     const implemented = ALL_ENTRIES.filter(entry => entry.implemented);
 
-    expect(implemented.map(entry => entry.id)).toEqual(['overview', 'dramas', 'users', 'roles']);
+    expect(implemented.map(entry => entry.id)).toEqual([
+      'overview',
+      'dramas',
+      'categories',
+      'platforms',
+      'users',
+      'roles',
+    ]);
 
     for (const entry of implemented) {
       const pagePath = join(process.cwd(), 'src', 'app', entry.href.slice(1), 'page.tsx');
