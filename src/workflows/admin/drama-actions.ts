@@ -1,7 +1,7 @@
 'use server';
 
 import type { ActionResult } from '@/lib/contracts/common';
-import { dramaFormSchema } from '@/lib/contracts/drama-form';
+import { dramaFormSchema, dramaSlugFromTitle } from '@/lib/contracts/drama-form';
 import { resolveActor, requirePermission } from '@/modules/authorization';
 import { parseOrThrow } from '@/modules/content/validation';
 import { AppError, InternalError } from '@/platform/errors';
@@ -75,6 +75,37 @@ function isActionErrorLike(
   return typeof fieldErrors === 'object' && fieldErrors !== null;
 }
 
+/**
+ * Move a slug conflict onto the Title field.
+ *
+ * The form has no slug input, so a `slug` field error would render nowhere and
+ * the administrator would only see the alert. The conflict is still caused by
+ * the title they typed, so the message belongs on that field.
+ */
+function withSlugErrorOnTitle(error: {
+  code: string;
+  message: string;
+  fieldErrors?: Record<string, string[]>;
+  requestId?: string;
+}): {
+  code: string;
+  message: string;
+  fieldErrors?: Record<string, string[]>;
+  requestId?: string;
+} {
+  const fieldErrors: Record<string, string[]> = { ...error.fieldErrors };
+  const slugMessages = fieldErrors.slug;
+
+  if (!slugMessages) {
+    return error;
+  }
+
+  delete fieldErrors.slug;
+  fieldErrors.title = slugMessages;
+
+  return { ...error, fieldErrors };
+}
+
 export async function createDramaAction(input: unknown): Promise<ActionResult<CreatedDramaDto>> {
   try {
     const actor = await resolveActor();
@@ -84,7 +115,10 @@ export async function createDramaAction(input: unknown): Promise<ActionResult<Cr
 
     const result = await createDrama(actor, {
       title: values.title,
-      slug: values.slug,
+      // The administrator never chooses the slug. Deriving it here from the
+      // validated title keeps the Server Action authoritative; the form's
+      // stricter schema has already rejected a title with no derivable slug.
+      slug: dramaSlugFromTitle(values.title),
       description: values.description === '' ? undefined : values.description,
       status: values.status,
       structure_type: values.structure_type,
@@ -95,7 +129,7 @@ export async function createDramaAction(input: unknown): Promise<ActionResult<Cr
     });
 
     if (!result.ok) {
-      return { ok: false, error: toActionError(result.error) };
+      return { ok: false, error: withSlugErrorOnTitle(toActionError(result.error)) };
     }
 
     return {

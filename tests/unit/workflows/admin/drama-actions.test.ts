@@ -48,7 +48,6 @@ const createdDrama = {
 function formValues(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     title: 'Seasons of Glass',
-    slug: 'seasons-of-glass',
     description: '',
     status: 'ongoing',
     structure_type: 'flat',
@@ -67,7 +66,7 @@ beforeEach(() => {
 });
 
 describe('createDramaAction', () => {
-  it('normalizes the form values into the domain payload', async () => {
+  it('derives the slug from the title and normalizes the payload', async () => {
     createDramaMock.mockResolvedValue({ ok: true, drama: createdDrama });
 
     const result = await createDramaAction(formValues());
@@ -94,6 +93,27 @@ describe('createDramaAction', () => {
     });
   });
 
+  it('slugifies a trimmed title with punctuation and case', async () => {
+    createDramaMock.mockResolvedValue({ ok: true, drama: createdDrama });
+
+    await createDramaAction(formValues({ title: '  Café & Crème: Part 2!  ' }));
+
+    expect(createDramaMock).toHaveBeenCalledWith(
+      manager,
+      expect.objectContaining({ title: 'Café & Crème: Part 2!', slug: 'cafe-creme-part-2' })
+    );
+  });
+
+  it('rejects a client-supplied slug instead of using it', async () => {
+    const result = await createDramaAction(formValues({ slug: 'chosen-by-client' }));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('validation_error');
+    }
+    expect(createDramaMock).not.toHaveBeenCalled();
+  });
+
   it('strips the empty description and keeps supplied media URLs', async () => {
     createDramaMock.mockResolvedValue({ ok: true, drama: createdDrama });
 
@@ -115,7 +135,7 @@ describe('createDramaAction', () => {
     );
   });
 
-  it('returns the duplicate-slug error as a field error instead of an internal error', async () => {
+  it('reports a duplicate slug on the title field, where the form can show it', async () => {
     createDramaMock.mockResolvedValue({
       ok: false,
       error: {
@@ -132,7 +152,7 @@ describe('createDramaAction', () => {
       error: {
         code: 'validation_error',
         message: 'A drama with this slug already exists.',
-        fieldErrors: { slug: ['A drama with this slug already exists.'] },
+        fieldErrors: { title: ['A drama with this slug already exists.'] },
       },
     });
   });
@@ -150,13 +170,13 @@ describe('createDramaAction', () => {
     }
   });
 
-  it('rejects invalid input before the workflow runs', async () => {
-    const result = await createDramaAction(formValues({ slug: 'Not A Slug' }));
+  it('rejects a title that cannot produce a slug before the workflow runs', async () => {
+    const result = await createDramaAction(formValues({ title: '我的家' }));
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe('validation_error');
-      expect(result.error.fieldErrors?.slug).toBeDefined();
+      expect(result.error.fieldErrors?.title).toBeDefined();
     }
     expect(createDramaMock).not.toHaveBeenCalled();
   });

@@ -14,13 +14,19 @@ change adds the missing form without altering the workflow or the API contract.
   `createDramaSchema`, with the Ongoing/Completed status and both
   `season_based`/`flat` structures. Media fields accept an empty string, which
   the Server Action normalizes to `null`; no release-year field exists.
+- The administrator never types a slug: `dramaSlugFromTitle` lowercases the
+  title, strips diacritics and punctuation, collapses separators, and caps the
+  result at 100 characters. The form has no slug input; the Server Action
+  re-derives the slug from the validated title and rejects a client-supplied
+  one. A title with no Latin characters is rejected with a Title error.
 - `src/workflows/admin/dramas.ts`: `listDramaTaxonomy` reads the live categories
   and platforms for the checkbox groups, ordered by position then name and
   excluding trashed rows.
 - `src/workflows/admin/drama-actions.ts` (new): `createDramaAction` resolves the
   actor, re-checks `drama.manage`, validates and normalizes the payload, and
   delegates to `createDrama`. The duplicate-slug conflict keeps its
-  `validation_error` code and `slug` field error instead of becoming a 500.
+  `validation_error` code and is remapped onto the Title field, where the form
+  can show it, instead of becoming a 500.
 - `src/components/admin/dramas/drama-create-form.tsx` (new) and
   `src/app/admin/dramas/new/page.tsx` (new): the admin form, gated by
   `drama.manage`, with select fields for status/structure and checkbox groups

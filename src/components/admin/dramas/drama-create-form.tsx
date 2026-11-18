@@ -174,13 +174,12 @@ export function DramaCreateForm({ categories, platforms }: DramaCreateFormProps)
         router.refresh();
       }}
     >
-      <AdminFormField name="title" label="Title" required autoComplete="off" />
       <AdminFormField
-        name="slug"
-        label="Slug"
+        name="title"
+        label="Title"
         required
         autoComplete="off"
-        hint="Lowercase letters, numbers, and hyphens. Used in the public URL."
+        hint="The URL slug is generated from the title."
       />
       <AdminFormField name="description" label="Description" multiline />
       <div className="grid gap-4 sm:grid-cols-2">
