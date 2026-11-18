@@ -215,6 +215,44 @@ export function parseUpdateMovieInput(input: unknown): CreateMovieInput {
   return parseOrThrow(updateMovieSchema, input);
 }
 
+// ----- taxonomy -------------------------------------------------------------
+
+/** Category visibility modes. Stored and returned, not yet enforced per viewer. */
+export const categoryVisibilitySchema = z.enum(['visible', 'hidden']);
+
+/** Display name of a category or platform; the slug is always derived. */
+const taxonomyNameSchema = z.string().trim().min(1).max(80);
+
+/** Category create payload. `slug` is derived by the workflow, never accepted. */
+export const createCategorySchema = z.strictObject({
+  name: taxonomyNameSchema,
+  visibility: categoryVisibilitySchema.default('visible'),
+});
+
+export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
+
+/** Category edit payload; every field is optional. */
+export const updateCategorySchema = z.strictObject({
+  name: taxonomyNameSchema.optional(),
+  visibility: categoryVisibilitySchema.optional(),
+});
+
+export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
+
+/** Platform create payload. Platforms have no visibility. */
+export const createPlatformSchema = z.strictObject({
+  name: taxonomyNameSchema,
+});
+
+export type CreatePlatformInput = z.infer<typeof createPlatformSchema>;
+
+/** Platform edit payload. */
+export const updatePlatformSchema = z.strictObject({
+  name: taxonomyNameSchema.optional(),
+});
+
+export type UpdatePlatformInput = z.infer<typeof updatePlatformSchema>;
+
 // ----- structure conversion -------------------------------------------------
 
 /** Stored drama structure types. */
