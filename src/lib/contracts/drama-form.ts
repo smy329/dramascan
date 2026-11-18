@@ -18,8 +18,10 @@
 
 import { z } from 'zod';
 
+import { SLUG_MAX_LENGTH, slugFromText } from './slug';
+
 /** Maximum slug length shared with the domain schema. */
-export const DRAMA_SLUG_MAX_LENGTH = 100;
+export const DRAMA_SLUG_MAX_LENGTH = SLUG_MAX_LENGTH;
 
 /** Drama status choices exposed by the form. */
 export const DRAMA_STATUS_OPTIONS = [
@@ -44,27 +46,14 @@ export type DramaTaxonomyOption = Readonly<{ id: string; name: string }>;
 /**
  * Derive the canonical slug from a drama title.
  *
- * Lowercases, strips diacritics, turns every run of non-alphanumeric characters
- * into a single hyphen, drops leading/trailing hyphens, and truncates to the
- * domain's 100-character limit without leaving a trailing hyphen. The result
- * always satisfies the domain slug pattern when non-empty; a title written
- * entirely in a non-Latin script yields `''` and is rejected by the schema.
- *
- * The Server Action re-derives the slug from the validated title, so a client
- * cannot choose a slug for a new drama.
+ * Delegates to the shared `slugFromText` rule; the drama contract keeps this
+ * name because the form, the Server Action and the tests already use it.
+ * A title written entirely in a non-Latin script yields `''` and is rejected
+ * by the schema. The Server Action re-derives the slug from the validated
+ * title, so a client cannot choose a slug for a new drama.
  */
 export function dramaSlugFromTitle(title: string): string {
-  const slug = title
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/['\u2018\u2019`]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, DRAMA_SLUG_MAX_LENGTH)
-    .replace(/-+$/g, '');
-
-  return slug;
+  return slugFromText(title);
 }
 
 /**

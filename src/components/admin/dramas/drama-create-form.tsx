@@ -7,6 +7,7 @@ import type { z } from 'zod';
 
 import { AdminForm } from '@/components/admin/forms/admin-form';
 import { AdminFormField } from '@/components/admin/forms/admin-form-field';
+import { AdminFormSelectField } from '@/components/admin/forms/admin-form-select-field';
 import {
   DRAMA_FORM_DEFAULTS,
   DRAMA_STATUS_OPTIONS,
@@ -23,11 +24,6 @@ export type DramaCreateFormProps = Readonly<{
   platforms: readonly DramaTaxonomyOption[];
 }>;
 
-const CONTROL_CLASS_NAME =
-  'w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive';
-
-type SelectOption = Readonly<{ value: string; label: string }>;
-
 function fieldError(errors: unknown, name: string): string | undefined {
   if (typeof errors !== 'object' || errors === null) {
     return undefined;
@@ -38,60 +34,6 @@ function fieldError(errors: unknown, name: string): string | undefined {
   return error && typeof error === 'object' && 'message' in error
     ? ((error as { message?: unknown }).message as string | undefined)
     : undefined;
-}
-
-function SelectField({
-  name,
-  label,
-  options,
-  required = false,
-  hint,
-}: Readonly<{
-  name: string;
-  label: string;
-  options: readonly SelectOption[];
-  required?: boolean;
-  hint?: string;
-}>): JSX.Element {
-  const {
-    register,
-    formState: { errors },
-  } = useFormContext<Record<string, unknown>>();
-  const errorMessage = fieldError(errors, name);
-  const errorId = `${name}-error`;
-  const hintId = `${name}-hint`;
-
-  return (
-    <div className="space-y-1.5">
-      <label htmlFor={name} className="text-sm font-medium text-foreground">
-        {required ? `${label} *` : label}
-      </label>
-      <select
-        id={name}
-        className={CONTROL_CLASS_NAME}
-        required={required}
-        aria-invalid={errorMessage ? true : undefined}
-        aria-describedby={[errorId, hint ? hintId : null].filter(Boolean).join(' ') || undefined}
-        {...register(name)}
-      >
-        {options.map(option => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      {hint ? (
-        <p id={hintId} className="text-xs text-muted-foreground">
-          {hint}
-        </p>
-      ) : null}
-      {errorMessage ? (
-        <p id={errorId} className="text-sm text-destructive">
-          {errorMessage}
-        </p>
-      ) : null}
-    </div>
-  );
 }
 
 function CheckboxGroupField({
@@ -183,8 +125,13 @@ export function DramaCreateForm({ categories, platforms }: DramaCreateFormProps)
       />
       <AdminFormField name="description" label="Description" multiline />
       <div className="grid gap-4 sm:grid-cols-2">
-        <SelectField name="status" label="Status" options={DRAMA_STATUS_OPTIONS} required />
-        <SelectField
+        <AdminFormSelectField
+          name="status"
+          label="Status"
+          options={DRAMA_STATUS_OPTIONS}
+          required
+        />
+        <AdminFormSelectField
           name="structure_type"
           label="Episode structure"
           options={DRAMA_STRUCTURE_OPTIONS}
