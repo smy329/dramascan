@@ -1296,4 +1296,54 @@ review — no durable moderation history.
   is left untouched and listed by the report, so a single bad row cannot roll
   back the placements that did succeed.
 
+## D-033 — Admin category, platform, season, and episode management without a new dependency
+
+**Date:** 2026-11-18
+**Status:** Approved by user (Task 8 of the admin content-management plan)
+**Extends:** D-032 (the content hierarchy it enforces is now editable in the
+admin panel).
+
+**Context:** The admin panel could create and edit dramas, but a first playable
+drama still required SQL: categories and platforms had no admin UI, and seasons
+and episodes had no management surface at all. The taxonomy REST routes were
+read-only, so content could not be assembled through the panel.
+
+**Decision:**
+
+1. **No new dependency, no migration, no taxonomy REST route.** Content
+   administration rides the existing Server-Action transport, the existing
+   Drizzle schema, and the existing permission catalog. The taxonomy REST
+   routes stay read-only.
+2. **Depth is create + edit + soft delete (+ reorder).** Categories and
+   platforms support create, edit, and soft delete with a Move up/down reorder.
+   Seasons and episodes live on `/admin/dramas/[id]` and support create, edit,
+   soft delete, and (for seasons) reorder; episode numbering stays drama-wide.
+3. **Slugs are derived from names.** A category/platform slug is derived from
+   its name server-side and never typed by the administrator, matching the
+   drama form. A blank-name slug is rejected.
+4. **Soft delete only.** Trashed rows keep their rows and are excluded from
+   admin and public listings; nothing is hard-deleted from the admin panel.
+5. **Every page and action re-checks canonical permissions.** `/admin/dramas/[id]`
+   requires `drama.manage`; the season and episode sections are additionally
+   gated on `season.manage`/`episode.manage`. Each Server Action resolves the
+   actor and re-checks its guard.
+6. **Category `visibility` is `visible`/`hidden`, default `visible`.** A hidden
+   category is excluded from public listing but remains manageable.
+7. **Episodes stay `draft` when created through the panel.** Publication is a
+   separate, later workflow; the admin panel never auto-publishes.
+8. **A season change is a plain partial update.** Deviating from the plan's
+   Task 7 step 3, `updateEpisodeAction` does **not** call
+   `moveEpisodesToSeason` after a season change; it keeps the episode position
+   and only updates the changed fields. `moveEpisodesToSeason` is not imported
+   by the episode Server Actions.
+
+**Consequences:**
+
+- Content can be assembled end-to-end in the panel: a platform, a category, a
+  drama, a season, and an episode.
+- Soft-deleted content is recoverable in principle (rows preserved) but there
+  is no restore UI yet; restore is deferred.
+- The taxonomy REST routes remain read-only, so programmatic write access to
+  taxonomy still requires a Server Action or SQL.
+
 ---

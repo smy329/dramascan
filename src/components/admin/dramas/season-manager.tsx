@@ -206,7 +206,7 @@ export function SeasonManager({
         <AdminForm
           schema={seasonFormSchema}
           serverAction={values => createSeasonAction({ dramaId, ...(values as Record<string, unknown>) })}
-          defaultValues={{ title: '' }}
+          defaultValues={{ dramaId, title: '' }}
           submitLabel="Add season"
           onSuccess={() => router.refresh()}
         >

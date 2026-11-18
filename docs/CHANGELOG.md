@@ -4,6 +4,54 @@ All notable changes to the DramaScan project will be documented in this file.
 
 ## [Unreleased] - 2026-11-18
 
+### feat: add admin category, platform, season and episode management (Task 8)
+
+Resolves the last gap that kept a first playable drama from being created
+through the admin panel without SQL. Categories and platforms now have a real
+admin management surface (create, edit, soft delete, reorder), and seasons and
+episodes are manageable on `/admin/dramas/[id]` (create, edit, soft delete, and
+for seasons reorder). No new dependency, no migration, no taxonomy REST route.
+
+- `src/app/admin/categories/page.tsx`, `src/app/admin/platforms/page.tsx`:
+  manage the two taxonomy kinds through the shared taxonomy manager, gated on
+  `category.manage`/`platform.manage`.
+- `src/components/admin/taxonomy/taxonomy-manager.tsx`: shared client island
+  for categories (with `visibility`) and platforms; create/edit/soft-delete
+  forms, Move up/down reorder, and per-row used-by counts.
+- `src/lib/contracts/taxonomy-form.ts` (new): client-safe Zod contracts for
+  taxonomy create/edit/delete/reorder. Slugs are derived from names and never
+  typed; a name with no Latin letters is rejected.
+- `src/workflows/admin/taxonomy.ts` (new) and `src/workflows/admin/taxonomy-actions.ts`
+  (new): actor-first taxonomy workflows and Server Actions that re-check
+  `category.manage`/`platform.manage` and re-validate every payload.
+- `src/app/admin/dramas/[id]/page.tsx`: drama detail page requiring
+  `drama.manage`, rendering the season and episode managers; both sections are
+  additionally gated on `season.manage`/`episode.manage`.
+- `src/components/admin/dramas/season-manager.tsx` (new) and
+  `src/components/admin/dramas/episode-manager.tsx` (new): season and episode
+  management with create/edit/soft-delete forms and Move up/down reorder.
+- `src/workflows/admin/seasons.ts`, `src/workflows/admin/episodes.ts` (new):
+  actor-first season and episode workflows with locked numbering/position
+  allocation and drama-wide episode numbering.
+- `src/workflows/admin/season-actions.ts`, `src/workflows/admin/episode-actions.ts`
+  (new): Server Actions re-checking `season.manage`/`episode.manage` and
+  re-validating every payload through the contract schemas.
+- `src/lib/contracts/season-form.ts`, `src/lib/contracts/episode-form.ts` (new):
+  client-safe Zod contracts. Blank optional fields (`season_id`,
+  `episode_number`) are normalized to `undefined` via `blankToUndefined`, so the
+  client `zodResolver` and the server `parseOrThrow` agree that blank means
+  unset.
+- `src/components/admin/dramas/season-manager.tsx` and
+  `src/components/admin/dramas/episode-manager.tsx`: create-form `defaultValues`
+  seed `dramaId`, so the client validation no longer drops it and the create
+  Server Action actually fires.
+- `tests/e2e/admin-content-management.spec.ts` (new): Chromium end-to-end test
+  that creates a platform, a category, a drama, a season, and an episode through
+  the panel and verifies each appears in its listing.
+- `tests/e2e/support/drama-fixture.mjs`: `removeDramaBySlug` now deletes an
+  episode/season/snapshot before the drama (FK-safe), matching `removeDrama`;
+  exports `removeTaxonomyBySlug`.
+
 ### feat: complete the admin drama creation form (Prompt 053)
 
 Prompt 053's backend (`createDrama`, `POST /admin/api/dramas`) already existed,

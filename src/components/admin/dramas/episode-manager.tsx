@@ -264,7 +264,7 @@ export function EpisodeManager({
             }
             return createEpisodeAction(payload);
           }}
-          defaultValues={{ title: '', description: '', episode_number: '', season_id: '', video_source: '' }}
+          defaultValues={{ dramaId, title: '', description: '', episode_number: '', season_id: '', video_source: '' }}
           submitLabel="Add episode"
           onSuccess={() => router.refresh()}
         >

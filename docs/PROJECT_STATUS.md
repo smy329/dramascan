@@ -2,8 +2,47 @@
 
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
-**Date:** 2026-11-17  
-**Current Prompt:** Remediation Phase 4 - Database integrity and hierarchy (complete). Next: Phase 5 - REST contract corrections.
+**Date:** 2026-11-18  
+**Current Prompt:** Admin content management (Task 8 — complete). Next: pending user direction.
+
+---
+
+## Admin Content Management — 2026-11-18
+
+The admin panel can now assemble a first playable drama without SQL. Categories
+and platforms have a real management surface (create, edit, soft delete,
+reorder), and seasons and episodes are manageable on `/admin/dramas/[id]`
+(create, edit, soft delete, and for seasons reorder). No new dependency, no
+migration, no taxonomy REST route; Server Actions are the transport.
+
+- `src/components/admin/taxonomy/taxonomy-manager.tsx`: shared client island for
+  categories (with `visibility`) and platforms.
+- `src/lib/contracts/taxonomy-form.ts`, `src/workflows/admin/taxonomy.ts`,
+  `src/workflows/admin/taxonomy-actions.ts`: taxonomy contracts and actor-first
+  workflows with Server Actions re-checking `category.manage`/`platform.manage`.
+- `src/app/admin/dramas/[id]/page.tsx`: drama detail page requiring
+  `drama.manage`; season/episode sections gated on `season.manage`/
+  `episode.manage`.
+- `src/components/admin/dramas/season-manager.tsx`,
+  `src/components/admin/dramas/episode-manager.tsx`, `src/workflows/admin/seasons.ts`,
+  `src/workflows/admin/episodes.ts`, `src/workflows/admin/season-actions.ts`,
+  `src/workflows/admin/episode-actions.ts`, `src/lib/contracts/season-form.ts`,
+  `src/lib/contracts/episode-form.ts`: season and episode management, locked
+  numbering/position allocation, drama-wide episode numbering.
+- `src/lib/contracts/episode-form.ts`: `blankToUndefined` normalizes blank
+  optional fields so client `zodResolver` and server `parseOrThrow` agree that
+  blank means unset.
+- `tests/e2e/admin-content-management.spec.ts` (new): Chromium test that creates
+  a platform, category, drama, season, and episode through the panel.
+
+Verification: typecheck PASS, lint PASS, unit 17/17 (episode-actions 9/9,
+taxonomy-manager 8/8), integration 13/13 PASS, E2E 43/43 PASS (new
+admin-content-management spec included), production build PASS.
+
+Decision D-033 records the approved approach and the deviation from the plan's
+Task 7 step 3: a season change is a plain partial update that keeps the episode
+position, and `moveEpisodesToSeason` is not imported by the episode Server
+Actions.
 
 ---
 

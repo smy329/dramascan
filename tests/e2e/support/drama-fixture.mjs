@@ -224,7 +224,73 @@ export async function removeDramaBySlug(slug) {
             OR similar_drama_id IN (SELECT id FROM dramas WHERE slug = $1)`,
         [slug]
       );
+      await run(
+        client,
+        'delete the created episodes',
+        target,
+        'DELETE FROM episodes WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1)',
+        [slug]
+      );
+      await run(
+        client,
+        'delete the created seasons',
+        target,
+        'DELETE FROM seasons WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1)',
+        [slug]
+      );
+      await run(
+        client,
+        'delete the created snapshots',
+        target,
+        'DELETE FROM structure_conversion_snapshots WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1)',
+        [slug]
+      );
       await run(client, 'delete the created drama', target, 'DELETE FROM dramas WHERE slug = $1', [
+        slug,
+      ]);
+
+      await run(client, 'commit the transaction', target, 'COMMIT');
+    } catch (error) {
+      await run(client, 'roll the transaction back', target, 'ROLLBACK').catch(() => {});
+      throw error;
+    }
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+/**
+ * Delete a category or platform row by slug, together with any association
+ * rows that reference it. Used by the taxonomy E2E tests, which create rows
+ * through the browser and cannot know the id ahead of time.
+ *
+ * @param {'category' | 'platform'} resource
+ * @param {string} slug
+ * @returns {Promise<void>}
+ */
+export async function removeTaxonomyBySlug(resource, slug) {
+  const { target, client } = requireTestClient();
+  const table = resource === 'category' ? 'categories' : 'platforms';
+  const joinTable = resource === 'category' ? 'drama_categories' : 'drama_platforms';
+
+  try {
+    try {
+      await client.connect();
+    } catch {
+      throw databaseFailure('connect to', target);
+    }
+
+    await run(client, 'begin the transaction', target, 'BEGIN');
+
+    try {
+      await run(
+        client,
+        'delete the created taxonomy join rows',
+        target,
+        `DELETE FROM ${joinTable} WHERE ${resource}_id IN (SELECT id FROM ${table} WHERE slug = $1)`,
+        [slug]
+      );
+      await run(client, 'delete the created taxonomy row', target, `DELETE FROM ${table} WHERE slug = $1`, [
         slug,
       ]);
 

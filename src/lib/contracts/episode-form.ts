@@ -5,6 +5,21 @@
 import { z } from 'zod';
 import { publicationReadyVideoSourceSchema } from '@/modules/content/validation';
 
+/**
+ * Treat a blank string as "not provided".
+ *
+ * The episode form leaves optional fields (season, episode number) empty when
+ * the administrator does not want to set them. React Hook Form submits those
+ * as `''`, which would otherwise fail `z.uuid()` or be coerced to `0` and then
+ * fail `min(1)`. Mapping `''` to `undefined` in the schema keeps the client
+ * (zodResolver) and the server (parseOrThrow) in agreement: blank means unset.
+ */
+const blankToUndefined = <T>(schema: z.ZodType<T>): z.ZodType<T | undefined> =>
+  z.preprocess(
+    (value) => (value === '' || value === undefined || value === null ? undefined : value),
+    schema.optional()
+  );
+
 export const episodeFormSchema = z.strictObject({
   dramaId: z.string().uuid(),
   title: z
@@ -13,8 +28,8 @@ export const episodeFormSchema = z.strictObject({
     .min(1, 'Title is required.')
     .max(200, 'Title must be 200 characters or fewer.'),
   description: z.string().trim().max(2000).optional(),
-  season_id: z.string().uuid().optional(),
-  episode_number: z.coerce.number().int().min(1).optional(),
+  season_id: blankToUndefined(z.string().uuid()),
+  episode_number: blankToUndefined(z.coerce.number().int().min(1)),
   video_source: publicationReadyVideoSourceSchema.optional(),
 });
 
@@ -28,8 +43,8 @@ export const updateEpisodeFormSchema = z.strictObject({
     .max(200, 'Title must be 200 characters or fewer.')
     .optional(),
   description: z.string().trim().max(2000).optional(),
-  season_id: z.string().uuid().optional(),
-  episode_number: z.coerce.number().int().min(1).optional(),
+  season_id: blankToUndefined(z.string().uuid()),
+  episode_number: blankToUndefined(z.coerce.number().int().min(1)),
   video_source: publicationReadyVideoSourceSchema.optional(),
 });
 
