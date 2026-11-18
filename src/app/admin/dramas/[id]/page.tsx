@@ -3,10 +3,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { SeasonManager } from '@/components/admin/dramas/season-manager';
+import { EpisodeManager } from '@/components/admin/dramas/episode-manager';
 import { hasPermission, toPermissionKey } from '@/modules/authorization';
 import type { SeasonDto } from '@/lib/contracts/season-form';
+import type { EpisodeDto } from '@/lib/contracts/episode-form';
 import { getDramaForAdmin } from '@/workflows/admin/dramas';
 import { listSeasons } from '@/workflows/admin/seasons';
+import { listEpisodes } from '@/workflows/admin/episodes';
 
 import { requireAdminPageAccess } from '../../_access';
 
@@ -54,7 +57,14 @@ export default async function AdminDramaDetailPage({
     }));
   }
 
+  let episodesData = [] as EpisodeDto[];
+
   const canManageEpisodes = hasPermission(actor, toPermissionKey('episode', 'manage'));
+
+  if (canManageEpisodes) {
+    const listed = await listEpisodes(actor, id, { page: 1, pageSize: 100 });
+    episodesData = listed.episodes;
+  }
 
   return (
     <div className="space-y-8">
@@ -122,14 +132,16 @@ export default async function AdminDramaDetailPage({
       ) : null}
 
       {canManageEpisodes ? (
-        <section aria-labelledby="drama-episodes-heading" className="rounded-lg border border-border bg-card p-4">
-          <h2 id="drama-episodes-heading" className="text-sm font-medium text-foreground">
+        <section aria-labelledby="drama-episodes-heading">
+          <h2 id="drama-episodes-heading" className="sr-only">
             Episodes
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Episodes are managed per season and will be available from each season's detail
-            view.
-          </p>
+          <EpisodeManager
+            dramaId={drama.id}
+            structureType={drama.structure_type}
+            seasons={seasons}
+            episodes={episodesData}
+          />
         </section>
       ) : null}
     </div>
