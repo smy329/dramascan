@@ -74,8 +74,8 @@ export const dramaFormSchema = z
     description: z.string().max(20_000, 'Description is too long.').optional(),
     status: z.enum(['ongoing', 'completed']),
     structure_type: z.enum(['flat', 'season_based']),
-    poster: z.union([z.string().trim().url('Poster must be a valid URL.'), z.literal('')]),
-    banner: z.union([z.string().trim().url('Banner must be a valid URL.'), z.literal('')]),
+    poster: z.string().optional(),
+    banner: z.string().optional(),
     categories: z.array(z.uuid()),
     platforms: z.array(z.uuid()),
   })

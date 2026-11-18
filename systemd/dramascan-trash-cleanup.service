@@ -1,0 +1,14 @@
+[Unit]
+Description=DramaScan Trash Expiry Cleanup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env node D:\Source code\Opencode\DramaScan\DramaScan\scripts\trash-cleanup.mjs
+WorkingDirectory=D:\Source code\Opencode\DramaScan\DramaScan
+Environment=DATABASE_URL=${DATABASE_URL}
+RemainExitStatus=yes
+
+[Install]
+WantedBy=multi-user.target

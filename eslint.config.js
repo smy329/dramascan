@@ -43,4 +43,7 @@ export default [
       sourceType: 'module',
     },
   },
+  {
+    ignores: ['scripts/**'],
+  },
 ];

@@ -1,0 +1,66 @@
+[Unit]
+Description=DramaScan Image Delivery Configuration
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env bash -c '
+cat > /etc/nginx/sites-available/drama-scan << '\''EOF'\'
+# DramaScan Nginx Configuration - Image Delivery
+
+# Serve static files from the Next.js public directory
+root /var/www/drama-scan/.next/public;
+index index.html;
+
+# Media delivery location
+location /assets/images/dramas/ {
+    # Set proper content types for image formats
+    types {
+        image/jpeg  jpg jpeg;
+        image/png   png;
+        image/webp  webp;
+        image/gif   gif;
+    }
+
+    # Enable sendfile for efficient delivery
+    sendfile on;
+
+    # Cache control - public, cacheable for 1 day (images are immutable via UUID filenames)
+    expires 1d;
+    add_header Cache-Control "public, max-age=86400, immutable" always;
+
+    # Access control - deny direct script execution
+    location ~ \.(php|pl|py|rb|sh|cgi)$ {
+        deny all;
+    }
+
+    # Log format
+    access_log /var/log/drama-scan/assets-images-dramas.log;
+}
+
+# Security headers for all responses
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header X-XSS-Protection "1; mode=block" always;
+
+# Deny access to hidden files
+location ~ /\. {
+    deny all;
+}
+
+# Error pages
+error_page 404 /404.html;
+error_page 500 502 503 504 /50x.html;
+
+location = /50x.html {
+    root /var/www/drama-scan/.next/public;
+}
+EOF
+
+# Test and reload nginx
+nginx -t && systemctl reload nginx.service
+'
+
+WorkingDirectory=D:\Source code\Opencode\DramaScan\DramaScan
+Environment=DATABASE_URL=${DATABASE_URL}
+RemainExitStatus=yes

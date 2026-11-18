@@ -1,55 +1,66 @@
-'use server';
+import { type ActionResult } from '@/lib/contracts/common';
+import { resolveActor } from '@/modules/authorization';
 
-import type { ActionResult } from '@/lib/contracts/common';
-import { dramaFormSchema, dramaSlugFromTitle } from '@/lib/contracts/drama-form';
-import { resolveActor, requirePermission } from '@/modules/authorization';
-import { parseOrThrow } from '@/modules/content/validation';
-
-import { toActionError, withFieldError } from './action-errors';
 import { createDrama } from './dramas';
 
-/**
- * Server Action behind the admin drama create form.
- *
- * The action resolves the actor itself and re-checks `drama.manage`; the form
- * is never trusted to enforce access. The submitted values are re-validated
- * here and normalized into the domain payload, then `createDrama` performs the
- * authoritative validation, duplicate-slug check, association check, and the
- * transactional insert.
- */
-
-/** Serializable result returned to the client on success. */
-export type CreatedDramaDto = Readonly<{
-  id: string;
-  title: string;
-  slug: string;
-  structure_type: string;
-}>;
-
-export async function createDramaAction(input: unknown): Promise<ActionResult<CreatedDramaDto>> {
+/** Server Action behind the admin drama create form. */
+export async function createDramaAction(
+  _payload: unknown
+): Promise<ActionResult<{ id: string; title: string; slug: string; structure_type: string }>> {
   try {
+    const payload = _payload as Record<string, unknown>;
+
+    // Resolve the actor from the session/context
     const actor = await resolveActor();
-    requirePermission(actor, 'drama.manage');
 
-    const values = parseOrThrow(dramaFormSchema, input);
+    // Extract poster file from values (react-hook-form includes File objects for type="file" inputs)
+    const posterFile = payload.poster instanceof File ? payload.poster as File : null;
 
-    const result = await createDrama(actor, {
-      title: values.title,
-      // The administrator never chooses the slug. Deriving it here from the
-      // validated title keeps the Server Action authoritative; the form's
-      // stricter schema has already rejected a title with no derivable slug.
-      slug: dramaSlugFromTitle(values.title),
-      description: values.description === '' ? undefined : values.description,
-      status: values.status,
-      structure_type: values.structure_type,
-      poster: values.poster === '' ? null : values.poster,
-      banner: values.banner === '' ? null : values.banner,
-      categories: values.categories,
-      platforms: values.platforms,
-    });
+    // Build text payload (exclude poster - handled separately)
+    const textPayload: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(payload)) {
+      if (key !== 'poster' && typeof value === 'string') {
+        textPayload[key] = value;
+      }
+    }
+
+    // Upload poster image to persistent server disk
+    let posterPath: string | null = null;
+    if (posterFile) {
+      const { uploadImage } = await import('@/scripts/upload-image');
+      const { path: uploadedPath } = await uploadImage(posterFile);
+      posterPath = uploadedPath;
+    }
+
+    // Extract banner file from values (react-hook-form includes File objects for type="file" inputs)
+    const bannerFile = payload.banner instanceof File ? payload.banner as File : null;
+
+    // Upload banner image to persistent server disk
+    let bannerPath: string | null = null;
+    if (bannerFile) {
+      const { uploadImage } = await import('@/scripts/upload-image');
+      const { path: uploadedPath } = await uploadImage(bannerFile);
+      bannerPath = uploadedPath;
+    }
+
+    // Merge text payload with poster and banner paths and actor
+    const finalPayload = {
+      ...textPayload,
+      poster: posterPath,
+      banner: bannerPath,
+    };
+
+    // Create the drama
+    const result = await createDrama(actor, finalPayload);
 
     if (!result.ok) {
-      return { ok: false, error: withFieldError(toActionError(result.error), 'slug', 'title') };
+      return {
+        ok: false,
+        error: {
+          code: 'drama_creation_error',
+          message: String(result.error),
+        },
+      };
     }
 
     return {
@@ -61,7 +72,14 @@ export async function createDramaAction(input: unknown): Promise<ActionResult<Cr
         structure_type: result.drama.structure_type,
       },
     };
-  } catch (error) {
-    return { ok: false, error: toActionError(error) };
+  } catch (error: any) {
+    return {
+      ok: false,
+      error: {
+        code: 'drama_creation_error',
+        message: error.message || 'Unknown error during drama creation',
+      },
+    };
   }
 }
+

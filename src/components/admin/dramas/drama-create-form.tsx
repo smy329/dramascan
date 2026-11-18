@@ -1,10 +1,8 @@
-'use client';
-
 import type { JSX, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFormContext } from 'react-hook-form';
-import type { z } from 'zod';
 
+import { dramaFormSchema } from '@/lib/contracts/drama-form';
 import { AdminForm } from '@/components/admin/forms/admin-form';
 import { AdminFormField } from '@/components/admin/forms/admin-form-field';
 import { AdminFormSelectField } from '@/components/admin/forms/admin-form-select-field';
@@ -12,17 +10,15 @@ import {
   DRAMA_FORM_DEFAULTS,
   DRAMA_STATUS_OPTIONS,
   DRAMA_STRUCTURE_OPTIONS,
-  dramaFormSchema,
-  type DramaTaxonomyOption,
 } from '@/lib/contracts/drama-form';
 import { createDramaAction } from '@/workflows/admin/drama-actions';
 
 export type DramaCreateFormProps = Readonly<{
-  /** Active categories offered by the form. */
   categories: readonly DramaTaxonomyOption[];
-  /** Active platforms offered by the form. */
   platforms: readonly DramaTaxonomyOption[];
 }>;
+
+type DramaTaxonomyOption = Readonly<{ id: string; name: string }>;
 
 function fieldError(errors: unknown, name: string): string | undefined {
   if (typeof errors !== 'object' || errors === null) {
@@ -105,7 +101,7 @@ export function DramaCreateForm({ categories, platforms }: DramaCreateFormProps)
 
   return (
     <AdminForm
-      schema={dramaFormSchema as z.ZodType<Record<string, unknown>>}
+      schema={dramaFormSchema}
       serverAction={createDramaAction}
       defaultValues={DRAMA_FORM_DEFAULTS}
       resetOnSuccess={false}
@@ -140,8 +136,8 @@ export function DramaCreateForm({ categories, platforms }: DramaCreateFormProps)
         />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <AdminFormField name="poster" label="Poster URL" type="url" autoComplete="off" />
-        <AdminFormField name="banner" label="Banner URL" type="url" autoComplete="off" />
+        <AdminFormField name="poster" label="Poster" type="file" autoComplete="off" />
+        <AdminFormField name="banner" label="Banner" type="file" autoComplete="off" />
       </div>
       <CheckboxGroupField
         name="categories"
@@ -158,3 +154,4 @@ export function DramaCreateForm({ categories, platforms }: DramaCreateFormProps)
     </AdminForm>
   );
 }
+
