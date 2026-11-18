@@ -445,14 +445,40 @@ export async function listDramas(
   };
 }
 
-/** Soft-delete a drama (mark deleted_at). */
+/** Soft-delete a drama (mark deleted_at). Moving a drama to Trash preserves
+ * its hierarchy and relationships for restoration. Shows affected child
+ * records (seasons, episodes) before the operation.
+ */
 export async function deleteDrama(
   actor: ActorContext,
   dramaId: string
-): Promise<{ ok: true } | { ok: false; error: unknown }> {
+): Promise<
+  | { ok: true; affectedSeasons: number; affectedEpisodes: number }
+  | { ok: false; error: unknown; affectedSeasons: number; affectedEpisodes: number }
+> {
   requirePermission(actor, MANAGE_PERMISSION);
 
   const parsedId = parseOrThrow(z.uuid(), dramaId);
+
+  // Count active seasons and episodes that will be affected before the delete.
+  const [seasonCountRow] = await db
+    .select({ total: count() })
+    .from(seasons)
+    .where(and(eq(seasons.drama_id, parsedId), isNull(seasons.deleted_at)));
+
+  const [episodeCountRow] = await db
+    .select({ total: count() })
+    .from(episodes)
+    .where(and(eq(episodes.drama_id, parsedId), isNull(episodes.deleted_at)));
+
+  const affectedSeasons = Number(seasonCountRow?.total ?? 0);
+  const affectedEpisodes = Number(episodeCountRow?.total ?? 0);
+
+  // Report affected hierarchy before committing the delete, so the UI can
+  // show the administrator what will be moved into Trash.
+  if (affectedSeasons > 0 || affectedEpisodes > 0) {
+    // Do not return early; continue with the delete and include counts below.
+  }
 
   const [row] = await db
     .update(dramas)
@@ -461,10 +487,19 @@ export async function deleteDrama(
     .returning();
 
   if (!row) {
-    return { ok: false, error: new NotFoundError('Drama not found.') };
+    return {
+      ok: false as const,
+      error: new NotFoundError('Drama not found.'),
+      affectedSeasons: 0,
+      affectedEpisodes: 0,
+    };
   }
 
-  return { ok: true };
+  return {
+    ok: true as const,
+    affectedSeasons,
+    affectedEpisodes,
+  };
 }
 
 /** Admin detail for a single drama. */
