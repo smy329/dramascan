@@ -179,6 +179,66 @@ export async function seedDrama(options = {}) {
 }
 
 /**
+ * Delete a drama created through the application (its id is unknown) by slug.
+ *
+ * Only the unique slug is matched; the helper removes the association rows a
+ * create request writes and then the drama row itself. It is used by the
+ * browser create test, which cannot seed an id ahead of time.
+ *
+ * @param {string} slug
+ * @returns {Promise<void>}
+ */
+export async function removeDramaBySlug(slug) {
+  const { target, client } = requireTestClient();
+
+  try {
+    try {
+      await client.connect();
+    } catch {
+      throw databaseFailure('connect to', target);
+    }
+
+    await run(client, 'begin the transaction', target, 'BEGIN');
+
+    try {
+      await run(
+        client,
+        'delete the created drama category rows',
+        target,
+        `DELETE FROM drama_categories WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1)`,
+        [slug]
+      );
+      await run(
+        client,
+        'delete the created drama platform rows',
+        target,
+        `DELETE FROM drama_platforms WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1)`,
+        [slug]
+      );
+      await run(
+        client,
+        'delete the created drama similar-drama links',
+        target,
+        `DELETE FROM similar_dramas
+         WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1)
+            OR similar_drama_id IN (SELECT id FROM dramas WHERE slug = $1)`,
+        [slug]
+      );
+      await run(client, 'delete the created drama', target, 'DELETE FROM dramas WHERE slug = $1', [
+        slug,
+      ]);
+
+      await run(client, 'commit the transaction', target, 'COMMIT');
+    } catch (error) {
+      await run(client, 'roll the transaction back', target, 'ROLLBACK').catch(() => {});
+      throw error;
+    }
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+/**
  * Delete the rows `seedDrama` created, and nothing else.
  *
  * @param {DramaFixture} fixture

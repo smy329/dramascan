@@ -38,7 +38,7 @@ import {
   seasons,
 } from '@/modules/content/schema';
 import { closePool } from '@/platform/db/pool';
-import { createDrama, listDramas, updateDrama } from '@/workflows/admin/dramas';
+import { createDrama, listDramas, listDramaTaxonomy, updateDrama } from '@/workflows/admin/dramas';
 
 const TEST_SLUG_PREFIX = 'it-drama-';
 const TEST_TAXONOMY_PREFIX = 'it-taxonomy-';
@@ -152,6 +152,59 @@ describe('createDrama', () => {
       'season_based'
     );
     expect(rows.find(row => row.structureType === 'flat')).toBeDefined();
+  });
+});
+
+describe('listDramaTaxonomy', () => {
+  it('returns live taxonomy ordered by position and hides trashed rows', async () => {
+    const [second] = await db
+      .insert(categories)
+      .values({
+        name: 'Category second',
+        slug: `${TEST_TAXONOMY_PREFIX}cat-second-${randomUUID().slice(0, 8)}`,
+        position: 5,
+      })
+      .returning({ id: categories.id });
+    const [first] = await db
+      .insert(categories)
+      .values({
+        name: 'Category first',
+        slug: `${TEST_TAXONOMY_PREFIX}cat-first-${randomUUID().slice(0, 8)}`,
+        position: 1,
+      })
+      .returning({ id: categories.id });
+    const [trashed] = await db
+      .insert(categories)
+      .values({
+        name: 'Category trashed',
+        slug: `${TEST_TAXONOMY_PREFIX}cat-trashed-${randomUUID().slice(0, 8)}`,
+        position: 0,
+        deleted_at: new Date(),
+      })
+      .returning({ id: categories.id });
+    const [platform] = await db
+      .insert(platforms)
+      .values({
+        name: 'Platform one',
+        slug: `${TEST_TAXONOMY_PREFIX}plat-one-${randomUUID().slice(0, 8)}`,
+        position: 1,
+      })
+      .returning({ id: platforms.id });
+
+    const taxonomy = await listDramaTaxonomy(managerActor);
+    const categoryIds = taxonomy.categories.map(category => category.id);
+
+    expect(categoryIds).toContain(first!.id);
+    expect(categoryIds).toContain(second!.id);
+    expect(categoryIds.indexOf(first!.id)).toBeLessThan(categoryIds.indexOf(second!.id));
+    expect(categoryIds).not.toContain(trashed!.id);
+    expect(taxonomy.platforms.map(row => row.id)).toContain(platform!.id);
+  });
+
+  it('refuses an actor without drama.manage', async () => {
+    await expect(
+      listDramaTaxonomy({ ...managerActor, permissions: [] })
+    ).rejects.toMatchObject({ code: 'forbidden' });
   });
 });
 

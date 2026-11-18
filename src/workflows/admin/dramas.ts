@@ -15,6 +15,7 @@ import {
   dramas,
   platforms,
 } from '@/modules/content/schema';
+import type { DramaTaxonomyOption } from '@/lib/contracts/drama-form';
 import { createDramaSchema, parseOrThrow, updateDramaSchema } from '@/modules/content/validation';
 
 /** Permission key for drama management. */
@@ -36,6 +37,35 @@ export type ListDramasQuery = z.infer<typeof listDramasQuerySchema>;
 /** Parse list query, throwing a REST-safe validation error on failure. */
 export function parseListDramasQuery(input: unknown): ListDramasQuery {
   return parseOrThrow(listDramasQuerySchema, input);
+}
+
+/**
+ * Active categories and platforms that a drama may be associated with.
+ *
+ * Reads the live taxonomy rows for the create form's checkbox groups. Trashed
+ * rows are excluded so the form can never offer a target that `createDrama`
+ * would reject. Ordered by curated position, then name, for a stable list.
+ */
+export async function listDramaTaxonomy(actor: ActorContext): Promise<{
+  categories: DramaTaxonomyOption[];
+  platforms: DramaTaxonomyOption[];
+}> {
+  requirePermission(actor, MANAGE_PERMISSION);
+
+  const [categoryRows, platformRows] = await Promise.all([
+    db
+      .select({ id: categories.id, name: categories.name })
+      .from(categories)
+      .where(isNull(categories.deleted_at))
+      .orderBy(asc(categories.position), asc(categories.name)),
+    db
+      .select({ id: platforms.id, name: platforms.name })
+      .from(platforms)
+      .where(isNull(platforms.deleted_at))
+      .orderBy(asc(platforms.position), asc(platforms.name)),
+  ]);
+
+  return { categories: categoryRows, platforms: platformRows };
 }
 
 /** Drama create. */

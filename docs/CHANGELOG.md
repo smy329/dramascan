@@ -2,6 +2,34 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [Unreleased] - 2026-11-18
+
+### feat: complete the admin drama creation form (Prompt 053)
+
+Prompt 053's backend (`createDrama`, `POST /admin/api/dramas`) already existed,
+but the administrator had no way to create a drama from the admin panel. This
+change adds the missing form without altering the workflow or the API contract.
+
+- `src/lib/contracts/drama-form.ts` (new): client-safe Zod schema mirroring
+  `createDramaSchema`, with the Ongoing/Completed status and both
+  `season_based`/`flat` structures. Media fields accept an empty string, which
+  the Server Action normalizes to `null`; no release-year field exists.
+- `src/workflows/admin/dramas.ts`: `listDramaTaxonomy` reads the live categories
+  and platforms for the checkbox groups, ordered by position then name and
+  excluding trashed rows.
+- `src/workflows/admin/drama-actions.ts` (new): `createDramaAction` resolves the
+  actor, re-checks `drama.manage`, validates and normalizes the payload, and
+  delegates to `createDrama`. The duplicate-slug conflict keeps its
+  `validation_error` code and `slug` field error instead of becoming a 500.
+- `src/components/admin/dramas/drama-create-form.tsx` (new) and
+  `src/app/admin/dramas/new/page.tsx` (new): the admin form, gated by
+  `drama.manage`, with select fields for status/structure and checkbox groups
+  for categories/platforms. A successful save returns to the drama list.
+- `src/app/admin/dramas/page.tsx`: an "Add drama" link to the new page.
+- Tests: contract schema, Server Action, page guard, form submission, an
+  integration test for taxonomy reads, and a Chromium end-to-end test that
+  creates a flat drama and proves a duplicate slug is rejected.
+
 ## [Unreleased] - 2026-11-17
 
 ### feat: enforce database integrity, typed targets, and preview-bound conversion (Phase 4)

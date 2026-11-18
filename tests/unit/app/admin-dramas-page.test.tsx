@@ -53,6 +53,23 @@ beforeEach(() => {
 });
 
 describe('AdminDramasPage', () => {
+  it('links to the drama creation form', async () => {
+    requireAdminPageAccessMock.mockResolvedValue({ actor: manager });
+    listConversionCandidatesMock.mockResolvedValue({
+      items: [],
+      total: 0,
+      totalPages: 0,
+      page: 1,
+      pageSize: 20,
+    });
+
+    render(await AdminDramasPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByRole('link', { name: 'Add drama' }).getAttribute('href')).toBe(
+      '/admin/dramas/new'
+    );
+  });
+
   it('links each drama to its similar-drama management page', async () => {
     requireAdminPageAccessMock.mockResolvedValue({ actor: manager });
     listConversionCandidatesMock.mockResolvedValue({

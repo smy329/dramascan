@@ -123,12 +123,20 @@ export default async function AdminDramasPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-2xl font-semibold text-foreground">Dramas</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Convert a drama between a season-based and a flat episode structure, or convert a
-          single-episode drama into a standalone movie.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-heading text-2xl font-semibold text-foreground">Dramas</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Convert a drama between a season-based and a flat episode structure, or convert a
+            single-episode drama into a standalone movie.
+          </p>
+        </div>
+        <Link
+          href="/admin/dramas/new"
+          className="inline-flex h-8 shrink-0 items-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80"
+        >
+          Add drama
+        </Link>
       </div>
 
       <AdminTableToolbar
