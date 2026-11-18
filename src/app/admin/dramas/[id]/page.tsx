@@ -1,0 +1,137 @@
+import type { JSX } from 'react';
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+
+import { SeasonManager } from '@/components/admin/dramas/season-manager';
+import { hasPermission, toPermissionKey } from '@/modules/authorization';
+import type { SeasonDto } from '@/lib/contracts/season-form';
+import { getDramaForAdmin } from '@/workflows/admin/dramas';
+import { listSeasons } from '@/workflows/admin/seasons';
+
+import { requireAdminPageAccess } from '../../_access';
+
+export const dynamic = 'force-dynamic';
+
+const PATHNAME = '/admin/dramas/[id]';
+
+function formatDate(value: string): string {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+export default async function AdminDramaDetailPage({
+  params,
+}: Readonly<{ params: Promise<{ id: string }> }>): Promise<JSX.Element> {
+  const { actor } = await requireAdminPageAccess(PATHNAME);
+
+  // Navigation is never the boundary: the page checks the canonical
+  // permission itself, and the workflow checks it again.
+  if (!hasPermission(actor, toPermissionKey('drama', 'manage'))) {
+    notFound();
+  }
+
+  const { id } = await params;
+
+  const detail = await getDramaForAdmin(actor, id);
+
+  if (!detail) {
+    notFound();
+  }
+
+  const { drama, categoryNames, platformNames } = detail;
+
+  let seasons: SeasonDto[] = [];
+
+  if (hasPermission(actor, toPermissionKey('season', 'manage'))) {
+    const listed = await listSeasons(actor, id);
+
+    seasons = listed.seasons.map(season => ({
+      id: season.id,
+      dramaId: season.dramaId,
+      title: season.title,
+      position: season.position,
+      episodeCount: season.episodeCount,
+      createdAt: season.createdAt,
+    }));
+  }
+
+  const canManageEpisodes = hasPermission(actor, toPermissionKey('episode', 'manage'));
+
+  return (
+    <div className="space-y-8">
+      <header className="space-y-3">
+        <Link
+          href="/admin/dramas"
+          className="text-sm font-medium text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        >
+          Back to dramas
+        </Link>
+        <h1 className="text-2xl font-semibold text-foreground">{drama.title}</h1>
+      </header>
+
+      <section aria-labelledby="drama-summary-heading" className="space-y-2 rounded-lg border border-border bg-card p-4">
+        <h2 id="drama-summary-heading" className="text-sm font-medium text-foreground">
+          Summary
+        </h2>
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+          <div className="flex justify-between gap-2 sm:block">
+            <dt className="text-muted-foreground">Structure</dt>
+            <dd className="text-foreground">{drama.structure_type}</dd>
+          </div>
+          <div className="flex justify-between gap-2 sm:block">
+            <dt className="text-muted-foreground">Slug</dt>
+            <dd className="text-foreground">{drama.slug}</dd>
+          </div>
+          <div className="flex justify-between gap-2 sm:block">
+            <dt className="text-muted-foreground">Categories</dt>
+            <dd className="text-foreground">
+              {categoryNames.length > 0 ? categoryNames.join(', ') : '—'}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-2 sm:block">
+            <dt className="text-muted-foreground">Platforms</dt>
+            <dd className="text-foreground">
+              {platformNames.length > 0 ? platformNames.join(', ') : '—'}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-2 sm:block">
+            <dt className="text-muted-foreground">Active seasons</dt>
+            <dd className="text-foreground">{drama.activeSeasons}</dd>
+          </div>
+          <div className="flex justify-between gap-2 sm:block">
+            <dt className="text-muted-foreground">Active episodes</dt>
+            <dd className="text-foreground">{drama.activeEpisodes}</dd>
+          </div>
+          <div className="flex justify-between gap-2 sm:block">
+            <dt className="text-muted-foreground">Created</dt>
+            <dd className="text-foreground">{formatDate(drama.createdAt)}</dd>
+          </div>
+        </dl>
+      </section>
+
+      {hasPermission(actor, toPermissionKey('season', 'manage')) ? (
+        <section aria-labelledby="drama-seasons-heading">
+          <h2 id="drama-seasons-heading" className="sr-only">
+            Seasons
+          </h2>
+          <SeasonManager
+            dramaId={drama.id}
+            structureType={drama.structure_type}
+            seasons={seasons}
+          />
+        </section>
+      ) : null}
+
+      {canManageEpisodes ? (
+        <section aria-labelledby="drama-episodes-heading" className="rounded-lg border border-border bg-card p-4">
+          <h2 id="drama-episodes-heading" className="text-sm font-medium text-foreground">
+            Episodes
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Episodes are managed per season and will be available from each season's detail
+            view.
+          </p>
+        </section>
+      ) : null}
+    </div>
+  );
+}

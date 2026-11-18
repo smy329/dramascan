@@ -67,7 +67,14 @@ export default async function AdminDramasPage({
       key: 'title',
       header: 'Title',
       sortKey: 'title',
-      render: row => row.title,
+      render: row => (
+        <Link
+          href={`/admin/dramas/${row.id}`}
+          className="font-medium text-foreground underline underline-offset-4 hover:text-primary"
+        >
+          {row.title}
+        </Link>
+      ),
     },
     {
       key: 'structure',

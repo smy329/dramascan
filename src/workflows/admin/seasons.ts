@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, count, eq, isNull, ne } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { requirePermission, type ActorContext } from '@/modules/authorization';
@@ -25,10 +25,10 @@ export async function createSeason(
 
   const parsedDramaId = parseOrThrow(z.uuid(), dramaId);
 
-  // Parse season input - only allow title and position for now
+  // Parse season input - allow optional position
   const seasonSchema = z.strictObject({
     title: z.string().trim().min(1).max(100),
-    position: z.coerce.number().int().min(0).default(0),
+    position: z.coerce.number().int().min(0).optional(),
   });
 
   const parsed = parseOrThrow(seasonSchema, input);
@@ -48,27 +48,38 @@ export async function createSeason(
       return { ok: false as const, error: new NotFoundError('Drama not found.') };
     }
 
-    // Check for duplicate position within the drama
-    const [existing] = await tx
-      .select({ id: seasons.id })
-      .from(seasons)
-      .where(
-        and(
-          eq(seasons.drama_id, parsedDramaId),
-          eq(seasons.position, parsed.position),
-          isNull(seasons.deleted_at)
-        )
-      );
+    let targetPosition = parsed.position;
 
-    if (existing) {
-      return {
-        ok: false as const,
-        error: {
-          code: 'validation_error',
-          message: 'A season with this position already exists.',
-          fieldErrors: { position: ['A season with this position already exists.'] },
-        },
-      };
+    if (targetPosition === undefined) {
+      const [posRow] = await tx
+        .select({ maxPos: sql<number | null>`max(${seasons.position})` })
+        .from(seasons)
+        .where(and(eq(seasons.drama_id, parsedDramaId), isNull(seasons.deleted_at)));
+
+      targetPosition = posRow?.maxPos === null || posRow?.maxPos === undefined ? 0 : Number(posRow.maxPos) + 1;
+    } else {
+      // Check for duplicate explicit position within the drama
+      const [existing] = await tx
+        .select({ id: seasons.id })
+        .from(seasons)
+        .where(
+          and(
+            eq(seasons.drama_id, parsedDramaId),
+            eq(seasons.position, targetPosition),
+            isNull(seasons.deleted_at)
+          )
+        );
+
+      if (existing) {
+        return {
+          ok: false as const,
+          error: {
+            code: 'validation_error',
+            message: 'A season with this position already exists.',
+            fieldErrors: { position: ['A season with this position already exists.'] },
+          },
+        };
+      }
     }
 
     const [row] = await tx
@@ -76,7 +87,7 @@ export async function createSeason(
       .values({
         drama_id: parsedDramaId,
         title: parsed.title,
-        position: parsed.position,
+        position: targetPosition,
         created_at: new Date(),
         updated_at: new Date(),
       })
@@ -198,7 +209,7 @@ export async function updateSeason(
 export async function listSeasons(
   actor: ActorContext,
   dramaId: string
-): Promise<{ ok: true; seasons: ReturnType<typeof toSeason>[]; total: number }> {
+): Promise<{ ok: true; seasons: (ReturnType<typeof toSeason> & { episodeCount: number; publiclyAvailable: boolean })[]; total: number }> {
   requirePermission(actor, MANAGE_PERMISSION);
 
   const parsedDramaId = parseOrThrow(z.uuid(), dramaId);
@@ -210,10 +221,28 @@ export async function listSeasons(
 
   const total = Number(totalRow?.total ?? 0);
 
+  const episodesCount = db
+    .select({
+      season_id: episodes.season_id,
+      total: count().as('episode_total'),
+    })
+    .from(episodes)
+    .where(isNull(episodes.deleted_at))
+    .groupBy(episodes.season_id)
+    .as('episodesCount');
+
   const rows = await db
-    .select({ season: seasons, drama: dramas })
+    .select({
+      season: seasons,
+      drama: dramas,
+      episodeCount: sql<number>`coalesce(${episodesCount.total}, 0)`,
+    })
     .from(seasons)
     .innerJoin(dramas, eq(seasons.drama_id, dramas.id))
+    .leftJoin(
+      episodesCount,
+      eq(episodesCount.season_id, seasons.id)
+    )
     .where(and(eq(seasons.drama_id, parsedDramaId), isNull(seasons.deleted_at)))
     .orderBy(seasons.position);
 
@@ -221,6 +250,7 @@ export async function listSeasons(
     ok: true,
     seasons: rows.map(row => ({
       ...toSeason(row.season),
+      episodeCount: Number(row.episodeCount ?? 0),
       publiclyAvailable: evaluatePublicAvailability({
         contentType: 'season',
         publicationStatus: (row.season.publication_status ?? 'draft') as
@@ -295,6 +325,73 @@ export async function deleteSeason(
   });
 }
 
+/** Reorder seasons for a drama. */
+export async function reorderSeasons(
+  actor: ActorContext,
+  dramaId: string,
+  ids: string[]
+): Promise<{ ok: true; reordered: number } | { ok: false; error: unknown }> {
+  requirePermission(actor, MANAGE_PERMISSION);
+
+  const parsedDramaId = parseOrThrow(z.uuid(), dramaId);
+  const parsedIds = parseOrThrow(z.array(z.uuid()).min(1), ids);
+
+  if (new Set(parsedIds).size !== parsedIds.length) {
+    const message = 'The reorder request contains duplicate ids.';
+    return { ok: false, error: { code: 'validation_error', message, fieldErrors: { ids: [message] } } };
+  }
+
+  return db.transaction(async tx => {
+    // Lock parent drama
+    const [drama] = await tx
+      .select({ id: dramas.id })
+      .from(dramas)
+      .where(and(eq(dramas.id, parsedDramaId), isNull(dramas.deleted_at)))
+      .for('no key update')
+      .limit(1);
+
+    if (!drama) {
+      return { ok: false as const, error: new NotFoundError('Drama not found.') };
+    }
+
+    const rows = await tx
+      .select({ id: seasons.id })
+      .from(seasons)
+      .where(
+        and(
+          eq(seasons.drama_id, parsedDramaId),
+          inArray(seasons.id, parsedIds),
+          isNull(seasons.deleted_at)
+        )
+      )
+      .orderBy(asc(seasons.id))
+      .for('update');
+
+    if (rows.length !== parsedIds.length) {
+      const message = 'One or more seasons do not exist, belong to another drama, or are in the Trash.';
+      return { ok: false as const, error: { code: 'validation_error', message, fieldErrors: { ids: [message] } } };
+    }
+
+    // Step 1: Temporarily negate positions to clear unique constraint
+    for (const [index, id] of parsedIds.entries()) {
+      await tx
+        .update(seasons)
+        .set({ position: -(index + 1), updated_at: new Date() })
+        .where(eq(seasons.id, id));
+    }
+
+    // Step 2: Set final positive positions 0..n-1
+    for (const [index, id] of parsedIds.entries()) {
+      await tx
+        .update(seasons)
+        .set({ position: index, updated_at: new Date() })
+        .where(eq(seasons.id, id));
+    }
+
+    return { ok: true as const, reordered: parsedIds.length };
+  });
+}
+
 /** Function to restore a season from trash (optional future feature). */
 
 function toSeason(row: typeof seasons.$inferSelect) {
@@ -302,7 +399,7 @@ function toSeason(row: typeof seasons.$inferSelect) {
     id: row.id,
     dramaId: row.drama_id,
     title: row.title,
-    position: row.position,
+    position: row.position ?? 0,
     publicationStatus: row.publication_status,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),

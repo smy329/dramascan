@@ -13,7 +13,9 @@ import {
   drama_categories as dramaCategories,
   drama_platforms as dramaPlatforms,
   dramas,
+  episodes,
   platforms,
+  seasons,
 } from '@/modules/content/schema';
 import type { DramaTaxonomyOption } from '@/lib/contracts/drama-form';
 import { createDramaSchema, parseOrThrow, updateDramaSchema } from '@/modules/content/validation';
@@ -463,6 +465,87 @@ export async function deleteDrama(
   }
 
   return { ok: true };
+}
+
+/** Admin detail for a single drama. */
+export type AdminDramaDetail = {
+  id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  status: string | null;
+  structure_type: string;
+  visibility: string | null;
+  poster: string | null;
+  banner: string | null;
+  activeSeasons: number;
+  activeEpisodes: number;
+  createdAt: string;
+};
+
+/**
+ * Load one drama for the admin detail page, including its category/platform
+ * names and active content counts.
+ */
+export async function getDramaForAdmin(
+  actor: ActorContext,
+  dramaId: string
+): Promise<{ drama: AdminDramaDetail; categoryNames: string[]; platformNames: string[] } | null> {
+  requirePermission(actor, MANAGE_PERMISSION);
+
+  const parsedId = parseOrThrow(z.uuid(), dramaId);
+
+  const [dramaRow] = await db
+    .select()
+    .from(dramas)
+    .where(and(eq(dramas.id, parsedId), isNull(dramas.deleted_at)))
+    .limit(1);
+
+  if (!dramaRow) {
+    return null;
+  }
+
+  const [seasonCount, episodeCount, categoryRows, platformRows] = await Promise.all([
+    db
+      .select({ total: count() })
+      .from(seasons)
+      .where(and(eq(seasons.drama_id, parsedId), isNull(seasons.deleted_at))),
+    db
+      .select({ total: count() })
+      .from(episodes)
+      .where(and(eq(episodes.drama_id, parsedId), isNull(episodes.deleted_at))),
+    db
+      .select({ name: categories.name })
+      .from(dramaCategories)
+      .innerJoin(categories, eq(dramaCategories.category_id, categories.id))
+      .where(and(eq(dramaCategories.drama_id, parsedId), isNull(categories.deleted_at)))
+      .orderBy(categories.name),
+    db
+      .select({ name: platforms.name })
+      .from(dramaPlatforms)
+      .innerJoin(platforms, eq(dramaPlatforms.platform_id, platforms.id))
+      .where(and(eq(dramaPlatforms.drama_id, parsedId), isNull(platforms.deleted_at)))
+      .orderBy(platforms.name),
+  ]);
+
+  return {
+    drama: {
+      id: dramaRow.id,
+      title: dramaRow.title,
+      slug: dramaRow.slug,
+      description: dramaRow.description,
+      status: dramaRow.status,
+      structure_type: dramaRow.structure_type,
+      visibility: dramaRow.visibility,
+      poster: dramaRow.poster,
+      banner: dramaRow.banner,
+      activeSeasons: Number(seasonCount[0]?.total ?? 0),
+      activeEpisodes: Number(episodeCount[0]?.total ?? 0),
+      createdAt: dramaRow.created_at.toISOString(),
+    },
+    categoryNames: categoryRows.map(row => row.name),
+    platformNames: platformRows.map(row => row.name),
+  };
 }
 
 function toDrama(row: typeof dramas.$inferSelect) {
