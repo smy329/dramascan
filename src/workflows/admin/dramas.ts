@@ -194,11 +194,14 @@ export async function updateDrama(
       return { ok: false as const, error: new NotFoundError('Drama not found.') };
     }
 
+    // The admin form never sends a slug; an omitted value keeps the stored one.
+    const nextSlug = parsed.slug ?? oldDrama.slug;
+
     // Check for duplicate slug (excluding the current drama)
     const [conflict] = await tx
       .select({ id: dramas.id })
       .from(dramas)
-      .where(and(eq(dramas.slug, parsed.slug), isNull(dramas.deleted_at), ne(dramas.id, parsedId)));
+      .where(and(eq(dramas.slug, nextSlug), isNull(dramas.deleted_at), ne(dramas.id, parsedId)));
 
     if (conflict) {
       return {
@@ -242,12 +245,12 @@ export async function updateDrama(
       return { ok: false as const, error: platformIds.error };
     }
 
-    if (oldDrama.slug !== parsed.slug) {
+    if (oldDrama.slug !== nextSlug) {
       await tx.insert(contentSlugHistory).values({
         content_type: 'drama',
         content_id: parsedId,
         old_slug: oldDrama.slug,
-        new_slug: parsed.slug,
+        new_slug: nextSlug,
       });
     }
 
@@ -255,8 +258,8 @@ export async function updateDrama(
       .update(dramas)
       .set({
         title: parsed.title,
-        slug: parsed.slug,
-        description: parsed.description,
+        slug: nextSlug,
+        description: parsed.description ?? null,
         status: parsed.status,
         poster: parsed.poster,
         banner: parsed.banner,
@@ -448,6 +451,11 @@ export async function listDramas(
 /** Soft-delete a drama (mark deleted_at). Moving a drama to Trash preserves
  * its hierarchy and relationships for restoration. Shows affected child
  * records (seasons, episodes) before the operation.
+ *
+ * The cascade is transactional and uses one timestamp for the drama and every
+ * child it trashes. That shared timestamp is what makes the restore exact:
+ * restoring the drama restores precisely the children that were trashed with
+ * it, and leaves children that were already in the Trash untouched.
  */
 export async function deleteDrama(
   actor: ActorContext,
@@ -460,46 +468,51 @@ export async function deleteDrama(
 
   const parsedId = parseOrThrow(z.uuid(), dramaId);
 
-  // Count active seasons and episodes that will be affected before the delete.
-  const [seasonCountRow] = await db
-    .select({ total: count() })
-    .from(seasons)
-    .where(and(eq(seasons.drama_id, parsedId), isNull(seasons.deleted_at)));
+  return db.transaction(async tx => {
+    const [row] = await tx
+      .select({ id: dramas.id })
+      .from(dramas)
+      .where(and(eq(dramas.id, parsedId), isNull(dramas.deleted_at)))
+      .for('no key update')
+      .limit(1);
 
-  const [episodeCountRow] = await db
-    .select({ total: count() })
-    .from(episodes)
-    .where(and(eq(episodes.drama_id, parsedId), isNull(episodes.deleted_at)));
+    if (!row) {
+      return {
+        ok: false as const,
+        error: new NotFoundError('Drama not found.'),
+        affectedSeasons: 0,
+        affectedEpisodes: 0,
+      };
+    }
 
-  const affectedSeasons = Number(seasonCountRow?.total ?? 0);
-  const affectedEpisodes = Number(episodeCountRow?.total ?? 0);
+    const now = new Date();
 
-  // Report affected hierarchy before committing the delete, so the UI can
-  // show the administrator what will be moved into Trash.
-  if (affectedSeasons > 0 || affectedEpisodes > 0) {
-    // Do not return early; continue with the delete and include counts below.
-  }
+    // Trash and count in one statement: the reported count is exactly the set
+    // that changed, and rows that were already in the trash keep their own
+    // original deletion time.
+    const trashedEpisodes = await tx
+      .update(episodes)
+      .set({ deleted_at: now, updated_at: now })
+      .where(and(eq(episodes.drama_id, parsedId), isNull(episodes.deleted_at)))
+      .returning({ id: episodes.id });
 
-  const [row] = await db
-    .update(dramas)
-    .set({ deleted_at: new Date() })
-    .where(and(eq(dramas.id, parsedId), isNull(dramas.deleted_at)))
-    .returning();
+    const trashedSeasons = await tx
+      .update(seasons)
+      .set({ deleted_at: now, updated_at: now })
+      .where(and(eq(seasons.drama_id, parsedId), isNull(seasons.deleted_at)))
+      .returning({ id: seasons.id });
 
-  if (!row) {
+    await tx
+      .update(dramas)
+      .set({ deleted_at: now, updated_at: now })
+      .where(eq(dramas.id, parsedId));
+
     return {
-      ok: false as const,
-      error: new NotFoundError('Drama not found.'),
-      affectedSeasons: 0,
-      affectedEpisodes: 0,
+      ok: true as const,
+      affectedSeasons: trashedSeasons.length,
+      affectedEpisodes: trashedEpisodes.length,
     };
-  }
-
-  return {
-    ok: true as const,
-    affectedSeasons,
-    affectedEpisodes,
-  };
+  });
 }
 
 /** Admin detail for a single drama. */
@@ -513,6 +526,8 @@ export type AdminDramaDetail = {
   visibility: string | null;
   poster: string | null;
   banner: string | null;
+  categoryIds: string[];
+  platformIds: string[];
   activeSeasons: number;
   activeEpisodes: number;
   createdAt: string;
@@ -550,13 +565,13 @@ export async function getDramaForAdmin(
       .from(episodes)
       .where(and(eq(episodes.drama_id, parsedId), isNull(episodes.deleted_at))),
     db
-      .select({ name: categories.name })
+      .select({ id: categories.id, name: categories.name })
       .from(dramaCategories)
       .innerJoin(categories, eq(dramaCategories.category_id, categories.id))
       .where(and(eq(dramaCategories.drama_id, parsedId), isNull(categories.deleted_at)))
       .orderBy(categories.name),
     db
-      .select({ name: platforms.name })
+      .select({ id: platforms.id, name: platforms.name })
       .from(dramaPlatforms)
       .innerJoin(platforms, eq(dramaPlatforms.platform_id, platforms.id))
       .where(and(eq(dramaPlatforms.drama_id, parsedId), isNull(platforms.deleted_at)))
@@ -574,6 +589,8 @@ export async function getDramaForAdmin(
       visibility: dramaRow.visibility,
       poster: dramaRow.poster,
       banner: dramaRow.banner,
+      categoryIds: categoryRows.map(row => row.id),
+      platformIds: platformRows.map(row => row.id),
       activeSeasons: Number(seasonCount[0]?.total ?? 0),
       activeEpisodes: Number(episodeCount[0]?.total ?? 0),
       createdAt: dramaRow.created_at.toISOString(),

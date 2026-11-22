@@ -10,6 +10,7 @@ import { AdminForm } from '@/components/admin/forms/admin-form';
 import { AdminFormField } from '@/components/admin/forms/admin-form-field';
 import { AdminFormSelectField } from '@/components/admin/forms/admin-form-select-field';
 import { ConfirmationDialog } from '@/components/dialogs/confirmation-dialog';
+import { VideoSourcePreview } from '@/components/admin/media/video-source-preview';
 import { Button } from '@/components/ui/button';
 import type { ActionError } from '@/lib/contracts/common';
 import type { TableQueryState } from '@/lib/contracts/table';
@@ -147,6 +148,7 @@ export function EpisodeManager({
           label="Video Source (HTTPS MP4)"
           hint="Direct absolute HTTPS URL ending in .mp4"
         />
+        <VideoSourcePreview />
         <Button type="button" variant="ghost" onClick={() => setEditingId(null)}>
           Cancel
         </Button>
@@ -279,6 +281,7 @@ export function EpisodeManager({
             label="Video Source (HTTPS MP4)"
             hint="Direct absolute HTTPS URL ending in .mp4"
           />
+          <VideoSourcePreview />
         </AdminForm>
       </section>
 

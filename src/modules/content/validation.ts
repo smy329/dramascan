@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { ValidationError } from '@/platform/errors';
+import { imageReferenceSchema } from '@/lib/contracts/media';
 
 /** Slug pattern: lowercase alphanumeric plus hyphens, no leading/trailing hyphens. */
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -88,9 +89,10 @@ export const createDramaSchema = z.strictObject({
   status: dramaStatusSchema.default('ongoing'),
   structure_type: z.enum(['flat', 'season_based']).default('season_based'),
   visibility: dramaVisibilitySchema.default('coming_soon'),
-  // `null` clears an image; omitted fields are also stored as null.
-  poster: z.string().url().nullable().default(null),
-  banner: z.string().url().nullable().default(null),
+  // `null` clears an image; omitted fields are also stored as null. Accepted
+  // references are managed `/media` paths or absolute HTTP(S) URLs.
+  poster: imageReferenceSchema.nullable().default(null),
+  banner: imageReferenceSchema.nullable().default(null),
   // Associations are replaced wholesale on update. Optional so callers that
   // only edit metadata do not have to resend them.
   categories: z.array(z.uuid()).max(100).optional(),
@@ -116,6 +118,9 @@ export function parseCreateDramaInput(input: unknown): CreateDramaInput {
 export const updateDramaSchema = createDramaSchema.omit({ structure_type: true }).extend({
   structure_type: z.enum(['flat', 'season_based']).optional(),
   visibility: dramaVisibilitySchema.optional(),
+  // The admin edit form has no slug input: the title stays the source of the
+  // canonical slug. API callers may still rename a drama explicitly.
+  slug: slugSchema.optional(),
 });
 
 export type UpdateDramaInput = z.infer<typeof updateDramaSchema>;
@@ -193,8 +198,8 @@ export const createMovieSchema = z.strictObject({
   title: z.string().trim().min(1).max(200),
   slug: slugSchema,
   description: z.string().max(20_000).optional(),
-  poster: z.string().url().nullable().default(null),
-  banner: z.string().url().nullable().default(null),
+  poster: imageReferenceSchema.nullable().default(null),
+  banner: imageReferenceSchema.nullable().default(null),
   video_source: movieVideoSourceSchema.nullable().default(null),
   categories: z.array(z.uuid()).max(100).default([]),
   platforms: z.array(z.uuid()).max(100).default([]),

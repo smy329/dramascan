@@ -69,20 +69,21 @@ export async function countContentReferences(
   tx: DbOrTx,
   dramaId: string
 ): Promise<AnalyticsContentReferenceCounts> {
-  const [[viewRow], [playbackRow], [aggregateRow]] = await Promise.all([
-    tx
-      .select({ total: count() })
-      .from(content_view_events)
-      .where(matchesTarget(content_view_events, 'drama', dramaId)),
-    tx
-      .select({ total: count() })
-      .from(playback_analytics_events)
-      .where(matchesTarget(playback_analytics_events, 'drama', dramaId)),
-    tx
-      .select({ total: count() })
-      .from(analytics_daily_aggregates)
-      .where(matchesTarget(analytics_daily_aggregates, 'drama', dramaId)),
-  ]);
+  // The queries run one after the other: a transaction uses a single
+  // PostgreSQL connection, and the driver does not accept two queries on the
+  // same connection at the same time.
+  const [viewRow] = await tx
+    .select({ total: count() })
+    .from(content_view_events)
+    .where(matchesTarget(content_view_events, 'drama', dramaId));
+  const [playbackRow] = await tx
+    .select({ total: count() })
+    .from(playback_analytics_events)
+    .where(matchesTarget(playback_analytics_events, 'drama', dramaId));
+  const [aggregateRow] = await tx
+    .select({ total: count() })
+    .from(analytics_daily_aggregates)
+    .where(matchesTarget(analytics_daily_aggregates, 'drama', dramaId));
 
   return {
     contentViewEvents: Number(viewRow?.total ?? 0),
@@ -242,4 +243,74 @@ function maxOf(values: readonly (number | null)[]): number | null {
   const present = values.filter((value): value is number => value !== null);
 
   return present.length > 0 ? Math.max(...present) : null;
+}
+
+/**
+ * Remove every analytics row that points at content that is being permanently
+ * deleted.
+ *
+ * Analytics rows describe events on a specific content item. Once the item is
+ * gone the events no longer describe anything, so they are removed instead of
+ * being kept as references to a row that no longer exists. Site-wide
+ * aggregates, which name no content item, are never touched.
+ */
+export async function purgeContentReferences(
+  tx: Tx,
+  type: 'drama' | 'movie',
+  id: string
+): Promise<AnalyticsContentReferenceCounts> {
+  const viewRows = await tx
+    .delete(content_view_events)
+    .where(matchesTarget(content_view_events, type, id))
+    .returning({ id: content_view_events.id });
+
+  const playbackRows = await tx
+    .delete(playback_analytics_events)
+    .where(matchesTarget(playback_analytics_events, type, id))
+    .returning({ id: playback_analytics_events.id });
+
+  const aggregateRows = await tx
+    .delete(analytics_daily_aggregates)
+    .where(matchesTarget(analytics_daily_aggregates, type, id))
+    .returning({ id: analytics_daily_aggregates.id });
+
+  return {
+    contentViewEvents: viewRows.length,
+    playbackEvents: playbackRows.length,
+    dailyAggregates: aggregateRows.length,
+  };
+}
+
+/**
+ * Count the analytics rows that point at one content item.
+ *
+ * Used by the Trash surface to show the consequences of a permanent deletion
+ * before the administrator confirms it.
+ */
+export async function countPurgeImpact(
+  tx: DbOrTx,
+  type: 'drama' | 'movie',
+  id: string
+): Promise<AnalyticsContentReferenceCounts> {
+  // The queries run one after the other: a transaction uses a single
+  // PostgreSQL connection, and the driver does not accept two queries on the
+  // same connection at the same time.
+  const [viewRow] = await tx
+    .select({ total: count() })
+    .from(content_view_events)
+    .where(matchesTarget(content_view_events, type, id));
+  const [playbackRow] = await tx
+    .select({ total: count() })
+    .from(playback_analytics_events)
+    .where(matchesTarget(playback_analytics_events, type, id));
+  const [aggregateRow] = await tx
+    .select({ total: count() })
+    .from(analytics_daily_aggregates)
+    .where(matchesTarget(analytics_daily_aggregates, type, id));
+
+  return {
+    contentViewEvents: Number(viewRow?.total ?? 0),
+    playbackEvents: Number(playbackRow?.total ?? 0),
+    dailyAggregates: Number(aggregateRow?.total ?? 0),
+  };
 }

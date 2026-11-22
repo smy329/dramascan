@@ -50,6 +50,31 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
+/**
+ * Remove the fixture users an interrupted run left behind.
+ *
+ * The integration and end-to-end suites share one isolated test database. A
+ * crashed run leaves its fixture users behind, and an active Super Admin left
+ * behind silently breaks the "last active Super Admin" guard that several
+ * tests assert: the guard is global by design, so a foreign Super Admin makes
+ * a legitimate deactivation look allowed.
+ *
+ * The cleanup is scoped to the email prefixes the suites use, so it can only
+ * ever remove a row the test suites created. It runs before any test, against
+ * the dedicated `_test` database that was verified above.
+ */
+async function removeLeftoverFixtureUsers(testDatabaseUrl: string): Promise<void> {
+  const client = new Pool({ connectionString: testDatabaseUrl });
+
+  try {
+    await client.query(
+      `DELETE FROM users WHERE email LIKE 'it-%' OR email LIKE 'e2e-%'`
+    );
+  } finally {
+    await client.end();
+  }
+}
+
 async function globalSetup() {
   const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 
@@ -90,6 +115,9 @@ async function globalSetup() {
   } finally {
     await pool.end();
   }
+
+  await removeLeftoverFixtureUsers(testDatabaseUrl);
+  console.log('Removed leftover test fixture users.');
 
   // The test database is built from the same ordered SQL migrations that
   // production applies, so a migration defect fails integration tests instead

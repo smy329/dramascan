@@ -90,6 +90,7 @@ describe('DramaCreateForm', () => {
       description: '',
       status: 'completed',
       structure_type: 'flat',
+      visibility: 'coming_soon',
       poster: '',
       banner: '',
       categories: [CATEGORY_ID],

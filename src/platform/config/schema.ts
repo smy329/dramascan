@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import path from 'node:path';
 
 export type Environment = 'development' | 'test' | 'production';
 
@@ -16,7 +17,21 @@ export type ServerConfig = Readonly<{
   logLevel?: string | null;
   adminSessionInactivityTimeout?: number;
   adminSessionMaxLifetime?: number;
+  /** Absolute directory that stores original poster and banner files. */
+  imageStorageDir: string;
+  /** Global rule for published dramas that have no playable episode. */
+  emptyDramaVisibility: EmptyDramaVisibility;
+  /** Default Trash retention period in days. */
+  trashRetentionDays: number;
 }>;
+
+/** Global empty-drama visibility modes (requirements §4.7). */
+export const EMPTY_DRAMA_VISIBILITY_MODES = ['coming_soon', 'hidden'] as const;
+
+export type EmptyDramaVisibility = (typeof EMPTY_DRAMA_VISIBILITY_MODES)[number];
+
+/** Default Trash retention period in days (requirements §4.8). */
+export const DEFAULT_TRASH_RETENTION_DAYS = 30;
 
 export class ConfigurationError extends Error {
   readonly issues: readonly string[];
@@ -85,6 +100,14 @@ const rawServerConfigSchema = z
     LOG_LEVEL: z.string().optional(),
     adminSessionInactivityTimeout: z.string().optional(),
     adminSessionMaxLifetime: z.string().optional(),
+    IMAGE_STORAGE_DIR: z.string().min(1).optional(),
+    EMPTY_DRAMA_VISIBILITY: z.enum(EMPTY_DRAMA_VISIBILITY_MODES).optional(),
+    TRASH_RETENTION_DAYS: z.coerce
+      .number()
+      .int('TRASH_RETENTION_DAYS must be a whole number.')
+      .min(1, 'TRASH_RETENTION_DAYS must be at least 1.')
+      .max(365, 'TRASH_RETENTION_DAYS must be at most 365.')
+      .optional(),
   })
   .superRefine((value, ctx) => {
     const isProduction = value.NODE_ENV === 'production';
@@ -122,6 +145,7 @@ const rawServerConfigSchema = z
 
     validateTrustedOrigins(value.TRUSTED_ORIGINS, isProduction, ctx);
     validateTestDatabase(value.TEST_DATABASE_URL, value.DATABASE_URL, ctx);
+    validateImageStorageDir(value.IMAGE_STORAGE_DIR, isProduction, ctx);
   })
   .transform(value => toServerConfig(value));
 
@@ -153,6 +177,9 @@ type RawEnvironment = Readonly<{
   SUPER_ADMIN_EMAIL?: string | undefined;
   adminSessionInactivityTimeout?: string;
   adminSessionMaxLifetime?: string;
+  IMAGE_STORAGE_DIR?: string | undefined;
+  EMPTY_DRAMA_VISIBILITY?: EmptyDramaVisibility | undefined;
+  TRASH_RETENTION_DAYS?: number | undefined;
 }>;
 
 function toServerConfig(value: RawEnvironment): ServerConfig {
@@ -177,7 +204,58 @@ function toServerConfig(value: RawEnvironment): ServerConfig {
     adminSessionMaxLifetime: value.adminSessionMaxLifetime
       ? Math.max(1, Number(value.adminSessionMaxLifetime))
       : undefined,
+    imageStorageDir: resolveImageStorageDir(value.IMAGE_STORAGE_DIR, { production: isProduction }),
+    emptyDramaVisibility: value.EMPTY_DRAMA_VISIBILITY ?? 'coming_soon',
+    trashRetentionDays: value.TRASH_RETENTION_DAYS ?? DEFAULT_TRASH_RETENTION_DAYS,
   });
+}
+
+/**
+ * The persistent image directory used by a production Linux deployment.
+ *
+ * `/var/lib/dramascan` is the systemd state directory of the `dramascan`
+ * service (`StateDirectory=dramascan`). It survives a deployment that
+ * replaces the release directory, which is where the uploaded artwork has to
+ * live.
+ */
+export const DEFAULT_IMAGE_STORAGE_DIR = '/var/lib/dramascan/images';
+
+/** The development image directory, kept beside the project. */
+export const DEVELOPMENT_IMAGE_STORAGE_DIR = path.join('storage', 'images');
+
+/**
+ * Resolve the image storage directory to an absolute path.
+ *
+ * A configured value always wins. Without one, the directory depends on the
+ * environment: a production Linux deployment uses the systemd state
+ * directory, because the release directory is replaced on every update and
+ * would take the uploaded artwork with it. A development machine keeps the
+ * files beside the project.
+ */
+export function resolveImageStorageDir(
+  configured?: string | null,
+  options: { platform?: NodeJS.Platform; production?: boolean } = {}
+): string {
+  const value = configured?.trim();
+  const platform = options.platform ?? process.platform;
+  const production = options.production ?? false;
+
+  if (value && value.length > 0) {
+    // The directory is a runtime value on purpose: the deployment configures
+    // it through `IMAGE_STORAGE_DIR`, and the application writes to it at
+    // runtime rather than reading it from the bundle. The trace hint keeps
+    // Turbopack from copying the whole project into the build output for it.
+    return path.resolve(/*turbopackIgnore: true*/ process.cwd(), value);
+  }
+
+  if (production && platform === 'linux') {
+    return DEFAULT_IMAGE_STORAGE_DIR;
+  }
+
+  return path.resolve(
+    /*turbopackIgnore: true*/ process.cwd(),
+    DEVELOPMENT_IMAGE_STORAGE_DIR
+  );
 }
 
 function databaseNameFromConnectionString(url: URL): string {
@@ -302,6 +380,45 @@ function validateTrustedOrigins(
     }
 
     validateOrigin(origin, 'TRUSTED_ORIGINS', isProduction, ctx);
+  }
+}
+
+/**
+ * Keep uploaded artwork out of the source tree and the build output. A release
+ * that replaces either directory must never delete user-supplied images.
+ */
+function validateImageStorageDir(
+  value: string | undefined,
+  isProduction: boolean,
+  ctx: z.RefinementCtx
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  const resolved = resolveImageStorageDir(value);
+  const root = process.cwd();
+  const forbidden = [path.join(root, 'src'), path.join(root, '.next')];
+
+  if (forbidden.some(directory => resolved === directory || resolved.startsWith(`${directory}${path.sep}`))) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['IMAGE_STORAGE_DIR'],
+      message: 'IMAGE_STORAGE_DIR must not be inside the application source or build output.',
+    });
+    return;
+  }
+
+  // A production deployment replaces the release directory, so artwork stored
+  // inside it is deleted with the previous release. The rule is rejected
+  // instead of accepted silently.
+  if (isProduction && (resolved === root || resolved.startsWith(`${root}${path.sep}`))) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['IMAGE_STORAGE_DIR'],
+      message:
+        'IMAGE_STORAGE_DIR must point outside the application directory in production, for example /var/lib/dramascan/images.',
+    });
   }
 }
 

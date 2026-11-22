@@ -91,24 +91,25 @@ export async function countContentReferences(
   type: ContentReferenceType,
   id: string
 ): Promise<UserContentReferenceCounts> {
-  const [[bookmarkRow], [progressRow], [watchedRow], [historyRow]] = await Promise.all([
-    tx
-      .select({ total: count() })
-      .from(bookmarks)
-      .where(matchesTarget(bookmarks, type, id)),
-    tx
-      .select({ total: count() })
-      .from(playback_progress)
-      .where(matchesTarget(playback_progress, type, id)),
-    tx
-      .select({ total: count() })
-      .from(watched_state)
-      .where(matchesTarget(watched_state, type, id)),
-    tx
-      .select({ total: count() })
-      .from(watch_history)
-      .where(matchesTarget(watch_history, type, id)),
-  ]);
+  // The queries run one after the other: a transaction uses a single
+  // PostgreSQL connection, and the driver does not accept two queries on the
+  // same connection at the same time.
+  const [bookmarkRow] = await tx
+    .select({ total: count() })
+    .from(bookmarks)
+    .where(matchesTarget(bookmarks, type, id));
+  const [progressRow] = await tx
+    .select({ total: count() })
+    .from(playback_progress)
+    .where(matchesTarget(playback_progress, type, id));
+  const [watchedRow] = await tx
+    .select({ total: count() })
+    .from(watched_state)
+    .where(matchesTarget(watched_state, type, id));
+  const [historyRow] = await tx
+    .select({ total: count() })
+    .from(watch_history)
+    .where(matchesTarget(watch_history, type, id));
 
   return {
     bookmarks: Number(bookmarkRow?.total ?? 0),
@@ -395,4 +396,195 @@ function isLater(
   }
 
   return candidate.id < current.id;
+}
+
+/**
+ * Remove every user row that points at content that is being permanently
+ * deleted.
+ *
+ * Bookmarks, playback progress, watched state, and watch history are personal
+ * records of the deleted content: once the content is gone they have nothing
+ * left to describe, so they are removed rather than kept as dangling
+ * references.
+ *
+ * `episodeIds` are the episodes that are deleted with the content. Episode
+ * rows carry their own user references, and those rows are removed as well.
+ */
+export async function purgeContentReferences(
+  tx: Tx,
+  type: ContentReferenceType,
+  id: string,
+  episodeIds: readonly string[] = []
+): Promise<UserContentReferenceCounts> {
+  const target = matchesTarget(bookmarks, type, id);
+  const progressTarget = matchesTarget(playback_progress, type, id);
+  const watchedTarget = matchesTarget(watched_state, type, id);
+  const historyTarget = matchesTarget(watch_history, type, id);
+
+  const bookmarkRows = await tx
+    .delete(bookmarks)
+    .where(target)
+    .returning({ id: bookmarks.id });
+
+  const progressRows = await tx
+    .delete(playback_progress)
+    .where(
+      episodeIds.length > 0
+        ? or(progressTarget, inArray(playback_progress.episode_id, [...episodeIds]))!
+        : progressTarget
+    )
+    .returning({ id: playback_progress.id });
+
+  const watchedRows = await tx
+    .delete(watched_state)
+    .where(
+      episodeIds.length > 0
+        ? or(watchedTarget, inArray(watched_state.episode_id, [...episodeIds]))!
+        : watchedTarget
+    )
+    .returning({ id: watched_state.id });
+
+  const historyRows = await tx
+    .delete(watch_history)
+    .where(
+      episodeIds.length > 0
+        ? or(historyTarget, inArray(watch_history.episode_id, [...episodeIds]))!
+        : historyTarget
+    )
+    .returning({ id: watch_history.id });
+
+  return {
+    bookmarks: bookmarkRows.length,
+    playbackProgress: progressRows.length,
+    watchedState: watchedRows.length,
+    watchHistory: historyRows.length,
+  };
+}
+
+/**
+ * Count the user rows that point at content or at a set of episodes.
+ *
+ * Used by the Trash surface to show the consequences of a permanent deletion
+ * before the administrator confirms it.
+ */
+export async function countPurgeImpact(
+  tx: DbOrTx,
+  type: ContentReferenceType,
+  id: string,
+  episodeIds: readonly string[] = []
+): Promise<UserContentReferenceCounts> {
+  const target = matchesTarget(bookmarks, type, id);
+  const progressTarget = matchesTarget(playback_progress, type, id);
+  const watchedTarget = matchesTarget(watched_state, type, id);
+  const historyTarget = matchesTarget(watch_history, type, id);
+
+  // The queries run one after the other: a transaction uses a single
+  // PostgreSQL connection, and the driver does not accept two queries on the
+  // same connection at the same time.
+  const [bookmarkRow] = await tx.select({ total: count() }).from(bookmarks).where(target);
+  const [progressRow] = await tx
+    .select({ total: count() })
+    .from(playback_progress)
+    .where(
+      episodeIds.length > 0
+        ? or(progressTarget, inArray(playback_progress.episode_id, [...episodeIds]))!
+        : progressTarget
+    );
+  const [watchedRow] = await tx
+    .select({ total: count() })
+    .from(watched_state)
+    .where(
+      episodeIds.length > 0
+        ? or(watchedTarget, inArray(watched_state.episode_id, [...episodeIds]))!
+        : watchedTarget
+    );
+  const [historyRow] = await tx
+    .select({ total: count() })
+    .from(watch_history)
+    .where(
+      episodeIds.length > 0
+        ? or(historyTarget, inArray(watch_history.episode_id, [...episodeIds]))!
+        : historyTarget
+    );
+
+  return {
+    bookmarks: Number(bookmarkRow?.total ?? 0),
+    playbackProgress: Number(progressRow?.total ?? 0),
+    watchedState: Number(watchedRow?.total ?? 0),
+    watchHistory: Number(historyRow?.total ?? 0),
+  };
+}
+
+/**
+ * Remove the user rows that point at a set of episodes.
+ *
+ * A season or an episode has no user rows of its own: the personal records
+ * belong to the episodes. These rows are removed with the episodes.
+ */
+export async function purgeEpisodeReferences(
+  tx: Tx,
+  episodeIds: readonly string[]
+): Promise<UserContentReferenceCounts> {
+  if (episodeIds.length === 0) {
+    return { bookmarks: 0, playbackProgress: 0, watchedState: 0, watchHistory: 0 };
+  }
+
+  const ids = [...episodeIds];
+
+  const progressRows = await tx
+    .delete(playback_progress)
+    .where(inArray(playback_progress.episode_id, ids))
+    .returning({ id: playback_progress.id });
+
+  const watchedRows = await tx
+    .delete(watched_state)
+    .where(inArray(watched_state.episode_id, ids))
+    .returning({ id: watched_state.id });
+
+  const historyRows = await tx
+    .delete(watch_history)
+    .where(inArray(watch_history.episode_id, ids))
+    .returning({ id: watch_history.id });
+
+  return {
+    bookmarks: 0,
+    playbackProgress: progressRows.length,
+    watchedState: watchedRows.length,
+    watchHistory: historyRows.length,
+  };
+}
+
+/** Count the user rows that point at a set of episodes. */
+export async function countEpisodeImpact(
+  tx: DbOrTx,
+  episodeIds: readonly string[]
+): Promise<UserContentReferenceCounts> {
+  if (episodeIds.length === 0) {
+    return { bookmarks: 0, playbackProgress: 0, watchedState: 0, watchHistory: 0 };
+  }
+
+  const ids = [...episodeIds];
+
+  // The queries run one after the other: a transaction uses a single
+  // PostgreSQL connection, and the driver does not accept two queries on the
+  // same connection at the same time.
+  const [progressRow] = await tx
+    .select({ total: count() })
+    .from(playback_progress)
+    .where(inArray(playback_progress.episode_id, ids));
+  const [watchedRow] = await tx
+    .select({ total: count() })
+    .from(watched_state)
+    .where(inArray(watched_state.episode_id, ids));
+  const [historyRow] = await tx
+    .select({ total: count() })
+    .from(watch_history)
+    .where(inArray(watch_history.episode_id, ids));
+
+  return {
+    bookmarks: 0,
+    playbackProgress: Number(progressRow?.total ?? 0),
+    watchedState: Number(watchedRow?.total ?? 0),
+    watchHistory: Number(historyRow?.total ?? 0),
+  };
 }

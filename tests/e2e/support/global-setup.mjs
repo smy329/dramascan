@@ -8,7 +8,12 @@
 //      known to be the test database), unless the operator explicitly opts in
 //      to reusing a server they have already verified.
 //   3. The dedicated test database is reachable and actually resolves to the
-//      expected `_test` database. No migration, seed, or write is performed.
+//      expected `_test` database.
+//
+// Once the target is proven to be the dedicated `_test` database, the setup
+// sweeps the fixture rows an interrupted earlier run left behind. The sweep is
+// limited to rows carrying the `e2e-` fixture prefix, so it can only ever
+// remove rows this suite created. No migration or seed is performed.
 
 import { createRequire } from 'node:module';
 import pg from 'pg';
@@ -25,6 +30,7 @@ const {
 } = require('./database-target.mjs');
 const { loadLocalEnv } = require('./load-local-env.mjs');
 const { readRunMarker } = require('./run-marker.mjs');
+const { removeStaleFixtures } = require('./stale-fixtures.mjs');
 
 loadLocalEnv();
 
@@ -47,6 +53,14 @@ export default async function globalSetup() {
   await verifyServerIdentity();
   verifyServerIsManagedByThisRun(target);
   await verifyTestDatabaseConnection(target);
+
+  const removed = await removeStaleFixtures(target);
+
+  console.log(
+    removed > 0
+      ? `[e2e] Removed ${removed} stale fixture row(s) from the test database.`
+      : '[e2e] No stale fixture rows found in the test database.'
+  );
 }
 
 async function verifyServerIdentity() {

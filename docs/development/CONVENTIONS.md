@@ -159,6 +159,9 @@ Implemented in `src/platform/config/` (Prompt 009):
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Production                                                          | Server-only Google OAuth credentials.                                       |
 | `SUPER_ADMIN_EMAIL`                        | Production                                                          | Email allowed to bootstrap the first Super Admin from a Google sign-in.     |
 | `SUPER_ADMIN_PASSWORD`                     | No (seed only)                                                      | Read only by `npm run db:seed:super-admin`; stored as a hash, min 16 chars.  |
+| `EMPTY_DRAMA_VISIBILITY`                    | No; defaults to `coming_soon`                                        | How a drama without a playable episode appears publicly (Prompt 070).       |
+| `TRASH_RETENTION_DAYS`                      | No; defaults to `30`                                                 | Days trashed content is kept before the expiry command removes it (Prompt 074). |
+| `IMAGE_STORAGE_DIR`                         | No; defaults to `/var/lib/dramascan/images` in production on Linux and to `<cwd>/storage/images` elsewhere | Directory holding the original poster and banner uploads (Prompt 075). A production value inside the application directory is rejected. |
 
 - `src/platform/config/index.ts` imports `server-only` and exports the validated `serverConfig`.
 - Development and test may omit production-only values; any value that is present is still validated.
@@ -295,6 +298,24 @@ No ignored type errors. `@ts-ignore` is forbidden. `@ts-expect-error` requires a
 - No module writes another module's tables.
 - Cross-module reads use the owner's public query API or an approved read model.
 - Cross-module foreign keys are declared in SQL migrations, not by importing another module's `schema.ts`.
+
+### 5.6 Transactions
+
+- A transaction is bound to **one** PostgreSQL connection. It may run **one
+  query at a time**: never start two queries on the same transaction
+  concurrently. `Promise.all` over two reads inside a transaction callback is
+  forbidden, because the driver deprecates it
+  (`Calling client.query() when the client is already executing a query`) and
+  removes it in pg 9. Await the queries one after the other instead.
+- A query that is genuinely independent of the transaction belongs on the
+  pool (`db`), where each one checks out its own connection — but a read that
+  must observe the transaction's writes belongs inside the transaction.
+- A helper that receives a transaction handle and issues more than one query
+  keeps the same rule, even when the helper lives in another module.
+- `tests/unit/architecture/transaction-single-connection.test.ts` enforces the
+  rule for transaction callbacks, and
+  `tests/unit/modules/content-ownership-single-connection.test.ts` enforces it
+  for the ownership helpers that take a transaction handle.
 
 ---
 

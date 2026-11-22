@@ -1,85 +1,137 @@
-import { type ActionResult } from '@/lib/contracts/common';
-import { resolveActor } from '@/modules/authorization';
+'use server';
 
-import { createDrama } from './dramas';
+import type { ActionResult } from '@/lib/contracts/common';
+import {
+  dramaFormSchema,
+  dramaSlugFromTitle,
+  type DramaFormValues,
+} from '@/lib/contracts/drama-form';
+import { resolveActor, requirePermission } from '@/modules/authorization';
+import { parseOrThrow } from '@/modules/content/validation';
 
-/** Server Action behind the admin drama create form. */
-export async function createDramaAction(
-  _payload: unknown
-): Promise<ActionResult<{ id: string; title: string; slug: string; structure_type: string }>> {
+import { toActionError, withFieldError } from './action-errors';
+import { createDrama, deleteDrama, updateDrama } from './dramas';
+
+/**
+ * Server Actions behind the admin drama forms.
+ *
+ * The client schema mirrors the domain schema but has no slug input: the slug is
+ * always derived from the title, both here and in the form. The domain workflow
+ * re-validates with `createDramaSchema`/`updateDramaSchema`, which stays the
+ * authoritative contract.
+ */
+
+export type DramaActionData = {
+  id: string;
+  title: string;
+  slug: string;
+  structure_type: string;
+};
+
+/** Normalize the transport-only blanks into domain values. */
+function toDomainInput(values: DramaFormValues): Record<string, unknown> {
+  return {
+    title: values.title,
+    slug: dramaSlugFromTitle(values.title),
+    description: values.description?.trim() ? values.description : undefined,
+    status: values.status,
+    structure_type: values.structure_type,
+    visibility: values.visibility,
+    poster: values.poster === '' || values.poster === undefined ? null : values.poster,
+    banner: values.banner === '' || values.banner === undefined ? null : values.banner,
+    categories: values.categories,
+    platforms: values.platforms,
+  };
+}
+
+function toData(drama: {
+  id: string;
+  title: string;
+  slug: string;
+  structure_type: string;
+}): DramaActionData {
+  return {
+    id: drama.id,
+    title: drama.title,
+    slug: drama.slug,
+    structure_type: drama.structure_type,
+  };
+}
+
+/** Create a drama from the admin create form. */
+export async function createDramaAction(_payload: unknown): Promise<ActionResult<DramaActionData>> {
   try {
-    const payload = _payload as Record<string, unknown>;
-
-    // Resolve the actor from the session/context
     const actor = await resolveActor();
+    requirePermission(actor, 'drama.manage');
 
-    // Extract poster file from values (react-hook-form includes File objects for type="file" inputs)
-    const posterFile = payload.poster instanceof File ? payload.poster as File : null;
-
-    // Build text payload (exclude poster - handled separately)
-    const textPayload: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(payload)) {
-      if (key !== 'poster' && typeof value === 'string') {
-        textPayload[key] = value;
-      }
-    }
-
-    // Upload poster image to persistent server disk
-    let posterPath: string | null = null;
-    if (posterFile) {
-      const { uploadImage } = await import('@/scripts/upload-image');
-      const { path: uploadedPath } = await uploadImage(posterFile);
-      posterPath = uploadedPath;
-    }
-
-    // Extract banner file from values (react-hook-form includes File objects for type="file" inputs)
-    const bannerFile = payload.banner instanceof File ? payload.banner as File : null;
-
-    // Upload banner image to persistent server disk
-    let bannerPath: string | null = null;
-    if (bannerFile) {
-      const { uploadImage } = await import('@/scripts/upload-image');
-      const { path: uploadedPath } = await uploadImage(bannerFile);
-      bannerPath = uploadedPath;
-    }
-
-    // Merge text payload with poster and banner paths and actor
-    const finalPayload = {
-      ...textPayload,
-      poster: posterPath,
-      banner: bannerPath,
-    };
-
-    // Create the drama
-    const result = await createDrama(actor, finalPayload);
+    const values = parseOrThrow(dramaFormSchema, _payload);
+    const result = await createDrama(actor, toDomainInput(values));
 
     if (!result.ok) {
-      return {
-        ok: false,
-        error: {
-          code: 'drama_creation_error',
-          message: String(result.error),
-        },
-      };
+      return { ok: false, error: withFieldError(toActionError(result.error), 'slug', 'title') };
+    }
+
+    return { ok: true, data: toData(result.drama) };
+  } catch (error) {
+    return { ok: false, error: withFieldError(toActionError(error), 'slug', 'title') };
+  }
+}
+
+/** Update an existing drama's metadata from the admin edit form. */
+export async function updateDramaAction(
+  dramaId: string,
+  _payload: unknown
+): Promise<ActionResult<DramaActionData>> {
+  try {
+    const actor = await resolveActor();
+    requirePermission(actor, 'drama.manage');
+
+    const values = parseOrThrow(dramaFormSchema, _payload);
+    const result = await updateDrama(actor, dramaId, toDomainInput(values));
+
+    if (!result.ok) {
+      return { ok: false, error: withFieldError(toActionError(result.error), 'slug', 'title') };
+    }
+
+    return { ok: true, data: toData(result.drama) };
+  } catch (error) {
+    return { ok: false, error: withFieldError(toActionError(error), 'slug', 'title') };
+  }
+}
+
+/** The result of moving a drama to Trash. */
+export type TrashDramaData = {
+  id: string;
+  affectedSeasons: number;
+  affectedEpisodes: number;
+};
+
+/**
+ * Move a drama to Trash.
+ *
+ * The action reports the affected child records so the confirmation dialog can
+ * tell the administrator exactly what goes into the Trash with the drama.
+ */
+export async function deleteDramaAction(dramaId: string): Promise<ActionResult<TrashDramaData>> {
+  try {
+    const actor = await resolveActor();
+    requirePermission(actor, 'drama.manage');
+
+    const result = await deleteDrama(actor, dramaId);
+
+    if (!result.ok) {
+      return { ok: false, error: toActionError(result.error) };
     }
 
     return {
       ok: true,
       data: {
-        id: result.drama.id,
-        title: result.drama.title,
-        slug: result.drama.slug,
-        structure_type: result.drama.structure_type,
+        id: dramaId,
+        affectedSeasons: result.affectedSeasons,
+        affectedEpisodes: result.affectedEpisodes,
       },
     };
-  } catch (error: any) {
-    return {
-      ok: false,
-      error: {
-        code: 'drama_creation_error',
-        message: error.message || 'Unknown error during drama creation',
-      },
-    };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
   }
 }
-

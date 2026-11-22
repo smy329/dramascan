@@ -19,6 +19,8 @@ export type AdminFormSelectFieldProps = Readonly<{
   required?: boolean;
   /** Optional helper text rendered below the control. */
   hint?: string;
+  /** Render the control read-only while still submitting the stored value. */
+  disabled?: boolean;
   className?: string;
 }>;
 
@@ -49,6 +51,7 @@ export function AdminFormSelectField({
   options,
   required = false,
   hint,
+  disabled = false,
   className,
 }: AdminFormSelectFieldProps): JSX.Element {
   const {
@@ -71,6 +74,7 @@ export function AdminFormSelectField({
         id={id}
         className={SELECT_CLASS_NAME}
         required={required}
+        disabled={disabled}
         aria-invalid={errorMessage ? true : undefined}
         aria-describedby={describedBy}
         {...register(name)}

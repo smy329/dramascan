@@ -1347,3 +1347,287 @@ read-only, so content could not be assembled through the panel.
   taxonomy still requires a Server Action or SQL.
 
 ---
+
+## D-034 — Empty-drama visibility is a deployment constant with a stricter per-drama override
+
+**Date:** 2026-11-22
+**Status:** Approved by user (Prompt 070)
+**Extends:** D-032 (publication availability is evaluated in one place).
+
+**Context:** Prompt 070 requires a global setting for how a drama without a
+playable episode appears publicly: "Show Coming Soon" (poster, title, and
+description, but no Play button or episode list) or "Hide Until Episodes
+Available". The rule has to be decided in two places — the catalogue query and
+the per-drama detail view — and the two must never disagree.
+
+**Decision:**
+
+1. **The global mode is an environment value, not an admin setting.**
+   `EMPTY_DRAMA_VISIBILITY` accepts `coming_soon` (default) or `hidden`. It is
+   read from the validated server configuration, so it is part of the
+   deployment profile and is covered by the existing configuration tests.
+2. **A per-drama `visibility = 'hidden'` is always the stricter rule.** It
+   hides the drama even when the global mode is `coming_soon`. A per-drama
+   `coming_soon` never overrides a global `hidden`: a deployment that hides
+   empty dramas does not get empty dramas back one drama at a time.
+3. **The effective rule is "hidden" if the global mode is `hidden` OR the
+   drama's own visibility is `hidden`.** Otherwise the drama is visible as
+   coming soon.
+4. **The SQL mirror states the positive condition.** The catalogue predicate
+   is `(dramas.visibility is distinct from 'hidden')`, not
+   `not (dramas.visibility = 'hidden')`. A negated comparison is NULL — not
+   TRUE — when the column is NULL, and a NULL predicate silently drops the
+   row. `IS DISTINCT FROM` keeps a NULL visibility on the visible side, which
+   is exactly what the shared TypeScript rule does.
+5. **A drama with a playable episode is always visible**, regardless of the
+   mode: the "empty" condition is part of the predicate, not a permanent
+   state.
+
+**Consequences:**
+
+- The public catalogue, the public API, and the drama detail page agree by
+  construction, because both read the same shared rule
+  (`src/modules/content/public-dramas.shared.ts`) and the catalogue mirrors it
+  in SQL.
+- Changing the mode is a deployment change, not a content operation. There is
+  no admin toggle and no audit trail for it.
+- A per-drama `hidden` value is the only content-level control, and it is
+  intentionally one-directional: it can only hide more.
+
+---
+
+## D-035 — Publication is explicit, per-item, and reported item by item
+
+**Date:** 2026-11-22
+**Status:** Approved by user (Prompts 068–069)
+**Extends:** D-032 (publication availability rules).
+
+**Context:** Prompts 068–069 require manual publish/unpublish for dramas,
+seasons, episodes, and movies, a bulk operation for Content Managers, and an
+explicit report of what was skipped and why. Publishing a parent must never
+publish invalid child content.
+
+**Decision:**
+
+1. **Publication is never implicit.** Creating or editing content never
+   changes its publication state, and publishing a parent does not publish its
+   children. Each item's state is set by an explicit operation.
+2. **An episode is publishable only when it has a valid playback source.**
+   The check is server-side and re-evaluated per item, never from the client.
+3. **Eligibility is decided per item inside the operation.** An ineligible
+   item is skipped and reported with a machine-readable reason
+   (`missing_video_source`, `already_published`, `already_unpublished`,
+   `trashed`, `invalid_id`, `duplicate_id`); the rest of the batch still
+   succeeds.
+4. **Bulk operations are batched and transactional per batch.** The batch
+   size is bounded, and each batch locks its rows, so a large selection never
+   holds a lock on the whole content table and concurrent operations
+   serialize per item.
+5. **The bulk surface is a dedicated admin page.** `/admin/publication`
+   offers type tabs, search, pagination, checkbox selection, bulk
+   publish/unpublish, and the per-item skip report. It does not live on the
+   drama list, because a publication decision is about a content set, not
+   about one row.
+
+**Consequences:**
+
+- A partially valid selection is safe: the administrator learns exactly which
+  items did not change and why.
+- Publishing a drama does not make its episodes visible; the hierarchy has to
+  be published deliberately, item by item.
+- The reported reasons are stable identifiers, so the UI and the API can
+  present them without parsing prose.
+
+---
+
+## D-036 — Similar-drama suggestions are scored and never auto-persisted
+
+**Date:** 2026-11-22
+**Status:** Approved by user (Prompt 071)
+**Extends:** D-033 (administrator control over content metadata).
+
+**Context:** Prompt 071 asks for similar-drama recommendations generated from
+shared categories, platforms, and relevant metadata, combined with manual
+administrator control over the result.
+
+**Decision:**
+
+1. **The automatic suggestions are a recommendation aid, never an automatic
+   write.** The system never persists a suggestion by itself; a Content
+   Manager reviews the scored candidates and adds the ones they want.
+2. **The score is a fixed, documented weighting.** Shared categories score 3,
+   shared platforms 2, a matching production status 1, and a matching
+   structure type 1. Categories dominate because two dramas in the same genres
+   are the natural pairing.
+3. **A candidate that shares nothing scores nothing and is not offered.** An
+   empty suggestion list is more useful to an administrator than an arbitrary
+   one.
+4. **A drama can never recommend itself**, and a duplicate recommendation is
+   refused.
+5. **The scoring rules are pure.** They live in
+   `src/modules/content/similar-dramas.shared.ts` without database or HTTP
+   concerns, so they are unit-tested independently of the admin module and
+   reusable outside it.
+6. **Manual recommendations keep an explicit order.** The administrator
+   reorders them, and the stored order is what the public site reads.
+
+**Consequences:**
+
+- The public site never shows an unvetted recommendation.
+- The scoring weights are part of the contract: changing them changes the
+  ranking administrators rely on, so they live in one exported constant.
+- The relevance signal stays explainable — every suggestion can state how
+  many categories and platforms it shares.
+
+---
+
+## D-037 — The content Trash is a timestamped cascade with Super-Admin-only permanent deletion
+
+**Date:** 2026-11-22
+**Status:** Approved by user (Prompts 072–074)
+**Extends:** D-030 (movie provenance), D-031 (Super-Admin-scoped surfaces),
+D-033 (soft deletion in the admin panel).
+
+**Context:** Prompts 072–074 require a recoverable soft deletion for dramas,
+seasons, episodes, and movies, with role rules for restoration and permanent
+deletion, dependency checks before irreversible operations, and a retention
+period that does not introduce a worker or a queue.
+
+**Decision:**
+
+1. **Trashing a parent cascades with one timestamp.** The drama, its seasons,
+   and its episodes receive the *same* `deleted_at` value in one transaction.
+   That timestamp identifies the cascade, and restoration uses it to restore
+   exactly the children that were trashed with the parent. A child trashed
+   earlier keeps its own timestamp and stays in the Trash.
+2. **Moving content into the Trash and restoring it requires the manage
+   permission of the content type.** An authorized non-Super Admin Content
+   Manager may do both.
+3. **Permanent deletion is Super Admin only, including the bulk form.** There
+   is no permission key that grants it to another role.
+4. **Permanent deletion requires the content to be in the Trash.** It is the
+   second step of the lifecycle, never a shortcut for it.
+5. **Personal records are removed; ratings and reviews are retained but
+   anonymized.** Bookmarks, playback progress, watched state, and watch
+   history are removed with the content. A rating or review keeps its value
+   and text for aggregate analytics, but loses its author (`user_id = NULL`),
+   its content target, and gains `anonymized_at`. Migration `0011` relaxes
+   the target checks so that only an anonymized row may have no content
+   target.
+6. **A drama that was converted into a movie cannot be permanently deleted.**
+   `movies.converted_from_drama_id` is permanent provenance with
+   `ON DELETE RESTRICT`; deleting the source would destroy the provenance of
+   an existing movie, so the operation is refused with a conflict.
+7. **Expiry is a short-lived systemd-triggered command, not a worker.** The
+   retention period is configurable (`TRASH_RETENTION_DAYS`, default 30 days).
+   The command processes bounded batches, skips a parent whose children have
+   not expired yet, and writes one JSON object per line for `journald`.
+8. **Every irreversible operation is previewed first.** The Trash surface
+   reports the affected child records and the per-record impact before the
+   confirmation.
+
+**Consequences:**
+
+- Trashed content is recoverable with its hierarchy intact, and a child that
+  was trashed separately is never restored by accident.
+- The data-retention rule is explicit and enforced in the database, not only
+  in application code.
+- There is no background worker, no queue, and no scheduler inside the
+  application; the systemd timer owns the schedule.
+- Permanent deletion cannot be delegated to a custom role, and it cannot
+  destroy a converted movie's provenance.
+
+**Amendment (2026-11-22, Prompts 072–074 review):**
+
+The implementation review tightened four points of this decision without
+changing it:
+
+1. **The anonymization rule is enforced by the database.** Migration
+   `0012_anonymized_rows_have_no_author.sql` adds
+   `ck_ratings_anonymized_author` and `ck_reviews_anonymized_author`:
+   `anonymized_at IS NULL OR user_id IS NULL`. A rating or a review that
+   carries the anonymization marker can never keep its author, so point 5 is
+   a database invariant and not only an application convention.
+2. **The expiry command is atomic per candidate.** Each candidate is removed
+   in its own transaction: the row is locked with `FOR UPDATE`, `deleted_at`
+   is re-checked under that lock, and the whole hierarchy is removed in that
+   one transaction. A candidate whose drama is the source of an existing movie
+   is skipped, because the movie keeps permanent provenance (point 6).
+3. **Restoration refuses a hierarchy conflict before it writes anything.** A
+   conflicting slug, episode number, or season position is reported as a
+   conflict, never resolved by an automatic rename.
+4. **Permanent deletion re-checks the Trash state under the row lock.** A
+   restoration that races the deletion therefore cannot be overwritten by a
+   delete that was already in flight.
+
+---
+
+## D-038 — Original artwork is stored on the application disk and delivered unprocessed
+
+**Date:** 2026-11-22
+**Status:** Approved by user (Prompts 075–078)
+**Extends:** D-019 (server configuration contract), and the project restriction
+that forbids Sharp and Next.js image optimization.
+
+**Context:** Prompts 075–078 require image storage on the persistent
+application-server disk, safe poster and banner uploads, and direct delivery
+with cache headers — without a server-side image-processing pipeline.
+
+**Decision:**
+
+1. **The uploaded original is stored byte-for-byte.** There is no Sharp, no
+   resizing, no conversion, and no optimisation. The browser receives the
+   exact original file.
+2. **Storage lives in a configured directory outside the deployment
+   artifacts.** `IMAGE_STORAGE_DIR` (default `storage/images`) holds
+   `{kind}/{uuid}.{ext}` files. The directory is outside `src` and `.next`,
+   so an ordinary deployment does not delete uploaded artwork, and it is
+   excluded from version control.
+3. **Filenames are server-generated and immutable.** A UUIDv4 name plus the
+   extension derived from the validated MIME type means the client never
+   influences the path, the file is written with an exclusive-create flag, and
+   a stored file is never overwritten.
+4. **Uploads are validated on the server, from the bytes.** The declared
+   MIME type, the file signature, the file size (5 MB maximum), and the pixel
+   dimensions are all checked server-side. A poster must be portrait and a
+   banner must be landscape, so portrait artwork cannot be stretched into a
+   banner.
+5. **Delivery is a dedicated route, not an image optimizer.**
+   `/media/{kind}/{uuid}.{ext}` serves the stored file with its own content
+   type, `Cache-Control: public, max-age=31536000, immutable`,
+   `X-Content-Type-Options: nosniff`, and
+   `Cross-Origin-Resource-Policy: same-origin`.
+6. **The delivery route accepts only the managed path shape.** Exactly two
+   segments, a known kind, and a filename matching the managed pattern. The
+   route cannot be used to read application source, configuration, or any
+   other filesystem path; traversal is rejected before any file access.
+7. **Poster and banner are separate assets.** A poster is never reused as a
+   banner, and each kind has its own directory.
+
+**Consequences:**
+
+- The delivery headers are safe because the filename never changes: a new
+  upload gets a new URL.
+- A deployment must keep `IMAGE_STORAGE_DIR` outside the release directory,
+  or point it at persistent storage.
+- The image service is intentionally not able to produce thumbnails; a future
+  requirement for them is a separate decision, not an extension of this one.
+- Nothing in the application server fetches an administrator-supplied URL to
+  validate it, so there is no SSRF surface in the upload path.
+
+**Amendment (2026-11-22, Prompts 075–078 review):**
+
+Point 2 stated the rule but not a default that satisfies it. The default is
+now platform-aware:
+
+1. **`IMAGE_STORAGE_DIR` is platform-aware.** Without an explicit value, a
+   production Linux deployment uses `/var/lib/dramascan/images` — the systemd
+   state directory of the `dramascan` service (`StateDirectory=dramascan`) —
+   and every other environment uses `<working directory>/storage/images`. The
+   reason is point 2: the default has to survive a deployment that replaces
+   the release directory.
+2. **A production deployment may not point `IMAGE_STORAGE_DIR` inside the
+   application directory.** Such a value is rejected at startup instead of
+   being accepted silently, because the directory is deleted together with the
+   previous release. The rule is stricter than the `src`/`.next` exclusion in
+   point 2 and applies to production only.

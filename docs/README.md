@@ -51,6 +51,7 @@ For the future upgrade backlog, see `future/`.
 - [Admin Shell](development/admin-shell.md)
 - [Admin Data Tables](development/admin-data-tables.md)
 - [Admin Forms](development/admin-forms.md)
+- [Content Trash (Prompts 072–074)](development/PROMPT_072.md)
 - [CI/CD Conventions](development/ci-cd.md)
 - [Migration Conventions](development/migration-conventions.md)
 - [Data Integrity Runbook](development/DATA_INTEGRITY.md)

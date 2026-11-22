@@ -3,7 +3,7 @@
 import type { JSX } from 'react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Film, Plus, Search } from 'lucide-react';
+import { Film, Plus, Search, Sparkles } from 'lucide-react';
 
 import { AdminTablePagination } from '@/components/admin/data-table/data-table-pagination';
 import { AdminTableToolbar } from '@/components/admin/data-table/data-table-toolbar';
@@ -21,7 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { buildTableHref, type TableQueryState } from '@/lib/contracts/table';
-import type { SimilarDramaSummary } from '@/workflows/admin/similar-dramas';
+import type { SimilarDramaSuggestion, SimilarDramaSummary } from '@/lib/contracts/similar-dramas';
 
 export type SimilarDramaManagerProps = Readonly<{
   drama: { id: string; title: string };
@@ -85,6 +85,10 @@ export function SimilarDramaManager({
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
+  const [suggestions, setSuggestions] = useState<SimilarDramaSuggestion[] | null>(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [suggestionError, setSuggestionError] = useState<string | null>(null);
+
   useEffect(() => {
     setItems(initialItems);
   }, [initialItems]);
@@ -128,6 +132,57 @@ export function SimilarDramaManager({
       setCandidates(null);
     } finally {
       setSearching(false);
+    }
+  }
+
+  async function loadSuggestions(): Promise<void> {
+    setLoadingSuggestions(true);
+    setSuggestionError(null);
+
+    try {
+      const response = await fetch(
+        `/admin/api/similar-dramas/suggestions?dramaId=${encodeURIComponent(drama.id)}`,
+        { headers: { Accept: 'application/json' } }
+      );
+
+      if (!response.ok) {
+        throw new Error(await readFailure(response));
+      }
+
+      const body = (await response.json()) as { data?: SimilarDramaSuggestion[] };
+      setSuggestions(body.data ?? []);
+    } catch (cause) {
+      setSuggestionError(
+        cause instanceof Error ? cause.message : 'Failed to load suggested dramas.'
+      );
+      setSuggestions(null);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  }
+
+  async function addSuggestion(suggestion: SimilarDramaSuggestion): Promise<void> {
+    setPending(`add:${suggestion.id}`);
+    clearFailure();
+
+    try {
+      const response = await fetch('/admin/api/similar-dramas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dramaId: drama.id, similarDramaId: suggestion.id }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await readFailure(response));
+      }
+
+      setSuggestions(current => current?.filter(item => item.id !== suggestion.id) ?? null);
+      router.refresh();
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Failed to add the drama.';
+      fail(message, () => void addSuggestion(suggestion));
+    } finally {
+      setPending(null);
     }
   }
 
@@ -308,6 +363,71 @@ export function SimilarDramaManager({
           </Button>
         </form>
         {renderSearchResults()}
+      </section>
+
+      <section aria-labelledby="suggested-similar-dramas-heading" className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="suggested-similar-dramas-heading" className="text-sm font-medium text-foreground">
+            Suggested dramas
+          </h2>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void loadSuggestions()}
+            disabled={loadingSuggestions}
+            aria-busy={loadingSuggestions ? true : undefined}
+          >
+            <Sparkles aria-hidden="true" />
+            {loadingSuggestions ? 'Loading…' : 'Show suggestions'}
+          </Button>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Suggestions are scored from shared categories, platforms, status, and structure. Adding one is
+          always your decision.
+        </p>
+
+        {suggestionError ? (
+          <div className="space-y-2" role="alert">
+            <p className="text-sm text-destructive">{suggestionError}</p>
+            <RetryButton onRetry={() => void loadSuggestions()} />
+          </div>
+        ) : null}
+
+        {suggestions !== null && suggestions.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No related dramas were found. Add recommendations manually using the search above.
+          </p>
+        ) : null}
+
+        {suggestions !== null && suggestions.length > 0 ? (
+          <ul aria-label="Suggested dramas" className="rounded-xl border border-border">
+            {suggestions.map(suggestion => (
+              <li
+                key={suggestion.id}
+                className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 last:border-b-0"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-foreground">{suggestion.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Score {suggestion.score} · {suggestion.sharedCategories} shared categories ·{' '}
+                    {suggestion.sharedPlatforms} shared platforms
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void addSuggestion(suggestion)}
+                  disabled={pending !== null}
+                  aria-busy={pending === `add:${suggestion.id}` ? true : undefined}
+                >
+                  <Plus aria-hidden="true" />
+                  Add
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
 
       {error ? (

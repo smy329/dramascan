@@ -1,6 +1,12 @@
+[Unit]
+Description=Run the DramaScan Trash expiry cleanup daily
+Documentation=file:/var/www/drama-scan/docs/development/PROMPT_072.md
+
 [Timer]
 OnCalendar=daily
 Persistent=true
+RandomizedDelaySec=30m
+Unit=dramascan-trash-cleanup.service
 
 [Install]
 WantedBy=timers.target

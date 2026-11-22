@@ -1,14 +1,27 @@
 [Unit]
-Description=DramaScan Trash Expiry Cleanup
+Description=DramaScan Trash expiry cleanup
+Documentation=file:/var/www/drama-scan/docs/development/PROMPT_072.md
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/env node D:\Source code\Opencode\DramaScan\DramaScan\scripts\trash-cleanup.mjs
-WorkingDirectory=D:\Source code\Opencode\DramaScan\DramaScan
-Environment=DATABASE_URL=${DATABASE_URL}
+User=dramascan
+Group=dramascan
+WorkingDirectory=/var/www/drama-scan
+# The uploaded artwork lives in the systemd state directory, so it survives a
+# deployment that replaces the release directory. The application service
+# declares the same state directory and sets
+# `IMAGE_STORAGE_DIR=/var/lib/dramascan/images` in the environment file.
+StateDirectory=dramascan
+StateDirectoryMode=0750
+EnvironmentFile=/etc/dramascan/drama-scan.env
+ExecStart=/usr/bin/node /var/www/drama-scan/scripts/trash-cleanup.mjs
 RemainExitStatus=yes
+Nice=10
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+TimeoutStartSec=1800
 
 [Install]
 WantedBy=multi-user.target

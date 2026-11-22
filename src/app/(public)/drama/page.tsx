@@ -100,6 +100,11 @@ export default async function DramasPage({ searchParams }: DramasPageProps) {
                           <h3 className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
                             {drama.title}
                           </h3>
+                          {drama.description ? (
+                            <p className="line-clamp-2 text-xs text-muted-foreground">
+                              {drama.description}
+                            </p>
+                          ) : null}
                           <p className="text-xs text-muted-foreground">
                             {drama.comingSoon ? 'Coming soon' : 'Available now'}
                           </p>

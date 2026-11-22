@@ -78,7 +78,7 @@ Modules are assigned to fixed layers. **A module may import only modules in a st
 
 | Layer | Location                                               | Contents                                                                                                                               | May import                                                                                                                    |
 | ----- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| 0     | `src/platform/`                                        | DB client/pool, transaction primitive, env config, error base types, Pino logging, PG-backed rate limiter, cache helpers, HTTP helpers | Nothing from `modules`, `workflows`, `app`, `components`                                                                      |
+| 0     | `src/platform/`                                        | DB client/pool, transaction primitive, env config, error base types, Pino logging, PG-backed rate limiter, cache helpers, HTTP helpers, media storage | Nothing from `modules`, `workflows`, `app`, `components`                                                                      |
 | 1     | `src/modules/auth`                                     | Authentication, identity, sessions, account status                                                                                     | Platform                                                                                                                      |
 | 2     | `src/modules/authorization`                            | RBAC, permission catalog, guards                                                                                                       | Platform, `auth`                                                                                                              |
 | 3     | `src/modules/content`, `users`, `playback`, `reviews`  | Core domain                                                                                                                            | Platform, layers 1–2, and the same-layer edges in §7.1                                                                        |
@@ -315,7 +315,7 @@ Large modules may split `service.ts` and `repository.ts` into folders, provided 
 | Module query service           | `modules/*/queries.ts`    | Server Components, workflows, permitted modules     | Visibility/authorization filtering, DTO shaping, read-only composition | Writes, HTTP, cache invalidation                             |
 | Module mutation service        | `modules/*/service.ts`    | Server Actions, route handlers, workflows           | Domain rules, input validation, transaction participation              | HTTP, cross-module side effects, independent commits         |
 | Workflow (application service) | `src/workflows/`          | Server Actions, route handlers, maintenance scripts | Sequencing, transaction boundary, post-commit effects                  | Domain rules, SQL, HTTP parsing                              |
-| Platform service               | `src/platform/`           | Modules, workflows, `app`                           | DB pool, config, errors, logging, rate limiting, cache, HTTP mapping   | Domain rules, module imports                                 |
+| Platform service               | `src/platform/`           | Modules, workflows, `app`                           | DB pool, config, errors, logging, rate limiting, cache, HTTP mapping, media storage | Domain rules, module imports                                 |
 | Repository                     | `modules/*/repository.ts` | The owning module's services, queries, read models  | Drizzle reads/writes for the module's own tables                       | Cross-module writes, business rules, authorization decisions |
 
 There is no general-purpose "shared domain service" bucket. Cross-module reuse happens through a module's public API or a workflow. Shared code is limited to `platform` (server infrastructure) and `lib` (isomorphic helpers and contracts). This prevents a second, unowned domain layer from forming.
@@ -478,12 +478,14 @@ No other same-layer imports are allowed. Adding one requires a recorded decision
 
 **Recorded exception — admin content workflows write content tables directly
 (D-029).** The admin content workflows
-(`src/workflows/admin/{dramas,seasons,episodes,movies,conversion,movie-conversion}.ts`) write
+(`src/workflows/admin/{dramas,seasons,episodes,movies,conversion,movie-conversion,publication,trash,restore,permanent-delete,similar-dramas}.ts`) write
 the `content` module's tables inside their own transaction instead of calling a
 content-module service for every statement. A structure conversion renumbers
 episodes, trashes seasons, and writes a snapshot atomically; a drama→movie
 conversion creates the movie, moves relationships, and soft-deletes the drama,
-its seasons, and its episodes atomically. Splitting that across module APIs
+its seasons, and its episodes atomically; a Trash cascade, its inverse
+restoration, a bulk publication, and a permanent deletion each change several
+content tables atomically as well. Splitting that across module APIs
 would break the single transaction. The domain rules stay in
 `modules/content` (`src/modules/content/conversion.ts` and
 `movie-conversion.ts`), the other modules expose transaction-scoped ownership
@@ -517,7 +519,7 @@ A **workflow** is a thin application-layer function in `src/workflows/` that coo
 Workflows are not a general abstraction. A single-module operation stays in that module's service. A workflow exists only when coordination is genuinely required.
 
 **Recorded exception (D-029).** The admin content workflows
-(`src/workflows/admin/{dramas,seasons,episodes,movies,conversion,movie-conversion}.ts`) write
+(`src/workflows/admin/{dramas,seasons,episodes,movies,conversion,movie-conversion,publication,trash,restore,permanent-delete,similar-dramas}.ts`) write
 the `content` module's tables directly inside their own transaction, because
 one mutation must change several content tables atomically (see §7.2). The
 drama→movie workflow calls the `reviews`, `users`, `notifications`, and
@@ -766,6 +768,31 @@ Modules may define domain errors that extend these classes (for example, `Conten
 - Cross-module cleanup (Trash expiry, analytics retention, permanent deletion) is orchestrated by the script through workflows; `maintenance` never writes another module's tables.
 - Task history is recorded in `maintenance_task_runs`. Successful routine runs are lightweight; failures retain safe error detail.
 - No task runs continuously, sleeps in a loop, or waits on a queue. No persistent worker exists.
+
+### 16.1 Implemented exception: the Trash expiry command (Prompts 072–074)
+
+The dispatcher, the `maintenance.runTask` helper, the `SystemActor`, and the
+`maintenance_task_runs` history table described above are **not implemented
+yet**; they remain a future item.
+
+The Trash expiry command is `scripts/trash-cleanup.mjs`: a standalone Node
+script that talks to PostgreSQL directly with the `pg` driver. It is the one
+documented exception to the "database access only in repositories and read
+models" rule in §17, for two reasons:
+
+- It runs outside the application process, so it cannot reach the application
+  modules or the Drizzle schema registry.
+- It has to remove content that the application may still be restoring, so it
+  takes its own row locks (`FOR UPDATE`) and re-checks `deleted_at` under
+  them.
+
+The command is bounded, short-lived, and single-purpose: it removes one
+candidate per transaction, skips a candidate whose drama is the source of an
+existing movie, and writes one JSON object per line for `journald`. It is
+covered by `tests/unit/scripts/trash-cleanup.test.ts` and
+`tests/integration/content/trash-expiry.integration.test.ts` instead of by a
+module-level test. It introduces no worker, no queue, and no scheduler inside
+the application; the systemd timer owns the schedule.
 
 ---
 

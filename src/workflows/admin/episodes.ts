@@ -17,7 +17,7 @@ import {
 
 import { db } from '@/db/client';
 import { requirePermission, type ActorContext } from '@/modules/authorization';
-import { NotFoundError } from '@/platform/errors';
+import { NotFoundError, ValidationError } from '@/platform/errors';
 
 import { z } from 'zod';
 import { episodes, dramas, seasons } from '@/modules/content/schema';
@@ -747,17 +747,35 @@ export async function deleteEpisode(
 
   const parsedEpisodeId = parseOrThrow(z.uuid(), episodeId);
 
-  const [row] = await db
-    .update(episodes)
-    .set({ deleted_at: new Date() })
-    .where(eq(episodes.id, parsedEpisodeId))
-    .returning();
+  return db.transaction(async tx => {
+    // An episode that is already in the Trash keeps the timestamp of the
+    // cascade that put it there. Re-trashing it would detach it from that
+    // cascade and break the exact restoration of the hierarchy.
+    const [row] = await tx
+      .update(episodes)
+      .set({ deleted_at: new Date() })
+      .where(and(eq(episodes.id, parsedEpisodeId), isNull(episodes.deleted_at)))
+      .returning();
 
-  if (!row) {
-    return { ok: false, error: new NotFoundError('Episode not found.') };
-  }
+    if (!row) {
+      const [existing] = await tx
+        .select({ id: episodes.id })
+        .from(episodes)
+        .where(eq(episodes.id, parsedEpisodeId))
+        .limit(1);
 
-  return { ok: true };
+      if (!existing) {
+        return { ok: false as const, error: new NotFoundError('Episode not found.') };
+      }
+
+      return {
+        ok: false as const,
+        error: new ValidationError('This episode is already in the Trash.'),
+      };
+    }
+
+    return { ok: true as const };
+  });
 }
 
 /** Replace episode video source following Phase 6 process. */

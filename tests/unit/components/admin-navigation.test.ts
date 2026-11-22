@@ -45,8 +45,11 @@ describe('ADMIN_NAVIGATION', () => {
     expect(implemented.map(entry => entry.id)).toEqual([
       'overview',
       'dramas',
+      'movies',
       'categories',
       'platforms',
+      'publication',
+      'trash',
       'users',
       'roles',
     ]);

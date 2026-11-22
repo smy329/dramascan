@@ -175,25 +175,26 @@ async function countContentMetadata(
   tx: DbOrTx,
   dramaId: string
 ): Promise<{ slugHistory: number; seo: number; assets: number }> {
-  const [[slugRow], [seoRow], [assetRow]] = await Promise.all([
-    tx
-      .select({ total: count() })
-      .from(contentSlugHistory)
-      .where(
-        and(
-          eq(contentSlugHistory.content_type, 'drama'),
-          eq(contentSlugHistory.content_id, dramaId)
-        )
-      ),
-    tx
-      .select({ total: count() })
-      .from(contentSeo)
-      .where(and(eq(contentSeo.content_type, 'drama'), eq(contentSeo.content_id, dramaId))),
-    tx
-      .select({ total: count() })
-      .from(contentAssets)
-      .where(and(eq(contentAssets.content_type, 'drama'), eq(contentAssets.content_id, dramaId))),
-  ]);
+  // The queries run one after the other: a transaction uses a single
+  // PostgreSQL connection, and the driver does not accept two queries on the
+  // same connection at the same time.
+  const [slugRow] = await tx
+    .select({ total: count() })
+    .from(contentSlugHistory)
+    .where(
+      and(
+        eq(contentSlugHistory.content_type, 'drama'),
+        eq(contentSlugHistory.content_id, dramaId)
+      )
+    );
+  const [seoRow] = await tx
+    .select({ total: count() })
+    .from(contentSeo)
+    .where(and(eq(contentSeo.content_type, 'drama'), eq(contentSeo.content_id, dramaId)));
+  const [assetRow] = await tx
+    .select({ total: count() })
+    .from(contentAssets)
+    .where(and(eq(contentAssets.content_type, 'drama'), eq(contentAssets.content_id, dramaId)));
 
   return {
     slugHistory: Number(slugRow?.total ?? 0),
@@ -207,13 +208,14 @@ async function collectRelationshipCounts(
   dramaId: string,
   associations: { categories: unknown[]; platforms: unknown[] }
 ): Promise<MovieConversionRelationshipCounts> {
-  const [users, reviews, notifications, analytics, metadata] = await Promise.all([
-    countUserReferences(tx, 'drama', dramaId),
-    countReviewReferences(tx, dramaId),
-    countNotificationReferences(tx, dramaId),
-    countAnalyticsReferences(tx, dramaId),
-    countContentMetadata(tx, dramaId),
-  ]);
+  // The counts run one after the other: a transaction uses a single
+  // PostgreSQL connection, and the driver does not accept two queries on the
+  // same connection at the same time.
+  const users = await countUserReferences(tx, 'drama', dramaId);
+  const reviews = await countReviewReferences(tx, dramaId);
+  const notifications = await countNotificationReferences(tx, dramaId);
+  const analytics = await countAnalyticsReferences(tx, dramaId);
+  const metadata = await countContentMetadata(tx, dramaId);
 
   return {
     ratings: reviews.ratings,

@@ -1,66 +1,56 @@
 [Unit]
-Description=DramaScan Image Delivery Configuration
+Description=DramaScan image delivery configuration
+Documentation=file:/var/www/drama-scan/docs/architecture/ARCHITECTURE.md
 After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/var/www/drama-scan
+# The original poster and banner files are stored on the application disk under
+# IMAGE_STORAGE_DIR and are delivered by the application itself through
+# /media/{kind}/{uuid}.{ext}. Nginx only proxies that route: it never resizes,
+# converts, or re-encodes an image, and the image_filter module is not used.
 ExecStart=/usr/bin/env bash -c '
-cat > /etc/nginx/sites-available/drama-scan << '\''EOF'\'
-# DramaScan Nginx Configuration - Image Delivery
+set -euo pipefail
 
-# Serve static files from the Next.js public directory
-root /var/www/drama-scan/.next/public;
-index index.html;
+cat > /etc/nginx/sites-available/drama-scan-media << '\''EOF'\''
+# DramaScan media delivery.
+#
+# The application serves the stored originals through /media/. The response
+# already carries the immutable cache header and the content type of the
+# stored file, so this location only forwards the request and preserves the
+# headers. No image processing module is involved at any point.
 
-# Media delivery location
-location /assets/images/dramas/ {
-    # Set proper content types for image formats
-    types {
-        image/jpeg  jpg jpeg;
-        image/png   png;
-        image/webp  webp;
-        image/gif   gif;
-    }
+location /media/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
 
-    # Enable sendfile for efficient delivery
-    sendfile on;
+    # The stored filename is immutable, so the response may be cached for a
+    # year. The application already sets this header; repeating it here makes
+    # the guarantee explicit for operators reading only the Nginx config.
+    expires 1y;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
 
-    # Cache control - public, cacheable for 1 day (images are immutable via UUID filenames)
-    expires 1d;
-    add_header Cache-Control "public, max-age=86400, immutable" always;
-
-    # Access control - deny direct script execution
-    location ~ \.(php|pl|py|rb|sh|cgi)$ {
-        deny all;
-    }
-
-    # Log format
-    access_log /var/log/drama-scan/assets-images-dramas.log;
+    proxy_cache off;
+    image_filter off;
 }
 
-# Security headers for all responses
-add_header X-Content-Type-Options "nosniff" always;
-add_header X-Frame-Options "SAMEORIGIN" always;
-add_header X-XSS-Protection "1; mode=block" always;
-
-# Deny access to hidden files
-location ~ /\. {
+# Stored artwork is never executable content.
+location ~ ^/media/.*\.(php|pl|py|rb|sh|cgi)$ {
     deny all;
-}
-
-# Error pages
-error_page 404 /404.html;
-error_page 500 502 503 504 /50x.html;
-
-location = /50x.html {
-    root /var/www/drama-scan/.next/public;
 }
 EOF
 
-# Test and reload nginx
-nginx -t && systemctl reload nginx.service
+ln -sfn /etc/nginx/sites-available/drama-scan-media /etc/nginx/sites-enabled/drama-scan-media
+nginx -t
+systemctl reload nginx.service
 '
 
-WorkingDirectory=D:\Source code\Opencode\DramaScan\DramaScan
-Environment=DATABASE_URL=${DATABASE_URL}
 RemainExitStatus=yes

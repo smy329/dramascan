@@ -5,6 +5,7 @@ import {
   PUBLIC_DRAMA_PAGE_SIZE_DEFAULT,
   PUBLIC_DRAMA_PAGE_SIZE_MAX,
   evaluatePublicDramaDiscovery,
+  isEmptyDramaHidden,
   parsePublicDramaListQuery,
   publicDramaHref,
   toPublicDramaSummary,
@@ -156,6 +157,57 @@ describe('evaluatePublicDramaDiscovery', () => {
   });
 });
 
+describe('isEmptyDramaHidden', () => {
+  it('keeps a coming-soon drama visible under the default global mode', () => {
+    expect(isEmptyDramaHidden({ visibility: 'coming_soon' })).toBe(false);
+    expect(isEmptyDramaHidden({ visibility: null })).toBe(false);
+  });
+
+  it('hides a drama that opted into the stricter per-drama rule', () => {
+    expect(isEmptyDramaHidden({ visibility: 'hidden' })).toBe(true);
+  });
+
+  it('hides every drama when the global mode is hidden', () => {
+    expect(isEmptyDramaHidden({ visibility: 'coming_soon', emptyDramaVisibility: 'hidden' })).toBe(
+      true
+    );
+    expect(isEmptyDramaHidden({ visibility: null, emptyDramaVisibility: 'hidden' })).toBe(true);
+  });
+});
+
+describe('evaluatePublicDramaDiscovery with the global empty-drama mode', () => {
+  const base = {
+    publicationStatus: 'published',
+    deleted: false,
+    visibility: 'coming_soon',
+    hasPlayableEpisode: false,
+  } as const;
+
+  it('hides a coming-soon drama when the global mode is hidden', () => {
+    expect(
+      evaluatePublicDramaDiscovery({ ...base, emptyDramaVisibility: 'hidden' })
+    ).toEqual({ discoverable: false, comingSoon: false, reason: 'hidden_until_available' });
+  });
+
+  it('still reveals the drama once a playable episode exists', () => {
+    expect(
+      evaluatePublicDramaDiscovery({
+        ...base,
+        hasPlayableEpisode: true,
+        emptyDramaVisibility: 'hidden',
+      })
+    ).toEqual({ discoverable: true, comingSoon: false, reason: 'available' });
+  });
+
+  it('keeps the drama as coming soon under the default global mode', () => {
+    expect(evaluatePublicDramaDiscovery({ ...base })).toEqual({
+      discoverable: true,
+      comingSoon: true,
+      reason: 'coming_soon',
+    });
+  });
+});
+
 describe('toPublicDramaSummary', () => {
   it('emits the explicit camelCase public DTO', () => {
     const summary = toPublicDramaSummary(row());
@@ -200,5 +252,11 @@ describe('toPublicDramaSummary', () => {
   it('maps unknown legacy statuses to null instead of inventing one', () => {
     expect(toPublicDramaSummary(row({ status: 'archived' })).status).toBeNull();
     expect(toPublicDramaSummary(row({ status: null })).status).toBeNull();
+  });
+
+  it('does not advertise a hidden empty drama as coming soon', () => {
+    const summary = toPublicDramaSummary(row(), { emptyDramaVisibility: 'hidden' });
+
+    expect(summary.comingSoon).toBe(false);
   });
 });

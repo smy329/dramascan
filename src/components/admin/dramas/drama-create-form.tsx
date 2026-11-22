@@ -1,15 +1,20 @@
+'use client';
+
 import type { JSX, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFormContext } from 'react-hook-form';
 
-import { dramaFormSchema } from '@/lib/contracts/drama-form';
 import { AdminForm } from '@/components/admin/forms/admin-form';
 import { AdminFormField } from '@/components/admin/forms/admin-form-field';
 import { AdminFormSelectField } from '@/components/admin/forms/admin-form-select-field';
+import { ImageUploadField } from '@/components/admin/media/image-upload-field';
 import {
   DRAMA_FORM_DEFAULTS,
   DRAMA_STATUS_OPTIONS,
   DRAMA_STRUCTURE_OPTIONS,
+  DRAMA_VISIBILITY_OPTIONS,
+  dramaFormSchema,
+  type DramaTaxonomyOption,
 } from '@/lib/contracts/drama-form';
 import { createDramaAction } from '@/workflows/admin/drama-actions';
 
@@ -17,8 +22,6 @@ export type DramaCreateFormProps = Readonly<{
   categories: readonly DramaTaxonomyOption[];
   platforms: readonly DramaTaxonomyOption[];
 }>;
-
-type DramaTaxonomyOption = Readonly<{ id: string; name: string }>;
 
 function fieldError(errors: unknown, name: string): string | undefined {
   if (typeof errors !== 'object' || errors === null) {
@@ -87,31 +90,18 @@ function CheckboxGroupField({
   );
 }
 
-/**
- * Admin form for creating a drama.
- *
- * Every field required by Prompt 053 is present. Two fields are always
- * submitted: the Ongoing/Completed status and the episode structure, so a
- * drama is created either season-based or flat from the start. The form never
- * exposes a release year. On success it navigates back to the drama list,
- * where the new row is visible.
- */
-export function DramaCreateForm({ categories, platforms }: DramaCreateFormProps): JSX.Element {
-  const router = useRouter();
-
+/** Shared drama metadata fields for the create and edit forms. */
+export function DramaFormFields({
+  categories,
+  platforms,
+  structureLocked = false,
+}: Readonly<{
+  categories: readonly DramaTaxonomyOption[];
+  platforms: readonly DramaTaxonomyOption[];
+  structureLocked?: boolean;
+}>): JSX.Element {
   return (
-    <AdminForm
-      schema={dramaFormSchema}
-      serverAction={createDramaAction}
-      defaultValues={DRAMA_FORM_DEFAULTS}
-      resetOnSuccess={false}
-      submitLabel="Create drama"
-      pendingLabel="Creating…"
-      onSuccess={() => {
-        router.push('/admin/dramas');
-        router.refresh();
-      }}
-    >
+    <>
       <AdminFormField
         name="title"
         label="Title"
@@ -132,12 +122,36 @@ export function DramaCreateForm({ categories, platforms }: DramaCreateFormProps)
           label="Episode structure"
           options={DRAMA_STRUCTURE_OPTIONS}
           required
-          hint="The structure cannot be changed later on this form; use structure conversion."
+          disabled={structureLocked}
+          hint={
+            structureLocked
+              ? 'The structure cannot be changed here; use structure conversion.'
+              : 'The structure cannot be changed later on this form; use structure conversion.'
+          }
         />
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <AdminFormField name="poster" label="Poster" type="file" autoComplete="off" />
-        <AdminFormField name="banner" label="Banner" type="file" autoComplete="off" />
+      <AdminFormSelectField
+        name="visibility"
+        label="Empty-drama visibility"
+        options={DRAMA_VISIBILITY_OPTIONS}
+        required
+        hint="Coming Soon shows the poster and description without a Play button. Hide removes the drama from public discovery until a playable episode exists."
+      />
+      <div className="grid gap-6 sm:grid-cols-2">
+        <ImageUploadField
+          name="poster"
+          label="Poster"
+          contentType="drama"
+          kind="poster"
+          hint="Portrait artwork is required for a poster."
+        />
+        <ImageUploadField
+          name="banner"
+          label="Banner"
+          contentType="drama"
+          kind="banner"
+          hint="Landscape artwork is required for a banner."
+        />
       </div>
       <CheckboxGroupField
         name="categories"
@@ -151,7 +165,34 @@ export function DramaCreateForm({ categories, platforms }: DramaCreateFormProps)
         options={platforms}
         emptyMessage="No platforms exist yet. Create platforms before associating them."
       />
-    </AdminForm>
+    </>
   );
 }
 
+/**
+ * Admin form for creating a drama.
+ *
+ * Every field required by Prompt 053 is present, plus the empty-drama
+ * visibility mode. The form never exposes a release year or a slug. On success
+ * it navigates back to the drama list, where the new row is visible.
+ */
+export function DramaCreateForm({ categories, platforms }: DramaCreateFormProps): JSX.Element {
+  const router = useRouter();
+
+  return (
+    <AdminForm
+      schema={dramaFormSchema}
+      serverAction={createDramaAction}
+      defaultValues={DRAMA_FORM_DEFAULTS}
+      resetOnSuccess={false}
+      submitLabel="Create drama"
+      pendingLabel="Creating…"
+      onSuccess={() => {
+        router.push('/admin/dramas');
+        router.refresh();
+      }}
+    >
+      <DramaFormFields categories={categories} platforms={platforms} />
+    </AdminForm>
+  );
+}

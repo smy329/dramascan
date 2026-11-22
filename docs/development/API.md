@@ -420,6 +420,173 @@ failure. A `DELETE` answers `204` with no body. Every response carries the
 The pages `/admin/roles` and `/admin/users` use these endpoints from their
 client islands; the pages themselves are Server Components.
 
+### 3.13 Content publication (implemented, Prompts 068–069)
+
+Publication state is set explicitly, item by item. Publishing a parent never
+publishes its children, and an episode without a valid playback source is
+never published.
+
+| Method | Path                        | Auth                | Permission                                            | Purpose                                              | Status      |
+| ------ | --------------------------- | ------------------- | ----------------------------------------------------- | ---------------------------------------------------- | ----------- |
+| `POST` | `/admin/api/publication`    | Authenticated admin | `drama.manage` / `season.manage` / `episode.manage` / `movie.manage` | Publish or unpublish one item or a bounded batch | Implemented |
+
+The body is strict:
+
+```json
+{
+  "contentType": "episode",
+  "ids": ["<uuid>", "<uuid>"],
+  "operation": "publish"
+}
+```
+
+- `contentType` is `drama`, `season`, `episode`, or `movie`; the permission
+  checked is the manage permission of that type.
+- `operation` is `publish` or `unpublish`.
+- `ids` holds 1–100 UUIDs. The operation is applied in bounded batches, and
+  each batch runs in a transaction that locks its rows.
+- The response reports every requested id:
+
+```json
+{
+  "data": {
+    "results": [
+      { "id": "<uuid>", "status": "published", "reason": null, "message": null },
+      { "id": "<uuid>", "status": "skipped", "reason": "missing_video_source", "message": "…" }
+    ],
+    "published": 1,
+    "unpublished": 0,
+    "skipped": 1,
+    "failed": 0
+  }
+}
+```
+
+- The machine-readable skip reasons are `missing_video_source`,
+  `already_published`, `already_unpublished`, `trashed`, `invalid_id`, and
+  `duplicate_id`. One ineligible item never blocks the rest of the batch.
+- Mutations reject cross-origin requests.
+
+The admin surface is `/admin/publication`: type tabs, search, pagination,
+checkbox selection, bulk publish/unpublish, and the per-item skip report.
+
+### 3.14 Similar-drama management (implemented, Prompt 071)
+
+| Method | Path                                           | Auth                | Permission     | Purpose                                                    | Status      |
+| ------ | ---------------------------------------------- | ------------------- | -------------- | ---------------------------------------------------------- | ----------- |
+| `GET`  | `/admin/api/similar-dramas?dramaId=<uuid>`     | Authenticated admin | `drama.manage` | List the stored recommendations of one drama, in order      | Implemented |
+| `POST` | `/admin/api/similar-dramas`                    | Authenticated admin | `drama.manage` | Add one recommendation                                     | Implemented |
+| `PUT`  | `/admin/api/similar-dramas`                    | Authenticated admin | `drama.manage` | Replace the whole recommendation list of one drama         | Implemented |
+| `DELETE`| `/admin/api/similar-dramas?dramaId=&similarId=`| Authenticated admin | `drama.manage` | Remove one recommendation                                  | Implemented |
+| `PUT`  | `/admin/api/similar-dramas/reorder`            | Authenticated admin | `drama.manage` | Set the stored order of the recommendations                 | Implemented |
+| `GET`  | `/admin/api/similar-dramas/candidates?dramaId=`| Authenticated admin | `drama.manage` | Search dramas that can be recommended                      | Implemented |
+| `GET`  | `/admin/api/similar-dramas/suggestions?dramaId=`| Authenticated admin | `drama.manage` | Scored automatic suggestions for one drama                | Implemented |
+
+- A drama can never recommend itself, and a duplicate recommendation is a
+  `409`.
+- The suggestion endpoint is read-only: it never persists a recommendation.
+  The score weights are fixed (category 3, platform 2, status 1, structure 1)
+  and a candidate that shares nothing is not offered.
+- The ordering endpoint takes `{ "dramaId": "<uuid>", "ids": ["<uuid>", …] }`
+  and stores the order in one transaction.
+
+### 3.15 Content Trash (implemented, Prompts 072–074)
+
+| Method | Path                                   | Auth        | Permission                                                             | Purpose                                          | Status      |
+| ------ | -------------------------------------- | ----------- | ---------------------------------------------------------------------- | ------------------------------------------------ | ----------- |
+| `GET`  | `/admin/api/trash`                     | Admin       | Any of `drama.manage`, `season.manage`, `episode.manage`, `movie.manage` | Paginated Trash listing                         | Implemented |
+| `POST` | `/admin/api/trash/restore`             | Admin       | The manage permission of the content type                              | Restore one trashed item                        | Implemented |
+| `POST` | `/admin/api/trash/permanent-delete`    | Super Admin | —                                                                       | Preview, delete, or bulk delete trashed content | Implemented |
+
+- `GET` accepts `type` (`all`, `drama`, `season`, `episode`, `movie`), `page`,
+  `pageSize` (1–100), and `search`. The listing only contains the content
+  types the actor is allowed to manage.
+- The response carries the collection in `data` and the pagination in `meta`.
+  The collection is never repeated inside `meta`:
+
+```json
+{
+  "data": [
+    {
+      "id": "0f9f0f9c-....",
+      "contentType": "drama",
+      "title": "A trashed drama",
+      "parentTitle": null,
+      "deletedAt": "2026-11-22T10:00:00.000Z",
+      "expiresAt": "2026-12-22T10:00:00.000Z",
+      "childCounts": { "seasons": 2, "episodes": 12 }
+    }
+  ],
+  "meta": {
+    "total": 1,
+    "page": 1,
+    "pageSize": 20,
+    "totalPages": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false,
+    "retentionDays": 30
+  }
+}
+```
+
+- The merge is paged in the database, not in the process: one `UNION ALL`
+  query applies the search filter, the ordering, and the page window before
+  the rows are returned.
+- `POST /admin/api/trash/restore` takes `{ "contentType": "drama", "id": "<uuid>" }`.
+  A drama restores only the children that were trashed with it, identified by
+  the identical `deleted_at` timestamp. Restoring a child whose parent is
+  still trashed is refused, and so is a restoration that would create a
+  hierarchy conflict.
+- `POST /admin/api/trash/permanent-delete` takes
+  `{ "contentType": "drama", "id": "<uuid>" }` for one item or
+  `{ "items": [{ "contentType": "drama", "id": "<uuid>" }] }` for a bulk
+  deletion of up to 100 items. The response reports the impact per item and
+  the outcome (`succeeded`/`failed`) with a message. A drama that was
+  converted into a movie is refused with a `409` because the movie keeps
+  permanent provenance.
+- Permanent deletion removes bookmarks, playback progress, watched state, and
+  watch history, and retains ratings and reviews in anonymized form.
+
+### 3.16 Image asset upload and delivery (implemented, Prompts 075–078)
+
+| Method      | Path                   | Auth                | Permission                    | Purpose                                       | Status      |
+| ----------- | ---------------------- | ------------------- | ----------------------------- | --------------------------------------------- | ----------- |
+| `POST`      | `/admin/api/media`     | Authenticated admin | `drama.manage` / `movie.manage` | Upload one poster or banner original       | Implemented |
+| `GET`/`HEAD`| `/media/[...path]`     | Public              | —                             | Deliver a stored original image               | Implemented |
+
+- The upload is a `multipart/form-data` request with `contentType`
+  (`drama` or `movie`), `kind` (`poster` or `banner`), and one `file`.
+- The server validates the declared MIME type, the file signature, the size
+  (5 MB maximum), and the pixel dimensions. A poster must be portrait and a
+  banner must be landscape.
+- The file is stored unchanged under `IMAGE_STORAGE_DIR` as
+  `{kind}/{uuid}.{ext}`. The response carries the managed path and the stored
+  metadata:
+
+```json
+{
+  "data": {
+    "path": "/media/poster/0f9f0f9c-....png",
+    "kind": "poster",
+    "contentType": "image/png",
+    "bytes": 184320,
+    "width": 800,
+    "height": 1200
+  }
+}
+```
+
+- Delivery returns the stored bytes with the file's own content type and
+  `Cache-Control: public, max-age=31536000, immutable`. The route accepts
+  only the managed `{kind}/{uuid}.{ext}` shape; every other path is a `404`.
+  Images are never routed through `next/image`, Sharp, or a conversion
+  pipeline.
+- The storage directory has to survive a deployment. On a production Linux
+  host the default is the systemd state directory `/var/lib/dramascan/images`;
+  a production `IMAGE_STORAGE_DIR` inside the application directory is
+  rejected at startup.
+- Uploads reject cross-origin requests.
+
 ---
 
 Server Actions are application operations, not REST endpoints. They are documented here with their permission keys and result shape.
@@ -433,7 +600,9 @@ Server Actions are application operations, not REST endpoints. They are document
 | Reviews                 | Submit/update rating, submit/edit review, react, report review                   | Authenticated                                    | Planned |
 | Content reports         | Submit a content report                                                          | Authenticated, rate-limited                      | Planned |
 | Notifications           | Update preferences, mark read/unread, manage push subscription                   | Own notifications                                | Planned |
-| Content administration  | Create/update/publish/unpublish/trash/restore content, seasons, episodes, movies | `drama.*`, `episode.*`, `movie.*`                | Planned |
+| Content administration  | Create/update/publish/unpublish/trash/restore content, seasons, episodes, movies | `drama.*`, `episode.*`, `movie.*`                | Implemented |
+| Content Trash          | Move content into the Trash, restore it, and permanently delete it (Super Admin)  | `drama.*`, `season.*`, `episode.*`, `movie.*`   | Implemented |
+| Image assets           | Upload and replace poster and banner artwork                                       | `drama.manage`, `movie.manage`                   | Implemented |
 | Drama structure conversion | Preview and apply a season-based ↔ flat conversion, restore a structure snapshot | `drama.manage`                                   | Implemented |
 | Drama → movie conversion   | Preview and apply a single-episode drama conversion into a standalone movie      | `drama.manage`                                   | Implemented |
 | Source replacement      | Replace an episode or movie source after preview and confirmation                | `episode.manage`, `movie.manage`                                                | Planned |

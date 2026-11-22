@@ -26,24 +26,43 @@ export const ratings = pgTable(
   'ratings',
   {
     id: uuidPrimaryKey(),
-    user_id: uuid('user_id').notNull(),
+    // Nullable: a rating that survives the permanent deletion of its content
+    // is retained for aggregate analytics with the author identity removed.
+    // The `anonymized_at` marker records that this happened.
+    user_id: uuid('user_id'),
     drama_id: uuid('drama_id'),
     movie_id: uuid('movie_id'),
     value: integer('value').notNull(),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deleted_at: timestamp('deleted_at', { withTimezone: true }),
+    anonymized_at: timestamp('anonymized_at', { withTimezone: true }),
   },
   table => [
+    // A live row names exactly one content target. A row that names neither is
+    // only allowed when it was explicitly anonymized, so a detached row always
+    // carries the marker that explains why it lost its target.
     checkConstraint(
       'ratings',
       'target',
-      sql`(${table.drama_id} is not null and ${table.movie_id} is null) or (${table.drama_id} is null and ${table.movie_id} is not null)`
+      sql`(
+        (${table.drama_id} is not null and ${table.movie_id} is null) or
+        (${table.drama_id} is null and ${table.movie_id} is not null) or
+        (${table.drama_id} is null and ${table.movie_id} is null and ${table.anonymized_at} is not null)
+      )`
     ),
     // A rating is a score on a five-point scale. The range is a rule, not a
     // preference, so the database rejects 0, 6, and negatives instead of leaving
     // the invariants to whatever form happened to be used.
     checkConstraint('ratings', 'value_range', sql`${table.value} between 1 and 5`),
+    // An anonymized row has no author left. The rule is enforced by the
+    // database, so a rating can never keep a personal identity after its
+    // content was permanently deleted.
+    checkConstraint(
+      'ratings',
+      'anonymized_author',
+      sql`${table.anonymized_at} is null or ${table.user_id} is null`
+    ),
     uniqueIndex('uq_ratings_user_id_drama_id_active')
       .on(table.user_id, table.drama_id)
       .where(sql`${table.deleted_at} is null and ${table.drama_id} is not null`),
@@ -60,19 +79,34 @@ export const reviews = pgTable(
   'reviews',
   {
     id: uuidPrimaryKey(),
-    user_id: uuid('user_id').notNull(),
+    // Nullable for the same reason as `ratings.user_id`: an anonymized review
+    // survives the permanent deletion of its content.
+    user_id: uuid('user_id'),
     drama_id: uuid('drama_id'),
     movie_id: uuid('movie_id'),
     title: text('title'),
     content: text('content').notNull(),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    anonymized_at: timestamp('anonymized_at', { withTimezone: true }),
   },
   table => [
     checkConstraint(
       'reviews',
       'target',
-      sql`(${table.drama_id} is not null and ${table.movie_id} is null) or (${table.drama_id} is null and ${table.movie_id} is not null)`
+      sql`(
+        (${table.drama_id} is not null and ${table.movie_id} is null) or
+        (${table.drama_id} is null and ${table.movie_id} is not null) or
+        (${table.drama_id} is null and ${table.movie_id} is null and ${table.anonymized_at} is not null)
+      )`
+    ),
+    // An anonymized review has no author left. The rule is enforced by the
+    // database, so a review can never keep a personal identity after its
+    // content was permanently deleted.
+    checkConstraint(
+      'reviews',
+      'anonymized_author',
+      sql`${table.anonymized_at} is null or ${table.user_id} is null`
     ),
     // Reviews have no soft delete: removal is permanent, so one review per user
     // per content item is enforced for the whole table.

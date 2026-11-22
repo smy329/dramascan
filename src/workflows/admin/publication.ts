@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, eq, ilike, inArray, isNull, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { requirePermission, type ActorContext, type PermissionKey } from '@/modules/authorization';
@@ -9,6 +9,7 @@ import { dramas, episodes, movies, seasons } from '@/modules/content/schema';
 import {
   evaluatePublicationEligibility,
   evaluatePublicAvailability,
+  normalizePublicationStatus,
   type AvailabilityParent,
   type PublicationContentType,
   type PublicationStatus,
@@ -405,4 +406,205 @@ export async function unpublishContent(
   input: unknown
 ): Promise<PublicationResult> {
   return updatePublication(actor, { ...(input as object), action: 'unpublish' });
+}
+
+// ----- publication workbench read model -------------------------------------
+
+const publicationListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).catch(1),
+  pageSize: z.coerce.number().int().min(1).max(100).catch(20),
+  search: z.string().trim().max(200).catch(''),
+});
+
+export type PublicationListQuery = z.infer<typeof publicationListQuerySchema>;
+
+export type PublicationListItem = {
+  id: string;
+  title: string;
+  publicationStatus: PublicationStatus;
+  publishedAt: string | null;
+  hasVideoSource: boolean;
+  eligibleToPublish: boolean;
+  eligibleToUnpublish: boolean;
+};
+
+export type PublicationListResult = {
+  items: PublicationListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+};
+
+/** Parse the publication workbench query, tolerating stale values. */
+export function parsePublicationListQuery(input: unknown): PublicationListQuery {
+  return publicationListQuerySchema.parse(input);
+}
+
+function toPublicationItem(row: {
+  id: string;
+  title: string;
+  publication_status: string;
+  published_at: Date | null;
+  video_source: string | null;
+}, contentType: PublicationContentType): PublicationListItem {
+  const publicationStatus = normalizePublicationStatus(row.publication_status);
+  const publish = evaluatePublicationEligibility({
+    contentType,
+    action: 'publish',
+    publicationStatus,
+    videoSource: row.video_source,
+  });
+  const unpublish = evaluatePublicationEligibility({
+    contentType,
+    action: 'unpublish',
+    publicationStatus,
+    videoSource: row.video_source,
+  });
+
+  return {
+    id: row.id,
+    title: row.title,
+    publicationStatus,
+    publishedAt: row.published_at?.toISOString() ?? null,
+    hasVideoSource: row.video_source !== null && row.video_source.trim() !== '',
+    eligibleToPublish: publish.eligible,
+    eligibleToUnpublish: unpublish.eligible,
+  };
+}
+
+/**
+ * List active content for the publication workbench.
+ *
+ * Only the item's own readiness is reported. Publishing a parent never
+ * publishes its children: the child rows remain draft until they are selected
+ * and pass their own eligibility checks.
+ */
+export async function listPublicationItems(
+  actor: ActorContext,
+  contentType: PublicationContentType,
+  query: PublicationListQuery
+): Promise<PublicationListResult> {
+  requirePermission(actor, MANAGE_PERMISSIONS[contentType]);
+
+  const searchPattern = `%${query.search}%`;
+  const offset = (query.page - 1) * query.pageSize;
+
+  if (contentType === 'drama') {
+    const where = and(
+      isNull(dramas.deleted_at),
+      query.search.length > 0 ? ilike(dramas.title, searchPattern) : undefined
+    );
+    const [[totalRow], rows] = await Promise.all([
+      db.select({ total: count() }).from(dramas).where(where),
+      db
+        .select({
+          id: dramas.id,
+          title: dramas.title,
+          publication_status: dramas.publication_status,
+          published_at: dramas.published_at,
+          video_source: sql<string | null>`null`,
+        })
+        .from(dramas)
+        .where(where)
+        .orderBy(asc(dramas.title), asc(dramas.id))
+        .limit(query.pageSize)
+        .offset(offset),
+    ]);
+
+    return toListResult(rows.map(row => toPublicationItem(row, 'drama')), Number(totalRow?.total ?? 0), query);
+  }
+
+  if (contentType === 'season') {
+    const where = and(
+      isNull(seasons.deleted_at),
+      query.search.length > 0 ? ilike(seasons.title, searchPattern) : undefined
+    );
+    const [[totalRow], rows] = await Promise.all([
+      db.select({ total: count() }).from(seasons).where(where),
+      db
+        .select({
+          id: seasons.id,
+          title: seasons.title,
+          publication_status: seasons.publication_status,
+          published_at: seasons.published_at,
+          video_source: sql<string | null>`null`,
+        })
+        .from(seasons)
+        .where(where)
+        .orderBy(asc(seasons.title), asc(seasons.id))
+        .limit(query.pageSize)
+        .offset(offset),
+    ]);
+
+    return toListResult(rows.map(row => toPublicationItem(row, 'season')), Number(totalRow?.total ?? 0), query);
+  }
+
+  if (contentType === 'episode') {
+    const where = and(
+      isNull(episodes.deleted_at),
+      query.search.length > 0 ? ilike(episodes.title, searchPattern) : undefined
+    );
+    const [[totalRow], rows] = await Promise.all([
+      db.select({ total: count() }).from(episodes).where(where),
+      db
+        .select({
+          id: episodes.id,
+          title: episodes.title,
+          publication_status: episodes.publication_status,
+          published_at: episodes.published_at,
+          video_source: episodes.video_source,
+        })
+        .from(episodes)
+        .where(where)
+        .orderBy(asc(episodes.title), asc(episodes.id))
+        .limit(query.pageSize)
+        .offset(offset),
+    ]);
+
+    return toListResult(rows.map(row => toPublicationItem(row, 'episode')), Number(totalRow?.total ?? 0), query);
+  }
+
+  const where = and(
+    isNull(movies.deleted_at),
+    query.search.length > 0 ? ilike(movies.title, searchPattern) : undefined
+  );
+  const [[totalRow], rows] = await Promise.all([
+    db.select({ total: count() }).from(movies).where(where),
+    db
+      .select({
+        id: movies.id,
+        title: movies.title,
+        publication_status: movies.publication_status,
+        published_at: movies.published_at,
+        video_source: movies.video_source,
+      })
+      .from(movies)
+      .where(where)
+      .orderBy(asc(movies.title), asc(movies.id))
+      .limit(query.pageSize)
+      .offset(offset),
+  ]);
+
+  return toListResult(rows.map(row => toPublicationItem(row, 'movie')), Number(totalRow?.total ?? 0), query);
+}
+
+function toListResult(
+  items: PublicationListItem[],
+  total: number,
+  query: PublicationListQuery
+): PublicationListResult {
+  const totalPages = total === 0 ? 0 : Math.ceil(total / query.pageSize);
+
+  return {
+    items,
+    total,
+    page: query.page,
+    pageSize: query.pageSize,
+    totalPages,
+    hasNextPage: query.page < totalPages,
+    hasPreviousPage: query.page > 1,
+  };
 }

@@ -6,6 +6,7 @@ import { AdminDataTable } from '@/components/admin/data-table/data-table';
 import { AdminTablePagination } from '@/components/admin/data-table/data-table-pagination';
 import { AdminTableToolbar } from '@/components/admin/data-table/data-table-toolbar';
 import type { AdminTableColumn } from '@/components/admin/data-table/types';
+import { DramaTrashButton } from '@/components/admin/dramas/drama-trash-button';
 import { hasPermission, toPermissionKey } from '@/modules/authorization';
 import type { ConversionStructureType } from '@/modules/content/validation';
 import { buildTableHref, type TableQueryState } from '@/lib/contracts/table';
@@ -102,6 +103,12 @@ export default async function AdminDramasPage({
       render: row => (
         <div className="flex flex-wrap justify-end gap-3">
           <Link
+            href={`/admin/dramas/${row.id}/edit`}
+            className="text-sm font-medium text-foreground underline underline-offset-4 hover:text-primary"
+          >
+            Edit
+          </Link>
+          <Link
             href={`/admin/dramas/${row.id}/convert`}
             className="text-sm font-medium text-foreground underline underline-offset-4 hover:text-primary"
           >
@@ -123,6 +130,12 @@ export default async function AdminDramasPage({
               Manage similar dramas
             </Link>
           ) : null}
+          <DramaTrashButton
+            dramaId={row.id}
+            title={row.title}
+            affectedSeasons={row.activeSeasons}
+            affectedEpisodes={row.activeEpisodes}
+          />
         </div>
       ),
     },

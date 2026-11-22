@@ -183,6 +183,82 @@ Replacing an episode or movie source is a consequential operation:
 4. The replacement is applied transactionally; progress for the affected episode is reset while watch-history records and their historical dates are preserved.
 5. The old URL is not treated as secret and is not retained as a fallback unless the approved schema stores replacement history.
 
+### 7.2 Image asset uploads (implemented, Prompts 075–078)
+
+Uploaded artwork is untrusted input and is validated from its bytes on the
+server:
+
+- **The client never chooses the path.** The stored filename is a
+  server-generated UUID plus the extension derived from the validated MIME
+  type, and the file is written with an exclusive-create flag, so an existing
+  file is never overwritten.
+- **The declared content type is not trusted.** The file signature is checked
+  against the declared MIME type, so a renamed executable is rejected.
+- **Size and dimensions are bounded** (5 MB, 100–4000 px). A poster must be
+  portrait and a banner must be landscape, so portrait artwork cannot be
+  stretched into a banner.
+- **The upload requires the manage permission of the target content type**
+  (`drama.manage` or `movie.manage`), and the mutation rejects cross-origin
+  requests.
+- **The delivery route cannot read arbitrary paths.** `/media/[...path]`
+  accepts exactly the managed `{kind}/{uuid}.{ext}` shape and rejects
+  everything else with a `404`. A traversal attempt never reaches the file
+  system.
+- **Delivery headers are safe by construction.** Filenames never change, so
+  `Cache-Control: public, max-age=31536000, immutable` cannot serve a stale
+  file under a new URL. The response also carries
+  `X-Content-Type-Options: nosniff` and
+  `Cross-Origin-Resource-Policy: same-origin`.
+- **No server-side fetch.** The application never requests an
+  administrator-supplied URL to validate an image, so the upload path has no
+  SSRF surface.
+- **Stored originals are not processed.** There is no Sharp, no resizing, and
+  no Next.js image optimization, so the platform never decodes untrusted
+  image data into an image codec.
+- **The storage directory is a deployment concern.** `IMAGE_STORAGE_DIR` must
+  point outside the release directory and the web root; it is excluded from
+  version control. Without an explicit value, a production Linux deployment
+  uses `/var/lib/dramascan/images` — the systemd state directory of the
+  `dramascan` service — and every other environment uses
+  `<working directory>/storage/images`. A production value inside the
+  application directory is rejected at startup, because a deployment replaces
+  that directory and would delete the artwork stored inside it.
+
+---
+
+## 7.3 Irreversible content operations (implemented, Prompts 072–074)
+
+Permanent deletion is the only irreversible operation in the content model, so
+its authorization is deliberately narrow:
+
+- **Super Admin only.** `requireSuperAdmin` is the authority. There is no
+  permission key that grants permanent deletion to a custom role, and the
+  bulk form uses the same guard.
+- **The content must already be in the Trash.** Permanent deletion cannot be
+  used as a shortcut for soft deletion, which keeps the recoverable path the
+  default.
+- **The impact is previewed first.** The Trash surface reports the affected
+  hierarchy and every dependent record before the confirmation.
+- **Provenance is protected.** A drama that was converted into a standalone
+  movie cannot be permanently deleted while the movie exists, because the
+  movie keeps a permanent reference to its source.
+- **Personal records are removed, ratings and reviews are anonymized.** A
+  retained rating or review loses its author and its content target, and the
+  database only accepts a targetless row when `anonymized_at` is set. The
+  retained text is aggregate-analytics data, not a person.
+- **The anonymization rule is a database invariant.** The constraints
+  `ck_ratings_anonymized_author` and `ck_reviews_anonymized_author` reject
+  any row whose `anonymized_at` is set while `user_id` is still present, so
+  an anonymized rating or review can never keep a personal identity — not
+  even through a write that bypasses the workflow layer.
+- **The Trash state is re-checked under a row lock.** Permanent deletion and
+  the expiry command both take a `FOR UPDATE` lock and re-read `deleted_at`
+  under it, so a restoration that races a deletion is never silently
+  overwritten.
+- **Restoration is not privileged beyond the content's own manage
+  permission**, and a restored child is exactly the child that was trashed
+  with its parent.
+
 ---
 
 ## 8. Database Security

@@ -18,6 +18,7 @@
 
 import { z } from 'zod';
 
+import { imageReferenceSchema } from './media';
 import { SLUG_MAX_LENGTH, slugFromText } from './slug';
 
 /** Maximum slug length shared with the domain schema. */
@@ -33,6 +34,12 @@ export const DRAMA_STATUS_OPTIONS = [
 export const DRAMA_STRUCTURE_OPTIONS = [
   { value: 'season_based', label: 'Season-based' },
   { value: 'flat', label: 'Flat (no seasons)' },
+] as const;
+
+/** Empty-drama visibility choices exposed by the form (requirements §4.7). */
+export const DRAMA_VISIBILITY_OPTIONS = [
+  { value: 'coming_soon', label: 'Show Coming Soon' },
+  { value: 'hidden', label: 'Hide until episodes are available' },
 ] as const;
 
 /**
@@ -74,8 +81,9 @@ export const dramaFormSchema = z
     description: z.string().max(20_000, 'Description is too long.').optional(),
     status: z.enum(['ongoing', 'completed']),
     structure_type: z.enum(['flat', 'season_based']),
-    poster: z.string().optional(),
-    banner: z.string().optional(),
+    visibility: z.enum(['coming_soon', 'hidden']),
+    poster: z.union([z.literal(''), imageReferenceSchema]).optional(),
+    banner: z.union([z.literal(''), imageReferenceSchema]).optional(),
     categories: z.array(z.uuid()),
     platforms: z.array(z.uuid()),
   })
@@ -92,6 +100,7 @@ export const DRAMA_FORM_DEFAULTS: Readonly<Record<string, unknown>> = {
   description: '',
   status: 'ongoing',
   structure_type: 'season_based',
+  visibility: 'coming_soon',
   poster: '',
   banner: '',
   categories: [],

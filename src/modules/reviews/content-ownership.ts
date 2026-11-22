@@ -28,10 +28,17 @@ export async function countContentReferences(
   tx: DbOrTx,
   dramaId: string
 ): Promise<ReviewContentReferenceCounts> {
-  const [[ratingRow], [reviewRow]] = await Promise.all([
-    tx.select({ total: count() }).from(ratings).where(eq(ratings.drama_id, dramaId)),
-    tx.select({ total: count() }).from(reviews).where(eq(reviews.drama_id, dramaId)),
-  ]);
+  // The queries run one after the other: a transaction uses a single
+  // PostgreSQL connection, and the driver does not accept two queries on the
+  // same connection at the same time.
+  const [ratingRow] = await tx
+    .select({ total: count() })
+    .from(ratings)
+    .where(eq(ratings.drama_id, dramaId));
+  const [reviewRow] = await tx
+    .select({ total: count() })
+    .from(reviews)
+    .where(eq(reviews.drama_id, dramaId));
 
   return {
     ratings: Number(ratingRow?.total ?? 0),
@@ -60,4 +67,41 @@ export async function moveContentReferences(
     .update(reviews)
     .set({ movie_id: movieId, drama_id: null })
     .where(eq(reviews.drama_id, dramaId));
+}
+
+/**
+ * Detach a rating and a review from a content item that is being permanently
+ * deleted, and remove the author identity.
+ *
+ * The rows themselves are retained: the rating value and the review text stay
+ * available for aggregate analytics. What is removed is the link to the
+ * deleted content and the link to the user who wrote them.
+ *
+ * The statement sets the target columns and `user_id` to null and stamps
+ * `anonymized_at` in the same update, so the exactly-one target CHECK is
+ * satisfied by the new row state and never sees an intermediate violation.
+ */
+export async function anonymizeContentReferences(
+  tx: Tx,
+  type: 'drama' | 'movie',
+  id: string
+): Promise<ReviewContentReferenceCounts> {
+  const now = new Date();
+
+  const ratingRows = await tx
+    .update(ratings)
+    .set({ user_id: null, anonymized_at: now, drama_id: null, movie_id: null })
+    .where(type === 'drama' ? eq(ratings.drama_id, id) : eq(ratings.movie_id, id))
+    .returning({ id: ratings.id });
+
+  const reviewRows = await tx
+    .update(reviews)
+    .set({ user_id: null, anonymized_at: now, drama_id: null, movie_id: null })
+    .where(type === 'drama' ? eq(reviews.drama_id, id) : eq(reviews.movie_id, id))
+    .returning({ id: reviews.id });
+
+  return {
+    ratings: ratingRows.length,
+    reviews: reviewRows.length,
+  };
 }

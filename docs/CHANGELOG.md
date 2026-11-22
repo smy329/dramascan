@@ -2,6 +2,233 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [Unreleased] - 2026-11-22
+
+### feat: implement content publication controls and bulk publication (Prompts 068–069)
+
+Publication state is now set explicitly, item by item, and a bulk operation
+reports every item it skipped and why.
+
+- `src/workflows/admin/publication.ts` (new): actor-first publication
+  workflows. `updatePublication` applies a publish/unpublish operation to a
+  bounded batch (maximum 100 ids), decides eligibility per item inside the
+  transaction, and reports a machine-readable reason for every skipped item
+  (`missing_video_source`, `already_published`, `already_unpublished`,
+  `trashed`, `invalid_id`, `duplicate_id`). Publishing a parent never
+  publishes its children.
+- `src/app/admin/api/publication/route.ts` (new): `POST /admin/api/publication`,
+  guarded by the manage permission of the submitted content type and by the
+  same-origin rule.
+- `src/app/admin/publication/page.tsx` (new) and
+  `src/components/admin/publication/publication-manager.tsx` (new): the
+  dedicated publication surface with type tabs, search, pagination, checkbox
+  selection, bulk publish/unpublish, and the per-item skip report.
+- `src/modules/content/publication.ts`: the shared availability rule now
+  backs the admin workflows as well as the public site.
+
+### feat: implement empty-drama visibility settings (Prompt 070)
+
+- `EMPTY_DRAMA_VISIBILITY` (default `coming_soon`) decides how a drama without
+  a playable episode appears publicly. A per-drama `visibility = 'hidden'` is
+  always the stricter rule.
+- `src/modules/content/public-dramas.shared.ts` (new): the shared rule, used
+  by the catalogue, the public API, and the detail view.
+- `src/modules/content/public-dramas.ts`: the SQL mirror states the positive
+  condition — `(dramas.visibility is distinct from 'hidden')` — instead of
+  negating the hidden test. A negated comparison is NULL for a NULL column,
+  and a NULL predicate silently drops the row from the catalogue.
+
+### feat: implement similar-drama management (Prompt 071)
+
+- `src/modules/content/similar-dramas.shared.ts` (new): the pure relevance
+  rules. Shared categories score 3, shared platforms 2, a matching status 1,
+  and a matching structure type 1. A candidate that shares nothing is not
+  offered, and a drama never recommends itself.
+- `src/workflows/admin/similar-dramas.ts` (new): the manual workflow —
+  add, remove, replace, and reorder recommendations. Duplicate
+  recommendations are refused.
+- `src/app/admin/api/similar-dramas/{route,candidates,suggestions,reorder}`:
+  the REST surface, including the read-only scored suggestions.
+- `src/components/admin/dramas/similar-drama-manager.tsx`: the admin surface.
+  Automatic suggestions are a review aid and are never persisted by
+  themselves.
+
+### feat: implement the content Trash, restoration, permanent deletion, and retention (Prompts 072–074)
+
+- `src/workflows/admin/trash.ts` (new): the cross-content Trash read model,
+  with a tolerant query parser, the content types the actor may manage, and
+  the projected expiry date of every trashed row.
+- `src/workflows/admin/restore.ts` (new): restoration that is the exact
+  inverse of the Trash cascade. A drama restores only the seasons and
+  episodes whose `deleted_at` equals the drama's own; a child trashed
+  separately stays in the Trash. A child whose parent is still trashed cannot
+  be restored.
+- `src/workflows/admin/permanent-delete.ts` (new): Super-Admin-only permanent
+  deletion, with an impact preview, a bulk form, and the approved retention
+  rules — personal records are removed, ratings and reviews are retained in
+  anonymized form (`user_id = NULL`, target `NULL`, `anonymized_at = now()`),
+  and a drama that was converted into a movie is refused because the movie
+  keeps permanent provenance.
+- `drizzle/0011_anonymized_ratings_and_reviews.sql` (new): makes
+  `ratings.user_id` / `reviews.user_id` nullable, adds `anonymized_at`, and
+  relaxes `ck_ratings_target` / `ck_reviews_target` so that only an
+  anonymized row may have no content target.
+- `scripts/trash-cleanup.mjs` (new): the bounded, short-lived expiry
+  command. It runs in batches, supports a dry run, skips a parent whose
+  children have not expired, and writes one JSON object per line for
+  `journald`.
+- `systemd/dramascan-trash-cleanup.{service,timer}`: the systemd trigger for
+  the command. There is no worker, no queue, and no scheduler inside the
+  application.
+- `src/app/admin/trash/page.tsx` (new),
+  `src/components/admin/trash/trash-manager.tsx` (new), and the
+  `/admin/api/trash/*` routes: the Trash surface.
+
+### feat: implement image asset storage, upload, and direct delivery (Prompts 075–078)
+
+- `src/platform/media/storage.ts` (new): stores the uploaded original
+  byte-for-byte under `IMAGE_STORAGE_DIR` (default `storage/images`) as
+  `{kind}/{uuid}.{ext}`. There is no Sharp, no resizing, and no conversion.
+  The server validates the MIME type, the file signature, the size (5 MB), and
+  the pixel dimensions; a poster must be portrait and a banner must be
+  landscape.
+- `src/lib/contracts/media.ts` (new): the client-safe media contract, the
+  managed filename pattern, and the allowed image types.
+- `src/app/admin/api/media/route.ts` (new): `POST /admin/api/media`, a
+  multipart upload guarded by `drama.manage` / `movie.manage` and the
+  same-origin rule.
+- `src/app/media/[...path]/route.ts` (new): direct delivery of the stored
+  original with the file's own content type and
+  `Cache-Control: public, max-age=31536000, immutable`. The route accepts
+  only the managed path shape, so it cannot be used to read application source
+  or any other filesystem path.
+- `src/components/admin/media/image-upload-field.tsx` (new): the upload
+  control used by the drama and movie forms.
+- `systemd/dramascan-image-delivery.service`: the static-delivery unit.
+
+### chore: remove the Odysee/LBRY assumptions from the initial implementation (Prompt 079)
+
+- The codebase, the configuration, and the documentation contain no Odysee or
+  LBRY client, SDK, credential, claim id, upload endpoint, URL resolver, or
+  provider-specific model. The platform uses a public, direct HTTPS MP4 URL
+  that the browser plays directly.
+
+### fix: make the end-to-end suite deterministic
+
+- `tests/e2e/support/stale-fixtures.mjs` (new) removes the fixture rows an
+  interrupted earlier run left behind. The sweep runs after the global setup
+  has proven that the target is the dedicated `_test` database, and it only
+  matches the `e2e-` fixture prefix, so it can only ever remove rows this
+  suite created.
+- `tests/global-setup.ts` removes the leftover fixture users before the
+  integration suite. An active Super Admin left behind by an interrupted run
+  silently breaks the global "last active Super Admin" guard.
+
+### fix: repair the defects found while implementing the prompts above
+
+- `src/lib/contracts/media.ts`: the credential-free URL refinement no longer
+  throws on a malformed URL. Zod runs a refinement even after the URL format
+  check has failed, so the parse is repeated defensively inside a `try`.
+- `scripts/trash-cleanup.mjs`: the file contained TypeScript-only syntax in a
+  `.mjs` module and could never run under Node. It is now plain JavaScript.
+- `src/platform/config/schema.ts` and `src/platform/media/storage.ts`: the
+  runtime image directory carries a Turbopack trace hint, so the build no
+  longer copies the whole project into the output for it.
+
+### fix: close the findings of the Prompts 068–079 implementation review
+
+The implementation was reviewed on two axes — the repository's documented
+standards, and the prompt specification. Every confirmed finding is fixed
+here.
+
+**Trash and expiry**
+
+- `scripts/trash-cleanup.mjs`: each candidate is now removed in its own
+  transaction. The row is locked with `FOR UPDATE`, `deleted_at` is re-checked
+  under that lock, and the whole hierarchy is removed in that one transaction,
+  so a restoration that races the expiry is never overwritten. A candidate
+  whose drama is the source of an existing movie is skipped instead of
+  failing on the foreign key.
+- `scripts/trash-cleanup.mjs`: the cleanup-order table was singular where the
+  loop expected a plural, so the command removed nothing. Both tables are
+  correct now, and `tests/unit/scripts/trash-cleanup.test.ts` covers the
+  mapping.
+- `src/workflows/admin/permanent-delete.ts`: the target row is locked and its
+  Trash state is re-checked before the delete, the `deleted_at` guard is
+  applied to every level of the hierarchy, and a bulk deletion reports a
+  failed item instead of rejecting the whole batch.
+- `src/workflows/admin/restore.ts`: a hierarchy conflict (slug, episode
+  number, or season position) is detected before anything is written, so a
+  refused restoration leaves no partial state.
+- `src/workflows/admin/dramas.ts`: an episode whose parent is already trashed
+  cannot be trashed a second time.
+
+**Anonymization**
+
+- `drizzle/0012_anonymized_rows_have_no_author.sql` (new): adds
+  `ck_ratings_anonymized_author` and `ck_reviews_anonymized_author`
+  (`anonymized_at IS NULL OR user_id IS NULL`), so an anonymized rating or
+  review can never keep its author. Migration `0011` made the author
+  nullable; this migration closes the gap where an anonymized row could still
+  name one. `tests/integration/db/integrity-constraints.integration.test.ts`
+  proves that the database rejects the invalid row.
+
+**Database access**
+
+- `src/workflows/admin/trash.ts`: the merged Trash listing is one
+  `UNION ALL` query that applies the search filter, the ordering, and the page
+  window in the database, instead of loading every trashed row of every type
+  into the process. The Trash date is projected as epoch milliseconds, because
+  a raw query has no column metadata and the driver would otherwise hand the
+  timestamp back as an unparsed string.
+- `src/workflows/admin/{permanent-delete,restore}.ts`,
+  `src/modules/{users,analytics,reviews,notifications}/content-ownership.ts`,
+  and `src/workflows/admin/movie-conversion.ts`: a transaction is bound to one
+  PostgreSQL connection, so the queries inside a transaction now run one after
+  the other. The driver deprecated concurrent queries on one connection
+  (`Calling client.query() when the client is already executing a query`) and
+  removes them in pg 9. The rule is enforced by
+  `tests/unit/architecture/transaction-single-connection.test.ts` and
+  `tests/unit/modules/content-ownership-single-connection.test.ts`.
+
+**Image storage**
+
+- `src/platform/config/schema.ts`: `IMAGE_STORAGE_DIR` is platform-aware. The
+  default is `/var/lib/dramascan/images` in production on Linux — the systemd
+  state directory of the `dramascan` service — and `<cwd>/storage/images`
+  elsewhere. A production value inside the application directory is rejected
+  at startup, because a deployment replaces that directory and would delete
+  the artwork stored inside it.
+- `systemd/dramascan-trash-cleanup.service`: declares
+  `StateDirectory=dramascan`, so the state directory exists with the right
+  ownership before the command runs.
+
+**Module boundaries**
+
+- `src/lib/contracts/trash.ts` (new) and
+  `src/lib/contracts/similar-dramas.ts` (new): the client-safe DTOs and
+  request schemas moved out of the workflows that own the data access, so the
+  admin components no longer import a workflow or a module-private file.
+- `src/app/admin/api/trash/route.ts`: `meta` carries the pagination only; the
+  collection is no longer repeated inside `meta`.
+- `src/app/admin/api/trash/restore/route.ts`: uses the shared request schema
+  instead of a module-private validation.
+- `src/workflows/admin/similar-dramas.ts`: a reorder that names a subset of
+  the stored recommendations keeps the unmentioned ones in place.
+- `src/workflows/admin/dramas.ts`: the catalogue description is returned to
+  the admin surface.
+- `src/workflows/admin/media.ts` (new): the upload workflow was moved out of
+  the route, so the route is a thin adapter like every other admin route.
+- `src/components/admin/media/video-source-preview.tsx` (new): the browser
+  playback preview is shared by the episode and movie forms instead of being
+  duplicated.
+
+### chore: remove committed development artifacts
+
+- `integration-output.txt`, `test-out.txt`, `test-output.txt`,
+  `scripts/upload-image.mjs`, and `src/scripts/upload-image.d.ts` were
+  committed by mistake and are deleted.
+
 ## [Unreleased] - 2026-11-18
 
 ### feat: add admin category, platform, season and episode management (Task 8)

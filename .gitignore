@@ -38,3 +38,6 @@ Thumbs.db
 /test-results/
 /playwright-report/
 /blob-report/
+
+# Uploaded original poster and banner artwork
+/storage/

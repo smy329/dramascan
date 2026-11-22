@@ -1,11 +1,26 @@
 import 'server-only';
 
-import { and, asc, desc, eq, ilike, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { db } from '@/db/client';
 import { requirePermission, type ActorContext } from '@/modules/authorization';
-import { similar_dramas as similarDramas, dramas } from '@/modules/content/schema';
+import {
+  drama_categories as dramaCategories,
+  drama_platforms as dramaPlatforms,
+  similar_dramas as similarDramas,
+  dramas,
+} from '@/modules/content/schema';
+import {
+  rankSimilarDramaSuggestions,
+  type SimilarDramaSource,
+} from '@/modules/content/similar-dramas.shared';
+import type {
+  SimilarDramaListResult,
+  SimilarDramaPosition,
+  SimilarDramaSuggestion,
+  SimilarDramaSummary,
+} from '@/lib/contracts/similar-dramas';
 import { parseOrThrow } from '@/modules/content/validation';
 import { ConflictError, NotFoundError, ValidationError } from '@/platform/errors';
 
@@ -22,27 +37,13 @@ import { ConflictError, NotFoundError, ValidationError } from '@/platform/errors
 const MANAGE_PERMISSION = 'similar_drama.manage';
 
 /** The target's stored position. Existing rows may still carry a null. */
-export type SimilarDramaPosition = number | null;
+export type { SimilarDramaPosition };
 
 /** One managed recommendation. */
-export type SimilarDramaSummary = {
-  id: string;
-  title: string;
-  poster: string | null;
-  description: string | null;
-  position: SimilarDramaPosition;
-};
+export type { SimilarDramaSummary };
 
 /** Paginated listing for one parent drama. */
-export type SimilarDramaListResult = {
-  items: SimilarDramaSummary[];
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
-};
+export type { SimilarDramaListResult };
 
 const listSimilarDramasQuerySchema = z.strictObject({
   page: z.coerce.number().int().min(1).default(1),
@@ -390,8 +391,11 @@ export async function updateSimilarDramaPosition(
 /**
  * Replace the order of a drama's recommendations in one transaction.
  *
- * The caller must submit every currently associated target exactly once;
- * anything else is rejected before a single position is written.
+ * The caller submits the recommendations it wants to reorder, in their new
+ * order. The submission may be a subset of the associated dramas: the admin
+ * list is paginated, so the administrator only ever holds one page. The
+ * submitted ids take the slots they currently occupy, and the ids that were
+ * not submitted keep their relative order around them.
  */
 export async function reorderSimilarDramas(
   actor: ActorContext,
@@ -416,19 +420,36 @@ export async function reorderSimilarDramas(
       })
       .from(similarDramas)
       .innerJoin(dramas, eq(similarDramas.similar_drama_id, dramas.id))
-      .where(and(eq(similarDramas.drama_id, parentId), isNull(dramas.deleted_at)));
+      .where(and(eq(similarDramas.drama_id, parentId), isNull(dramas.deleted_at)))
+      .orderBy(asc(similarDramas.position), asc(dramas.id));
 
     const byId = new Map(rows.map(row => [row.id, row]));
 
-    if (parsedIds.length !== byId.size || parsedIds.some(id => !byId.has(id))) {
-      throw new ValidationError(
-        'The order must contain every currently associated drama exactly once.'
-      );
+    for (const id of parsedIds) {
+      if (!byId.has(id)) {
+        throw new ValidationError('The order may only contain dramas that are recommended.');
+      }
+    }
+
+    // The slots the submitted ids occupy are replaced by the submitted order.
+    // The remaining recommendations keep their relative order.
+    const submitted = new Set(parsedIds);
+    const merged: string[] = [];
+    let submittedIndex = 0;
+
+    for (const row of rows) {
+      if (submitted.has(row.id)) {
+        merged.push(parsedIds[submittedIndex] as string);
+        submittedIndex += 1;
+        continue;
+      }
+
+      merged.push(row.id);
     }
 
     const ordered: SimilarDramaSummary[] = [];
 
-    for (const [index, id] of parsedIds.entries()) {
+    for (const [index, id] of merged.entries()) {
       await tx
         .update(similarDramas)
         .set({ position: index })
@@ -437,7 +458,7 @@ export async function reorderSimilarDramas(
       const row = byId.get(id);
 
       if (!row) {
-        throw new ValidationError('The order must contain only associated dramas.');
+        throw new ValidationError('The order may only contain associated dramas.');
       }
 
       ordered.push({ ...row, position: index });
@@ -509,4 +530,134 @@ export async function listSimilarDramaIds(actor: ActorContext, dramaId: string):
     );
 
   return rows.map(row => row.id);
+}
+
+/** Upper bound on the candidate pool scored for one parent drama. */
+const SUGGESTION_CANDIDATE_LIMIT = 500;
+
+/**
+ * Generate automatic similar-drama suggestions.
+ *
+ * The score is computed from shared categories, platforms, production status,
+ * and structure type. Self-recommendations, Trash entries, and dramas that are
+ * already associated are excluded before scoring, so the administrator is
+ * never offered a duplicate or the drama itself.
+ */
+export async function suggestSimilarDramas(
+  actor: ActorContext,
+  dramaId: string
+): Promise<SimilarDramaSuggestion[]> {
+  requirePermission(actor, MANAGE_PERMISSION);
+
+  const parentId = parseRouteDramaId(dramaId);
+  await requireActiveDrama(db, parentId);
+
+  const [sourceRow] = await db
+    .select({
+      id: dramas.id,
+      status: dramas.status,
+      structureType: dramas.structure_type,
+    })
+    .from(dramas)
+    .where(eq(dramas.id, parentId));
+
+  if (!sourceRow) {
+    throw new NotFoundError('Drama not found.');
+  }
+
+  const [sourceCategoryRows, sourcePlatformRows, linkedRows] = await Promise.all([
+    db
+      .select({ categoryId: dramaCategories.category_id })
+      .from(dramaCategories)
+      .where(eq(dramaCategories.drama_id, parentId)),
+    db
+      .select({ platformId: dramaPlatforms.platform_id })
+      .from(dramaPlatforms)
+      .where(eq(dramaPlatforms.drama_id, parentId)),
+    db
+      .select({ id: similarDramas.similar_drama_id })
+      .from(similarDramas)
+      .where(eq(similarDramas.drama_id, parentId)),
+  ]);
+
+  const source: SimilarDramaSource = {
+    id: sourceRow.id,
+    status: sourceRow.status,
+    structureType: sourceRow.structureType,
+    categoryIds: sourceCategoryRows.map(row => row.categoryId),
+    platformIds: sourcePlatformRows.map(row => row.platformId),
+  };
+
+  const linkedIds = new Set(linkedRows.map(row => row.id));
+
+  const candidateRows = await db
+    .select({
+      id: dramas.id,
+      title: dramas.title,
+      poster: dramas.poster,
+      description: dramas.description,
+      status: dramas.status,
+      structureType: dramas.structure_type,
+    })
+    .from(dramas)
+    .where(and(isNull(dramas.deleted_at), sql`${dramas.id} <> ${parentId}`))
+    .orderBy(asc(dramas.title), asc(dramas.id))
+    .limit(SUGGESTION_CANDIDATE_LIMIT);
+
+  const candidateIds = candidateRows
+    .map(row => row.id)
+    .filter(id => !linkedIds.has(id));
+
+  if (candidateIds.length === 0) {
+    return [];
+  }
+
+  const [categoryRows, platformRows] = await Promise.all([
+    db
+      .select({ dramaId: dramaCategories.drama_id, categoryId: dramaCategories.category_id })
+      .from(dramaCategories)
+      .where(inArray(dramaCategories.drama_id, candidateIds)),
+    db
+      .select({ dramaId: dramaPlatforms.drama_id, platformId: dramaPlatforms.platform_id })
+      .from(dramaPlatforms)
+      .where(inArray(dramaPlatforms.drama_id, candidateIds)),
+  ]);
+
+  const categoriesByDrama = new Map<string, string[]>();
+
+  for (const row of categoryRows) {
+    const list = categoriesByDrama.get(row.dramaId);
+
+    if (list) {
+      list.push(row.categoryId);
+    } else {
+      categoriesByDrama.set(row.dramaId, [row.categoryId]);
+    }
+  }
+
+  const platformsByDrama = new Map<string, string[]>();
+
+  for (const row of platformRows) {
+    const list = platformsByDrama.get(row.dramaId);
+
+    if (list) {
+      list.push(row.platformId);
+    } else {
+      platformsByDrama.set(row.dramaId, [row.platformId]);
+    }
+  }
+
+  return rankSimilarDramaSuggestions(
+    source,
+    candidateRows.map(row => ({
+      id: row.id,
+      title: row.title,
+      poster: row.poster,
+      description: row.description,
+      status: row.status,
+      structureType: row.structureType,
+      categoryIds: categoriesByDrama.get(row.id) ?? [],
+      platformIds: platformsByDrama.get(row.id) ?? [],
+    }))
+  );
 }

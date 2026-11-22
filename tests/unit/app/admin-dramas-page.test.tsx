@@ -11,7 +11,11 @@ const { requireAdminPageAccessMock, listConversionCandidatesMock } = vi.hoisted(
 vi.mock('server-only', () => ({}));
 
 vi.mock('@/app/admin/_access', () => ({ requireAdminPageAccess: requireAdminPageAccessMock }));
-vi.mock('next/navigation', () => ({ notFound: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  notFound: vi.fn(),
+  // The Trash control refreshes the router after a successful move.
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
 vi.mock('@/workflows/admin/conversion', () => ({
   formatConversionSortToken: () => 'title.asc',
   parseConversionListQuery: () => ({
@@ -22,6 +26,15 @@ vi.mock('@/workflows/admin/conversion', () => ({
     search: '',
   }),
   listConversionCandidates: listConversionCandidatesMock,
+}));
+// The Trash control is a client island that calls a Server Action. The action
+// module owns the database client, so it is stubbed here: this suite renders
+// the page and must not open a PostgreSQL connection.
+vi.mock('@/workflows/admin/drama-actions', () => ({
+  deleteDramaAction: vi.fn(async () => ({
+    ok: true,
+    data: { id: 'drama', affectedSeasons: 0, affectedEpisodes: 0 },
+  })),
 }));
 // The real guards decide, so the test proves the page checks the canonical key.
 vi.mock('@/modules/authorization', async () => {

@@ -76,15 +76,19 @@ export type {
 } from './publication';
 
 export {
+  DEFAULT_EMPTY_DRAMA_VISIBILITY,
+  EMPTY_DRAMA_VISIBILITY_MODES,
   PUBLIC_DRAMA_PAGE_SIZE_DEFAULT,
   PUBLIC_DRAMA_PAGE_SIZE_MAX,
   evaluatePublicDramaDiscovery,
+  isEmptyDramaHidden,
   parsePublicDramaListQuery,
   publicDramaHref,
   toPublicDramaSummary,
 } from './public-dramas.shared';
 
 export type {
+  EmptyDramaVisibilityMode,
   PublicDramaDiscovery,
   PublicDramaDiscoveryReason,
   PublicDramaList,

@@ -106,6 +106,47 @@ export type PublicDramaDiscovery = {
 };
 
 /**
+ * Global empty-drama visibility modes.
+ *
+ * `coming_soon` keeps a published drama without playable episodes visible as a
+ * poster-only coming-soon entry. `hidden` removes it from public discovery
+ * until a playable episode exists.
+ */
+export const EMPTY_DRAMA_VISIBILITY_MODES = ['coming_soon', 'hidden'] as const;
+
+export type EmptyDramaVisibilityMode = (typeof EMPTY_DRAMA_VISIBILITY_MODES)[number];
+
+/** The global default when no mode is configured. */
+export const DEFAULT_EMPTY_DRAMA_VISIBILITY: EmptyDramaVisibilityMode = 'coming_soon';
+
+/**
+ * Decide whether a drama without playable episodes is hidden.
+ *
+ * Two inputs combine, and the combination is deliberately asymmetric:
+ *
+ *   - The per-drama `visibility` column is a stricter override. `hidden` always
+ *     hides the drama until a playable episode exists.
+ *   - `coming_soon` (and a legacy null) defers to the global mode, so one
+ *     configuration switch changes every drama that has not opted into the
+ *     stricter per-drama rule.
+ *
+ * The global mode can therefore only ever hide more, never less, than the
+ * default. A drama that has a playable episode is never hidden by either rule.
+ */
+export function isEmptyDramaHidden(input: {
+  visibility: string | null;
+  emptyDramaVisibility?: EmptyDramaVisibilityMode | null;
+}): boolean {
+  const globalMode = input.emptyDramaVisibility ?? DEFAULT_EMPTY_DRAMA_VISIBILITY;
+
+  if (globalMode === 'hidden') {
+    return true;
+  }
+
+  return input.visibility === 'hidden';
+}
+
+/**
  * Decide whether one drama may appear in public discovery.
  *
  * `hasPlayableEpisode` is computed from the hierarchy: a published, non-deleted
@@ -118,6 +159,7 @@ export function evaluatePublicDramaDiscovery(input: {
   deleted: boolean;
   visibility: string | null;
   hasPlayableEpisode: boolean;
+  emptyDramaVisibility?: EmptyDramaVisibilityMode | null;
 }): PublicDramaDiscovery {
   if (input.deleted) {
     return { discoverable: false, comingSoon: false, reason: 'trashed' };
@@ -127,7 +169,7 @@ export function evaluatePublicDramaDiscovery(input: {
     return { discoverable: false, comingSoon: false, reason: 'not_published' };
   }
 
-  if (input.visibility === 'hidden' && !input.hasPlayableEpisode) {
+  if (!input.hasPlayableEpisode && isEmptyDramaHidden(input)) {
     return { discoverable: false, comingSoon: false, reason: 'hidden_until_available' };
   }
 
@@ -137,8 +179,14 @@ export function evaluatePublicDramaDiscovery(input: {
 }
 
 /** Project one discoverable row into the public DTO. */
-export function toPublicDramaSummary(row: PublicDramaRow): PublicDramaSummary {
-  const discovery = evaluatePublicDramaDiscovery(row);
+export function toPublicDramaSummary(
+  row: PublicDramaRow,
+  options?: { emptyDramaVisibility?: EmptyDramaVisibilityMode | null }
+): PublicDramaSummary {
+  const discovery = evaluatePublicDramaDiscovery({
+    ...row,
+    emptyDramaVisibility: options?.emptyDramaVisibility,
+  });
 
   return {
     id: row.id,

@@ -71,6 +71,7 @@ export type ConversionListItem = {
   id: string;
   title: string;
   structureType: ConversionStructureType;
+  activeSeasons: number;
   activeEpisodes: number;
   createdAt: string;
 };
@@ -315,6 +316,10 @@ export async function listConversionCandidates(
       title: dramas.title,
       structure_type: dramas.structure_type,
       created_at: dramas.created_at,
+      activeSeasons: sql<number>`(
+        select count(*)::int from ${seasons}
+        where ${seasons.drama_id} = ${dramas.id} and ${seasons.deleted_at} is null
+      )`,
       activeEpisodes: count(episodes.id),
     })
     .from(dramas)
@@ -332,6 +337,7 @@ export async function listConversionCandidates(
       id: row.id,
       title: row.title,
       structureType: row.structure_type as ConversionStructureType,
+      activeSeasons: Number(row.activeSeasons ?? 0),
       activeEpisodes: Number(row.activeEpisodes ?? 0),
       createdAt: row.created_at.toISOString(),
     })),

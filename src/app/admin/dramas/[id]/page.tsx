@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 
 import { SeasonManager } from '@/components/admin/dramas/season-manager';
 import { EpisodeManager } from '@/components/admin/dramas/episode-manager';
+import { DramaTrashButton } from '@/components/admin/dramas/drama-trash-button';
 import { hasPermission, toPermissionKey } from '@/modules/authorization';
 import type { SeasonDto } from '@/lib/contracts/season-form';
 import type { EpisodeDto } from '@/lib/contracts/episode-form';
@@ -75,7 +76,23 @@ export default async function AdminDramaDetailPage({
         >
           Back to dramas
         </Link>
-        <h1 className="text-2xl font-semibold text-foreground">{drama.title}</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-semibold text-foreground">{drama.title}</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href={`/admin/dramas/${drama.id}/edit`}
+              className="inline-flex h-8 shrink-0 items-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80"
+            >
+              Edit drama
+            </Link>
+            <DramaTrashButton
+              dramaId={drama.id}
+              title={drama.title}
+              affectedSeasons={drama.activeSeasons}
+              affectedEpisodes={drama.activeEpisodes}
+            />
+          </div>
+        </div>
       </header>
 
       <section aria-labelledby="drama-summary-heading" className="space-y-2 rounded-lg border border-border bg-card p-4">

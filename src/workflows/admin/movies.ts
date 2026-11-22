@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, asc, count, eq, ilike, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { requirePermission, type ActorContext } from '@/modules/authorization';
@@ -291,4 +291,157 @@ export async function updateMovie(
     }
     throw error;
   }
+}
+
+// ----- admin listing, detail, taxonomy, and Trash --------------------------
+
+const listMoviesQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).catch(1),
+  pageSize: z.coerce.number().int().min(1).max(100).catch(20),
+  search: z.string().trim().max(200).catch(''),
+  status: z.enum(['draft', 'published', 'unpublished', 'trashed']).optional().catch(undefined),
+});
+
+export type ListMoviesQuery = z.infer<typeof listMoviesQuerySchema>;
+
+export type MovieListResult = {
+  movies: AdminMovie[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+};
+
+/** Parse an admin table query, tolerating stale or hand-edited values. */
+export function parseListMoviesQuery(input: unknown): ListMoviesQuery {
+  return listMoviesQuerySchema.parse(input);
+}
+
+/** Active categories and platforms offered by the movie form. */
+export async function listMovieTaxonomy(actor: ActorContext): Promise<{
+  categories: { id: string; name: string }[];
+  platforms: { id: string; name: string }[];
+}> {
+  requirePermission(actor, MANAGE_PERMISSION);
+
+  const [categoryRows, platformRows] = await Promise.all([
+    db
+      .select({ id: categories.id, name: categories.name })
+      .from(categories)
+      .where(isNull(categories.deleted_at))
+      .orderBy(asc(categories.position), asc(categories.name)),
+    db
+      .select({ id: platforms.id, name: platforms.name })
+      .from(platforms)
+      .where(isNull(platforms.deleted_at))
+      .orderBy(asc(platforms.position), asc(platforms.name)),
+  ]);
+
+  return { categories: categoryRows, platforms: platformRows };
+}
+
+/** List standalone movies for administration with search, status, and paging. */
+export async function listMovies(
+  actor: ActorContext,
+  query: ListMoviesQuery
+): Promise<MovieListResult> {
+  requirePermission(actor, MANAGE_PERMISSION);
+
+  const conditions = [
+    query.status === 'trashed' ? isNotNull(movies.deleted_at) : isNull(movies.deleted_at),
+  ];
+
+  if (query.status && query.status !== 'trashed') {
+    conditions.push(eq(movies.publication_status, query.status));
+  }
+
+  if (query.search.length > 0) {
+    const pattern = `%${query.search}%`;
+    conditions.push(or(ilike(movies.title, pattern), ilike(movies.slug, pattern))!);
+  }
+
+  const where = and(...conditions);
+  const offset = (query.page - 1) * query.pageSize;
+
+  const [[totalRow], rows] = await Promise.all([
+    db.select({ total: count() }).from(movies).where(where),
+    db
+      .select()
+      .from(movies)
+      .where(where)
+      .orderBy(asc(movies.title), asc(movies.id))
+      .limit(query.pageSize)
+      .offset(offset),
+  ]);
+
+  const total = Number(totalRow?.total ?? 0);
+  const totalPages = total === 0 ? 0 : Math.ceil(total / query.pageSize);
+
+  return {
+    movies: rows.map(toMovie),
+    total,
+    page: query.page,
+    pageSize: query.pageSize,
+    totalPages,
+    hasNextPage: query.page < totalPages,
+    hasPreviousPage: query.page > 1,
+  };
+}
+
+/** Load one active movie plus the ids the edit form needs. */
+export async function getMovieForAdmin(
+  actor: ActorContext,
+  movieId: string
+): Promise<{ movie: AdminMovie; categoryIds: string[]; platformIds: string[] } | null> {
+  requirePermission(actor, MANAGE_PERMISSION);
+
+  const parsedId = parseOrThrow(z.uuid(), movieId);
+
+  const [row] = await db
+    .select()
+    .from(movies)
+    .where(and(eq(movies.id, parsedId), isNull(movies.deleted_at)))
+    .limit(1);
+
+  if (!row) {
+    return null;
+  }
+
+  const [categoryRows, platformRows] = await Promise.all([
+    db
+      .select({ id: movieCategories.category_id })
+      .from(movieCategories)
+      .where(eq(movieCategories.movie_id, parsedId)),
+    db
+      .select({ id: moviePlatforms.platform_id })
+      .from(moviePlatforms)
+      .where(eq(moviePlatforms.movie_id, parsedId)),
+  ]);
+
+  return {
+    movie: toMovie(row),
+    categoryIds: categoryRows.map(category => category.id),
+    platformIds: platformRows.map(platform => platform.id),
+  };
+}
+
+/** Move a movie to Trash. Restoration and permanent deletion are separate. */
+export async function deleteMovie(actor: ActorContext, movieId: string): Promise<AdminMovie> {
+  requirePermission(actor, MANAGE_PERMISSION);
+
+  const parsedId = parseOrThrow(z.uuid(), movieId);
+
+  const [row] = await db
+    .update(movies)
+    .set({ deleted_at: new Date(), updated_at: new Date() })
+    .where(and(eq(movies.id, parsedId), isNull(movies.deleted_at)))
+    .returning();
+
+  if (!row) {
+    throw new NotFoundError('Movie not found.');
+  }
+
+  return toMovie(row);
 }

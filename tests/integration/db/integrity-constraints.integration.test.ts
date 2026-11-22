@@ -211,6 +211,10 @@ async function cleanup(): Promise<void> {
   }
 
   for (const dramaId of created.dramas) {
+    // An anonymized row has no author, so it cannot be found through the user
+    // ids. It is removed through its content target instead.
+    await db.delete(ratings).where(eq(ratings.drama_id, dramaId));
+    await db.delete(reviews).where(eq(reviews.drama_id, dramaId));
     await db.delete(similarDramas).where(eq(similarDramas.drama_id, dramaId));
     await db.delete(dramaCategories).where(eq(dramaCategories.drama_id, dramaId));
     await db.delete(episodes).where(eq(episodes.drama_id, dramaId));
@@ -460,6 +464,66 @@ describe('rating and review constraints (M-07)', () => {
 
     await expect(
       db.insert(ratings).values({ user_id: userId, drama_id: dramaId, value })
+    ).resolves.toBeDefined();
+  });
+
+  it('rejects an anonymized rating that still names its author', async () => {
+    const userId = await seedUser('rating-anonymized-author');
+    const dramaId = await seedDrama('rating-anonymized-author');
+
+    const error = await rejectionOf(
+      db.insert(ratings).values({
+        user_id: userId,
+        drama_id: dramaId,
+        value: 4,
+        anonymized_at: new Date(),
+      })
+    );
+
+    expect(error.code).toBe('23514');
+    expect(error.constraint).toBe('ck_ratings_anonymized_author');
+  });
+
+  it('accepts an anonymized rating with no author left', async () => {
+    const dramaId = await seedDrama('rating-anonymized-ok');
+
+    await expect(
+      db.insert(ratings).values({
+        user_id: null,
+        drama_id: dramaId,
+        value: 4,
+        anonymized_at: new Date(),
+      })
+    ).resolves.toBeDefined();
+  });
+
+  it('rejects an anonymized review that still names its author', async () => {
+    const userId = await seedUser('review-anonymized-author');
+    const dramaId = await seedDrama('review-anonymized-author');
+
+    const error = await rejectionOf(
+      db.insert(reviews).values({
+        user_id: userId,
+        drama_id: dramaId,
+        content: 'A review that kept its author.',
+        anonymized_at: new Date(),
+      })
+    );
+
+    expect(error.code).toBe('23514');
+    expect(error.constraint).toBe('ck_reviews_anonymized_author');
+  });
+
+  it('accepts an anonymized review with no author left', async () => {
+    const dramaId = await seedDrama('review-anonymized-ok');
+
+    await expect(
+      db.insert(reviews).values({
+        user_id: null,
+        drama_id: dramaId,
+        content: 'A review without an author.',
+        anonymized_at: new Date(),
+      })
     ).resolves.toBeDefined();
   });
 
@@ -912,6 +976,8 @@ describe('constraint presence guards against silent migration loss', () => {
       'fk_similar_dramas_similar_drama_id',
       'fk_user_roles_user_id',
       'ck_ratings_value_range',
+      'ck_ratings_anonymized_author',
+      'ck_reviews_anonymized_author',
       'fk_review_reactions_user_id',
       'fk_review_reactions_review_id',
       'fk_review_reports_user_id',
