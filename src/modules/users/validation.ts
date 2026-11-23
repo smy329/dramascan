@@ -15,6 +15,7 @@
 import { z } from 'zod';
 
 import type { UserAccountSortField, UserAccountStatus } from '@/modules/auth';
+import { ValidationError } from '@/platform/errors';
 
 export const ADMIN_USER_STATUSES = ['active', 'deactivated', 'deleted'] as const satisfies readonly UserAccountStatus[];
 
@@ -119,4 +120,74 @@ export const adminUsersQuerySchema = z
 /** Parse untrusted query input into a validated admin users query. */
 export function parseAdminUsersQuery(input: unknown): AdminUsersQuery {
   return adminUsersQuerySchema.parse(input);
+}
+
+/**
+ * Playback-progress input.
+ *
+ * The browser reports where the viewer is: the position it observed, the
+ * duration of the media, and the moment it observed it. The moment matters:
+ * two tabs or two devices can report at the same time, and the update that was
+ * observed earlier must never overwrite the newer one.
+ */
+
+/** The longest media the progress write accepts, in seconds (24 hours). */
+export const MAX_PLAYBACK_DURATION_SECONDS = 86_400;
+
+/** An ISO 8601 timestamp, parsed into a `Date`. */
+const watchedAtSchema = z
+  .string()
+  .trim()
+  .min(1, 'The observation time is required.')
+  .refine(value => !Number.isNaN(Date.parse(value)), 'The observation time must be an ISO 8601 timestamp.')
+  .transform(value => new Date(value));
+
+export const playbackProgressInputSchema = z
+  .strictObject({
+    /** The episode the viewer is watching. */
+    episodeId: z.string().uuid(),
+    /** The playback position, in seconds. */
+    positionSeconds: z
+      .number()
+      .min(0, 'The position cannot be negative.')
+      .max(MAX_PLAYBACK_DURATION_SECONDS, 'The position is out of range.'),
+    /** The duration of the media, in seconds. Zero when it is not known yet. */
+    durationSeconds: z
+      .number()
+      .min(0, 'The duration cannot be negative.')
+      .max(MAX_PLAYBACK_DURATION_SECONDS, 'The duration is out of range.'),
+    /** The moment the browser observed the position. */
+    watchedAt: watchedAtSchema,
+  })
+  .superRefine((value, ctx) => {
+    if (value.durationSeconds > 0 && value.positionSeconds > value.durationSeconds + 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['positionSeconds'],
+        message: 'The position cannot be beyond the duration of the episode.',
+      });
+    }
+  });
+
+/** A validated playback-progress report. */
+export type PlaybackProgressInput = z.infer<typeof playbackProgressInputSchema>;
+
+/** Parse untrusted progress input, throwing a validation error on failure. */
+export function parsePlaybackProgressInput(input: unknown): PlaybackProgressInput {
+  const parsed = playbackProgressInputSchema.safeParse(input);
+
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string[]> = {};
+
+    for (const issue of parsed.error.issues) {
+      const field = issue.path.length > 0 ? String(issue.path[0]) : 'form';
+      const messages = fieldErrors[field] ?? [];
+      messages.push(issue.message);
+      fieldErrors[field] = messages;
+    }
+
+    throw new ValidationError('Invalid playback progress.', fieldErrors);
+  }
+
+  return parsed.data;
 }

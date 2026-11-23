@@ -17,6 +17,8 @@ import {
 
 import { db } from '@/db/client';
 import { requirePermission, type ActorContext } from '@/modules/authorization';
+import { recordAdminAuditEvent } from '@/modules/administration';
+import { resetEpisodeWatchState } from '@/modules/users';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 
 import { z } from 'zod';
@@ -614,6 +616,13 @@ export async function listEpisodes(
  * check and the season-ownership check are both scoped to that drama; comparing
  * `episodes.drama_id` or `seasons.drama_id` to the episode id never matched, so
  * both guards silently admitted every input (H-05).
+ *
+ * The video source is **not** editable here. Replacing a source is a separate
+ * operation (`replaceEpisodeVideoSource`) because it has to reset every
+ * viewer's playback position and write an operational record; a plain update
+ * would change the source while leaving viewers resuming in the middle of a
+ * different video. A repeated value is accepted as a no-op so a form that
+ * submits the unchanged source still saves.
  */
 export async function updateEpisode(
   actor: ActorContext,
@@ -656,7 +665,11 @@ export async function updateEpisode(
       .limit(1);
 
     const [episode] = await tx
-      .select({ id: episodes.id, drama_id: episodes.drama_id })
+      .select({
+        id: episodes.id,
+        drama_id: episodes.drama_id,
+        video_source: episodes.video_source,
+      })
       .from(episodes)
       .where(eq(episodes.id, parsedEpisodeId))
       .for('no key update')
@@ -664,6 +677,22 @@ export async function updateEpisode(
 
     if (!episode) {
       return { ok: false as const, error: new NotFoundError('Episode not found.') };
+    }
+
+    // A changed source has to go through the replacement workflow, which
+    // resets the watch state and records the event.
+    if (
+      parsed.video_source !== undefined &&
+      parsed.video_source !== episode.video_source
+    ) {
+      throw new ValidationError(
+        'The video source cannot be changed through an episode update. Use the video source replacement flow, which verifies the new source in the browser and resets viewer progress.',
+        {
+          video_source: [
+            'Replace the video source through the replacement flow so playback is verified and viewer progress is reset.',
+          ],
+        }
+      );
     }
 
     // Check for duplicate episode number (excluding the current episode)
@@ -724,7 +753,8 @@ export async function updateEpisode(
         episode_number: parsed.episode_number,
         position: parsed.position,
         season_id: parsed.season_id,
-        video_source: parsed.video_source,
+        // `video_source` is deliberately absent: the source only ever changes
+        // through `replaceEpisodeVideoSource`.
         updated_at: new Date(),
       })
       .where(eq(episodes.id, parsedEpisodeId))
@@ -778,7 +808,33 @@ export async function deleteEpisode(
   });
 }
 
-/** Replace episode video source following Phase 6 process. */
+/**
+ * Replace an episode's video source.
+ *
+ * The administrator has already verified the new URL in the browser preview
+ * (`VideoSourcePreview`), which is the only thing that can actually prove that
+ * a remote URL plays. This workflow performs the replacement.
+ *
+ * The replacement is one unit of work:
+ *
+ *   1. the stored source is replaced — nothing else about the episode changes;
+ *   2. every viewer's playback position goes back to the beginning and the
+ *      episode reads as unwatched, because the stored position referred to a
+ *      file that is no longer served;
+ *   3. an operational record is written.
+ *
+ * All three run in a single transaction that spans three table owners
+ * (`content`, `users`, `administration`). A partially applied replacement
+ * would leave viewers resuming in the middle of a different video, or leave
+ * an unexplained reset behind — so if any step fails, none of them happened.
+ *
+ * The watch history is deliberately preserved: it records what somebody
+ * watched and when, and replacing a source does not rewrite the past.
+ *
+ * The server never fetches, proxies, relays, or rehosts the URL. It stores
+ * the administrator-supplied direct HTTPS MP4 URL; the browser requests it
+ * directly from the external host.
+ */
 export async function replaceEpisodeVideoSource(
   actor: ActorContext,
   episodeId: string,
@@ -788,33 +844,62 @@ export async function replaceEpisodeVideoSource(
 
   // Validate URL syntax, HTTPS scheme, credentials, and the .mp4 path format.
   const parsedUrl = parseOrThrow(publicationReadyVideoSourceSchema, newVideoSource);
+  const parsedEpisodeId = parseOrThrow(z.uuid(), episodeId);
 
-  // Check episode exists
-  const [episode] = await db
-    .select({ id: episodes.id, title: episodes.title, drama_id: episodes.drama_id })
-    .from(episodes)
-    .where(eq(episodes.id, parseOrThrow(z.uuid(), episodeId)));
+  return db.transaction(async tx => {
+    // Lock the episode row for the whole replacement so two concurrent
+    // replacements cannot interleave their reset and their record.
+    const [episode] = await tx
+      .select({ id: episodes.id, title: episodes.title, video_source: episodes.video_source })
+      .from(episodes)
+      .where(and(eq(episodes.id, parsedEpisodeId), isNull(episodes.deleted_at)))
+      .for('update')
+      .limit(1);
 
-  if (!episode) {
-    return { ok: false, error: new NotFoundError('Episode not found.') };
-  }
+    if (!episode) {
+      return { ok: false as const, error: new NotFoundError('Episode not found.') };
+    }
 
-  // Update only the video_source - no backend proxying, no fetching,
-  // no transcoding, no staging. The URL is stored as-is for direct browser playback.
-  const [row] = await db
-    .update(episodes)
-    .set({
-      video_source: parsedUrl,
-      updated_at: new Date(),
-    })
-    .where(eq(episodes.id, parseOrThrow(z.uuid(), episodeId)))
-    .returning();
+    // Update only the video_source — no backend proxying, no fetching,
+    // no transcoding, no staging. The URL is stored as-is for direct
+    // browser playback via Vidstack. All other episode data (title, description,
+    // hierarchy, reviews, ratings, etc.) is preserved.
+    const [row] = await tx
+      .update(episodes)
+      .set({
+        video_source: parsedUrl,
+        updated_at: new Date(),
+      })
+      .where(eq(episodes.id, parsedEpisodeId))
+      .returning();
 
-  if (!row) {
-    return { ok: false, error: new NotFoundError('Episode not found.') };
-  }
+    if (!row) {
+      return { ok: false as const, error: new NotFoundError('Episode not found.') };
+    }
 
-  return { ok: true, episode: toEpisode(row) };
+    // Reset playback progress for every viewer. The watch history stays.
+    const reset = await resetEpisodeWatchState(parsedEpisodeId, tx);
+
+    // Record the replacement event in the operational trail. The record says
+    // *that* the source was replaced and *how many* progress rows were reset;
+    // it never stores the URL itself.
+    await recordAdminAuditEvent(
+      {
+        actorId: actor.userId,
+        action: 'episode.video_source.replaced',
+        entityType: 'episode',
+        entityId: parsedEpisodeId,
+        summary: `Video source replaced for episode "${episode.title}".`,
+        metadata: {
+          progressRowsReset: reset.progressRows,
+          watchedRowsReset: reset.watchedRows,
+        },
+      },
+      tx
+    );
+
+    return { ok: true as const, episode: toEpisode(row) };
+  });
 }
 
 function toEpisode(row: typeof episodes.$inferSelect) {

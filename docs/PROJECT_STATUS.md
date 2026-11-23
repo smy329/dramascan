@@ -2,8 +2,144 @@
 
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
-**Date:** 2026-11-18  
-**Current Prompt:** Admin content management (Task 8 — complete). Next: pending user direction.
+**Date:** 2026-11-23  
+**Current Prompt:** Episode video source workflow (Prompts 080–090 — complete). Next: pending user direction.
+
+---
+
+## Episode Video Source Workflow — 2026-11-23
+
+Prompts 080–090 are implemented and verified. An episode carries one
+administrator-supplied, public, direct HTTPS MP4 URL; the browser plays it
+directly with Vidstack. The application server never fetches, proxies, relays,
+rehosts, transcodes, or uploads video.
+
+### Implemented
+
+- **Storage (080).** `episodes.video_source` holds the direct URL and nothing
+  else — no claim id, provider id, upload record, staging path, or transcoding
+  metadata. `src/modules/content/schema.ts` owns the column.
+- **Validation (081).** Server-side Zod validation rejects anything that is not
+  a well-formed, credential-free HTTPS URL with a direct MP4 path. The server
+  never issues an HTTP request against an administrator-supplied URL, so there
+  is no SSRF surface. Syntax validation is explicitly *not* a claim that the
+  file plays.
+- **Admin form (082/083).** The episode create/edit form has a clearly labelled
+  "direct MP4 URL" field with inline validation errors, a browser preview, and
+  no file picker, upload control, or automatic metadata extraction. Title,
+  description, thumbnail, taxonomy, season, episode number, and publication
+  metadata stay administrator-authored.
+- **Preview (084).** `src/components/admin/media/video-source-preview.tsx`
+  plays the entered URL in the real browser player and reports whether
+  playback actually started. It requests the media with
+  `crossorigin="anonymous"`, exactly like the viewer's player, so a host
+  without CORS headers fails the preview instead of passing it and failing for
+  every viewer. A successful save or an `.mp4` suffix is never treated as
+  proof.
+- **Viewer playback (085).** `src/app/(public)/drama/[dramaId]/[slug]/episode/[episodeId]/page.tsx`
+  renders `src/components/player/vidstack-player.tsx`, which hands the stored
+  URL to the browser as-is — controls, seeking, volume, fullscreen, playback
+  speed, responsive layout.
+- **CSP (086).** `src/proxy.ts` and `src/platform/security/csp.ts` build a
+  per-request nonce policy. `media-src` and `connect-src` list the trusted
+  media origins; there is no `*` for media. `MEDIA_ALLOWED_HOSTS` pins the
+  approved hosts; an empty value means any HTTPS origin.
+- **Replacement (087).** `replaceEpisodeVideoSource` runs one transaction:
+  update the source, reset every viewer's progress to zero and the episode to
+  unwatched, and write the operational record. Watch-history rows and their
+  historical dates are preserved; the episode id, metadata, hierarchy, reviews,
+  and ratings are untouched. `updateEpisode` refuses a changed `video_source`,
+  so the edit form cannot silently replace a source.
+- **Failure handling (088).** The viewer sees a clear error with a manual
+  *Try again* control. There is no automatic retry, URL search, repair,
+  provider switching, or background retry. The stored source stays unchanged
+  until an administrator replaces it. Administrators see viewer-reported
+  failures in the episode manager.
+- **Subtitles (089).** `subtitle_tracks` stores per-episode subtitle metadata
+  and direct source URLs. The **server** validates each URL — HTTPS only, an
+  absolute URL, no embedded credentials, a closed format set (`vtt`, `srt`,
+  `ssa`, `ass`, `json`), and an extension that matches the declared format.
+  The player offers language labels and a default track. The browser fetches
+  subtitle files directly; the server never fetches, transcodes, or converts
+  them.
+- **Upload-infrastructure audit (090).** A repository-wide guard
+  (`tests/unit/architecture/direct-video-source.test.ts`) fails the build if
+  upload endpoints, staging directories, multipart or resumable upload code,
+  upload progress, upload retries, upload cleanup, transcoding, processing
+  workers, or a video proxy/relay/rehost reappear. Poster and banner image
+  uploads are untouched.
+
+### Progress persistence (added with the workflow)
+
+- `src/modules/users/progress.ts` — `savePlaybackProgress(actor, input, options?)`
+  upserts one `playback_progress` row and one `watched_state` row per user and
+  episode. An update that was observed earlier never overwrites a newer one;
+  the watched state is sticky and keeps its first completion date; no watch
+  history row is written.
+- `PLAYBACK_COMPLETION_THRESHOLD_PERCENT` (default 90) is the single
+  completion threshold: the server applies it when it stores the watched
+  state, and the watch page hands the same value to the player.
+
+### Changed files
+
+- `src/proxy.ts`, `src/platform/security/csp.ts`, `src/platform/config/schema.ts`,
+  `src/app/layout.tsx`, `next.config.ts`, `.env.example`, `package.json`,
+  `package-lock.json`
+- `src/modules/content/{schema.ts,index.ts,public-episodes.ts,public-episodes.shared.ts,episode-references.ts}`
+- `src/modules/playback/{schema.ts,validation.ts,repository.ts,queries.ts,index.ts}`
+- `src/modules/administration/{schema.ts,audit-log.ts,index.ts}`
+- `src/modules/users/{schema.ts,index.ts,validation.ts,watch-state.ts,progress.ts}`
+- `src/workflows/admin/{episodes.ts,episode-actions.ts,playback-actions.ts}`,
+  `src/workflows/playback/actions.ts`, `src/workflows/action-errors.ts`
+- `src/components/admin/media/video-source-preview.tsx`,
+  `src/components/admin/dramas/{episode-manager.tsx,subtitle-track-manager.tsx,playback-failure-list.tsx}`,
+  `src/components/player/{vidstack-player.tsx,playback-failure-report.tsx}`
+- `src/app/(public)/drama/[dramaId]/[slug]/episode/[episodeId]/page.tsx`,
+  `src/app/admin/dramas/[id]/page.tsx`
+- `src/lib/contracts/{episode-form.ts,subtitle-track-form.ts}`,
+  `src/platform/db/executor.ts`
+- `drizzle/0013_video_source_workflow.sql` (+ Drizzle snapshot)
+
+### Verification
+
+- Typecheck: **PASS** (`npm run typecheck`)
+- Lint: **PASS** (`npm run lint`)
+- Unit tests: **PASS** — 973/973 (`npm test`)
+- Integration tests: **PASS** — 576/576 (`npm run test:integration`)
+- Playwright E2E: **PASS** — 49/49 (`npm run test:e2e`)
+- Production build: **PASS** (`npm run build`)
+- CSP runtime check: **PASS** — the production server was started with
+  `MEDIA_ALLOWED_HOSTS=https://media.example.com,https://subs.example.com`. The
+  `Content-Security-Policy` response header carries a per-request nonce (two
+  consecutive requests carry different nonces), every inline bootstrap script
+  carries that nonce, and `media-src`/`connect-src` list exactly the two
+  configured origins — never a wildcard. Chromium loaded the watch page of a
+  published episode: the Vidstack player was in the document (the page
+  hydrated), the media element carried the stored URL, and the browser
+  reported no Content Security Policy violation and no uncaught page error.
+- E2E harness: `tests/e2e/support/warmup.mjs` compiles every route the suite
+  exercises before the first test runs, so the suite no longer fails when the
+  development server is still compiling a route.
+
+### Known limitations
+
+- The external host must support CORS and byte-range requests. The platform
+  cannot repair or work around a host that does not.
+- Media URLs are visible to viewers and can be shared. There is no DRM.
+- `MEDIA_ALLOWED_HOSTS` empty means "any HTTPS origin". Pin the list in
+  production.
+- Vidstack is deprecated upstream in favour of Video.js 10. The stack is pinned
+  to Vidstack by the project specification; the migration is recorded in the
+  future-upgrade backlog, not performed here.
+- The public drama detail page (`/drama/{dramaId}/{slug}`) is not implemented
+  yet. The catalogue already links every drama card to that canonical route,
+  and the watch page links its drama title the same way, so both point at the
+  route the next public-catalogue prompt will add. Until then, those links
+  answer 404.
+
+### Commit
+
+`feat: complete episode video source workflow (Prompts 080-090)`
 
 ---
 

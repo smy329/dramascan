@@ -23,6 +23,22 @@ export type ServerConfig = Readonly<{
   emptyDramaVisibility: EmptyDramaVisibility;
   /** Default Trash retention period in days. */
   trashRetentionDays: number;
+  /**
+   * External origins the browser may load video and subtitle files from.
+   *
+   * Empty means "any HTTPS origin": the operator has not pinned the media
+   * hosts yet. A non-empty list restricts the browser to exactly those
+   * origins.
+   */
+  allowedMediaOrigins: readonly string[];
+  /**
+   * Percentage of an episode that counts as watched.
+   *
+   * One value, used by the server when it decides whether an episode is
+   * watched and handed to the player, so the client and the server never apply
+   * divergent rules (requirements §7.3).
+   */
+  playbackCompletionThresholdPercent: number;
 }>;
 
 /** Global empty-drama visibility modes (requirements §4.7). */
@@ -32,6 +48,9 @@ export type EmptyDramaVisibility = (typeof EMPTY_DRAMA_VISIBILITY_MODES)[number]
 
 /** Default Trash retention period in days (requirements §4.8). */
 export const DEFAULT_TRASH_RETENTION_DAYS = 30;
+
+/** Default playback completion threshold in percent (requirements §7.3). */
+export const DEFAULT_PLAYBACK_COMPLETION_THRESHOLD_PERCENT = 90;
 
 export class ConfigurationError extends Error {
   readonly issues: readonly string[];
@@ -102,6 +121,13 @@ const rawServerConfigSchema = z
     adminSessionMaxLifetime: z.string().optional(),
     IMAGE_STORAGE_DIR: z.string().min(1).optional(),
     EMPTY_DRAMA_VISIBILITY: z.enum(EMPTY_DRAMA_VISIBILITY_MODES).optional(),
+    MEDIA_ALLOWED_HOSTS: z.string().optional(),
+    PLAYBACK_COMPLETION_THRESHOLD_PERCENT: z.coerce
+      .number()
+      .int('PLAYBACK_COMPLETION_THRESHOLD_PERCENT must be a whole number.')
+      .min(1, 'PLAYBACK_COMPLETION_THRESHOLD_PERCENT must be at least 1.')
+      .max(100, 'PLAYBACK_COMPLETION_THRESHOLD_PERCENT must be at most 100.')
+      .optional(),
     TRASH_RETENTION_DAYS: z.coerce
       .number()
       .int('TRASH_RETENTION_DAYS must be a whole number.')
@@ -146,6 +172,7 @@ const rawServerConfigSchema = z
     validateTrustedOrigins(value.TRUSTED_ORIGINS, isProduction, ctx);
     validateTestDatabase(value.TEST_DATABASE_URL, value.DATABASE_URL, ctx);
     validateImageStorageDir(value.IMAGE_STORAGE_DIR, isProduction, ctx);
+    validateAllowedMediaOrigins(value.MEDIA_ALLOWED_HOSTS, ctx);
   })
   .transform(value => toServerConfig(value));
 
@@ -179,6 +206,8 @@ type RawEnvironment = Readonly<{
   adminSessionMaxLifetime?: string;
   IMAGE_STORAGE_DIR?: string | undefined;
   EMPTY_DRAMA_VISIBILITY?: EmptyDramaVisibility | undefined;
+  MEDIA_ALLOWED_HOSTS?: string | undefined;
+  PLAYBACK_COMPLETION_THRESHOLD_PERCENT?: number | undefined;
   TRASH_RETENTION_DAYS?: number | undefined;
 }>;
 
@@ -207,6 +236,12 @@ function toServerConfig(value: RawEnvironment): ServerConfig {
     imageStorageDir: resolveImageStorageDir(value.IMAGE_STORAGE_DIR, { production: isProduction }),
     emptyDramaVisibility: value.EMPTY_DRAMA_VISIBILITY ?? 'coming_soon',
     trashRetentionDays: value.TRASH_RETENTION_DAYS ?? DEFAULT_TRASH_RETENTION_DAYS,
+    allowedMediaOrigins: Object.freeze(
+      splitOrigins(value.MEDIA_ALLOWED_HOSTS).map(origin => new URL(origin).origin)
+    ),
+    playbackCompletionThresholdPercent:
+      value.PLAYBACK_COMPLETION_THRESHOLD_PERCENT ??
+      DEFAULT_PLAYBACK_COMPLETION_THRESHOLD_PERCENT,
   });
 }
 
@@ -380,6 +415,74 @@ function validateTrustedOrigins(
     }
 
     validateOrigin(origin, 'TRUSTED_ORIGINS', isProduction, ctx);
+  }
+}
+
+/**
+ * Validate the operator's trusted media host list.
+ *
+ * Every entry must be a plain HTTPS origin. A media host is contacted by the
+ * browser, so an entry that carried credentials, a path, or a query would
+ * either leak a secret into the policy or silently never match.
+ */
+function validateAllowedMediaOrigins(
+  value: string | undefined,
+  ctx: z.RefinementCtx
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  const origins = splitOrigins(value);
+
+  if (origins.length === 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['MEDIA_ALLOWED_HOSTS'],
+      message: 'MEDIA_ALLOWED_HOSTS must contain at least one origin when set.',
+    });
+    return;
+  }
+
+  for (const origin of origins) {
+    let parsed: URL;
+
+    try {
+      parsed = new URL(origin);
+    } catch {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['MEDIA_ALLOWED_HOSTS'],
+        message: 'MEDIA_ALLOWED_HOSTS contains an invalid URL.',
+      });
+      continue;
+    }
+
+    if (parsed.protocol !== 'https:') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['MEDIA_ALLOWED_HOSTS'],
+        message: 'MEDIA_ALLOWED_HOSTS entries must use HTTPS.',
+      });
+      continue;
+    }
+
+    if (parsed.username !== '' || parsed.password !== '') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['MEDIA_ALLOWED_HOSTS'],
+        message: 'MEDIA_ALLOWED_HOSTS entries must not contain credentials.',
+      });
+      continue;
+    }
+
+    if (parsed.pathname !== '/' || parsed.search !== '' || parsed.hash !== '') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['MEDIA_ALLOWED_HOSTS'],
+        message: 'MEDIA_ALLOWED_HOSTS entries must be an origin without a path, query, or fragment.',
+      });
+    }
   }
 }
 

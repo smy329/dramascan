@@ -370,6 +370,7 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 - **Depends on:** `content`, `authorization`, `auth`, platform.
 - **Not responsible for:** video validation preview (a browser concern), video hosting, analytics events, notifications, ratings.
 - **Boundary notes:** progress updates are debounced by the client and bounded server-side. Older updates never overwrite newer ones (server compares timestamps). `playback` does not call `analytics`; progress/playback events are emitted by `workflows/save-playback-progress`.
+- **Current implementation note (Prompts 080–090):** the `playback` module currently owns `subtitle_tracks` and `playback_failure_reports`. `playback_progress`, `watched_state`, and `watch_history` are still defined in `src/modules/users/schema.ts`, so the progress write service (`users.savePlaybackProgress`) and the source-replacement reset (`users.resetEpisodeWatchState`) live in the `users` module. The episode → drama mapping is resolved through `content.getEpisodeContentReference`. Moving the three tables into `playback` is a recorded ownership refactor — see D-040 — and is not part of the initial release. The module `playback` may not import `users`, so the direction of the dependency must not be inverted in the meantime.
 
 ### 6.6 `reviews` — Ratings, reviews, reactions, review reports
 

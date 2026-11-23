@@ -3,6 +3,8 @@ import { join, relative } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { findVideoPipelineViolations } from './support/video-pipeline-detector';
+
 /**
  * Architectural guard for the direct-MP4 video source architecture.
  *
@@ -21,6 +23,9 @@ const PROJECT_ROOT = process.cwd();
 const SOURCE_DIRECTORIES = ['src', 'scripts'];
 
 const FILE_EXTENSIONS = ['.ts', '.tsx', '.mjs', '.js', '.json', '.sql'];
+
+/** The extensions that can carry a video pipeline. */
+const CODE_EXTENSIONS = ['.ts', '.tsx', '.mjs', '.js'];
 
 const FORBIDDEN_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
   { label: 'Odysee', pattern: /\bodysee\b/i },
@@ -91,5 +96,15 @@ describe('direct MP4 source architecture', () => {
 
   it('still finds the source files it is meant to protect', () => {
     expect(readSources().length).toBeGreaterThan(0);
+  });
+
+  it('contains no video upload, processing, or proxy pipeline', () => {
+    const offenders = readSources()
+      .filter(({ file }) => CODE_EXTENSIONS.some(extension => file.endsWith(extension)))
+      .flatMap(({ file, source }) =>
+        findVideoPipelineViolations(source).map(label => `${file} (${label})`)
+      );
+
+    expect(offenders).toEqual([]);
   });
 });

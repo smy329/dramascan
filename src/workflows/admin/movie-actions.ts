@@ -5,7 +5,7 @@ import { movieFormSchema, movieSlugFromTitle, type MovieFormValues } from '@/lib
 import { resolveActor, requirePermission } from '@/modules/authorization';
 import { parseOrThrow } from '@/modules/content/validation';
 
-import { toActionError, withFieldError } from './action-errors';
+import { toActionError, withFieldError } from '../action-errors';
 import { createMovie, deleteMovie, updateMovie } from './movies';
 
 /** Server Actions behind the admin standalone-movie forms. */

@@ -1631,3 +1631,158 @@ now platform-aware:
    being accepted silently, because the directory is deleted together with the
    previous release. The rule is stricter than the `src`/`.next` exclusion in
    point 2 and applies to production only.
+
+---
+
+## D-039 — Direct external MP4 playback, preview-gated replacement, subtitles, and failure reports
+
+**Date:** 2026-11-23
+**Status:** Approved by user (Prompts 080–090)
+**Extends:** D-000 (specification authority), D-008/D-009/D-011 (module
+boundaries and data ownership), D-019 (server configuration contract), and the
+project restriction that forbids a video proxy, a rehost, transcoding, and
+upload infrastructure.
+
+**Context:** Prompts 080–090 require an episode to carry a public, direct
+HTTPS MP4 URL that the browser plays, an administrator preview that proves
+playability before the URL is stored, a transactional source replacement that
+resets viewer progress without rewriting history, viewer-facing failure
+handling with administrator visibility, per-episode subtitle tracks, and the
+removal of every remnant of a video-upload pipeline.
+
+**Decision:**
+
+1. **One URL, one column, no pipeline.** `episodes.video_source` holds the
+   administrator-supplied, direct HTTPS MP4 URL. There is no claim id, provider
+   id, upload record, staging path, transcoding metadata, or second copy of
+   the source anywhere in the schema.
+2. **Syntax validation is server-side; playability is a browser fact.** The
+   server validates the URL (HTTPS, well-formed, no embedded credentials, a
+   direct MP4 path) and never issues an HTTP request against it, so there is
+   no SSRF surface. The preview is what establishes that the file plays. A
+   `.mp4` suffix and a successful save are never presented as proof. The
+   preview requests the media with `crossorigin="anonymous"`, exactly like
+   the viewer's player, so a host without CORS headers fails the preview
+   instead of passing it and failing for every viewer.
+3. **The preview gate is the browser preview plus the administrator's
+   confirmation.** The server cannot observe browser playback, so it cannot
+   be the gate by itself. Storing a source is therefore an explicit,
+   administrator-confirmed browser action, and the server re-validates and
+   records the event.
+4. **Playback is direct, from the browser to the external host.** Vidstack
+   plays the stored URL as-is. The application server never fetches, proxies,
+   relays, or rehosts it.
+5. **A source replacement is one transaction.** `replaceEpisodeVideoSource`
+   updates the episode, resets every viewer's playback position to zero and
+   the episode to unwatched, and writes the operational record as a single
+   unit. The episode id, title, description, thumbnail, hierarchy, reviews,
+   ratings, and other relationships are preserved. Watch-history rows and their
+   historical dates are preserved: history records what somebody watched and
+   when, and replacing a source does not rewrite the past.
+6. **The ordinary episode edit cannot change the source.** `updateEpisode`
+   refuses a changed `video_source`, and the episode edit form does not submit
+   the field. Replacement is a separate, confirmed operation with its own
+   audit trail — otherwise a routine metadata edit could silently invalidate
+   every viewer's progress.
+7. **Failure handling is manual and non-destructive.** The viewer gets a clear
+   message and a manual retry. There is no automatic retry, URL search,
+   repair, provider switching, or background retry, and the stored source is
+   not changed by a viewer-side event. Administrators see viewer-reported
+   failures; the platform does not claim that every failure is detectable
+   server-side.
+8. **Subtitles are external files, fetched by the browser.**
+   `subtitle_tracks` stores the language tag, label, format, default-track
+   selection, and a validated direct source URL per episode. The server never
+   fetches, transcodes, or converts a subtitle file. The format set is closed
+   (`vtt`, `srt`, `ssa`, `ass`, `json`) so the player only ever receives a
+   format it understands.
+9. **CSP separates the media policy from the others.** `media-src` and
+   `connect-src` list the trusted media origins and never use `*`; image,
+   script, and style directives stay separate. `MEDIA_ALLOWED_HOSTS` pins the
+   approved origins — an empty value means any HTTPS origin, which is
+   appropriate for development and must be pinned in production. The policy
+   carries a per-request nonce, so `script-src` needs no `unsafe-inline`.
+10. **The upload pipeline is gone and stays gone.** A repository-wide
+    architectural guard fails the suite if upload endpoints, staging
+    directories, temp video storage, multipart or resumable upload code,
+    upload progress, upload retries, upload cleanup, transcoding, processing
+    workers, or a video proxy/relay/rehost reappear. Poster and banner image
+    uploads are explicitly outside the guard: image storage is a separate,
+    approved feature (D-038).
+11. **Vidstack is kept, despite upstream deprecation.** The project
+    specification pins Vidstack and Prompt 085 names it. `@vidstack/react` and
+    `vidstack` are deprecated in favour of Video.js 10, but switching players
+    is an explicit upgrade, not a side effect of this work. The migration is
+    recorded in the future-upgrade backlog.
+
+**Consequences:**
+
+- The platform cannot repair an external host that does not support CORS or
+  byte-range requests. The preview exists precisely so the administrator finds
+  that out before the source is stored.
+- Media URLs are visible to viewers and can be shared. There is no DRM and no
+  URL protection; the platform does not claim otherwise.
+- The `users` module owns `playback_progress` and `watched_state` in the
+  current code base, so the progress write service lives there. The target
+  architecture places those tables in `playback`; aligning code and
+  documentation is a separate ownership refactor (see D-040).
+- `MEDIA_ALLOWED_HOSTS` must be set in production. An empty value leaves the
+  media policy open to any HTTPS origin.
+
+---
+
+## D-040 — Progress writes live in the users module and use one configured completion threshold
+
+**Date:** 2026-11-23
+**Status:** Approved by user (Prompts 080–090 implementation)
+**Extends:** D-008 (module boundaries), D-011 (data ownership), D-013
+(database conventions), and `REQUIREMENTS.md` §7.3.
+
+**Context:** The direct-video workflow needs to store a viewer's playback
+position and mark the episode watched. `playback_progress` and `watched_state`
+are defined in `src/modules/users/schema.ts`, and the dependency matrix forbids
+`playback → users`. The target architecture (`ARCHITECTURE.md` §6.5) describes
+those tables in the `playback` module with a `saveProgress` public API. The
+completion threshold also had to be applied in two places — the server that
+stores the watched state and the player that reports the end of an episode —
+without the two drifting apart.
+
+**Decision:**
+
+1. **The progress write service lives in the module that owns the tables.**
+   `src/modules/users/progress.ts` exposes `savePlaybackProgress(actor, input,
+   options?)`. The code follows the current schema ownership; the target
+   architecture is not changed as a side effect of this work. Moving the
+   tables to `playback` later is a recorded future refactor that carries this
+   service with it.
+2. **The episode → drama mapping is resolved through the content module's
+   public API.** `getEpisodeContentReference(episodeId, executor?)` belongs to
+   `content`, which owns the episode hierarchy. The `users → content` edge is
+   already permitted by the matrix, so no table is read across a module
+   boundary.
+3. **One configurable completion threshold.**
+   `PLAYBACK_COMPLETION_THRESHOLD_PERCENT` (default 90) lives in the platform
+   configuration. The server applies it when it stores the watched state, and
+   the watch page hands the same value to the player. There is no second,
+   hard-coded threshold anywhere.
+4. **Staleness is decided by the observation time the client sends.** The
+   browser reports the moment it observed the position. The server clamps that
+   moment to its own clock — a future timestamp is never stored — and ignores
+   an update that is not newer than the stored one. Two tabs or two devices
+   therefore converge on the newer observation, whichever request arrives last.
+   The server clock is injectable so the rule is testable without sleeping.
+5. **The watched state is sticky, and the first completion date is kept.**
+   Once the threshold has been reached, the episode stays watched until an
+   administrator replaces the source, which resets it explicitly.
+6. **A progress write never creates a watch-history row.** History is
+   append-only and belongs to the watch-history feature; writing a row on
+   every debounced update would duplicate history for every tick.
+
+**Consequences:**
+
+- A device whose clock lags behind the server can lose progress updates for
+  that episode. The server remains the authority, and the limitation is
+  documented rather than hidden behind a last-write-wins race.
+- The progress service sits in a different module than the target architecture
+  describes. The documentation records the difference; it does not pretend the
+  refactor has happened.

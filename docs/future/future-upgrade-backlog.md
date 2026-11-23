@@ -66,6 +66,21 @@ This document contains the future upgrade backlog as established by `REQUIREMENT
 
 - **Server-side image optimization**, including Sharp or Next.js image optimization.
 
+### 2.5 Player migration (Vidstack → Video.js 10)
+
+- **Migrate the viewer player from Vidstack to Video.js 10**
+  (`@videojs/react`). `@vidstack/react` and `vidstack` are deprecated upstream;
+  Vidstack Player is in security-only maintenance until January 2028, and
+  Video.js 10 is its successor.
+
+  The initial release keeps Vidstack because the project specification pins it
+  (`AGENTS.md` §1.2) and Prompt 085 names it (D-039). The migration is an
+  explicit upgrade, not a side effect of other work. It must preserve the
+  direct-URL architecture exactly: the browser still requests the external
+  host directly, the server still never proxies or fetches the media, the
+  preview still gates a replacement, and the CSP still pins the trusted media
+  origins.
+
 ---
 
 ## 3. Product Features

@@ -13,7 +13,7 @@ import {
 import { resolveActor, requirePermission } from '@/modules/authorization';
 import { parseOrThrow } from '@/modules/content/validation';
 
-import { toActionError } from './action-errors';
+import { toActionError } from '../action-errors';
 import {
   createCategory,
   createPlatform,

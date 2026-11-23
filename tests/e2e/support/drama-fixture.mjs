@@ -39,7 +39,7 @@ loadLocalEnv();
  * @property {number} [seasonCount]
  * @property {number} [episodesPerSeason]
  * @property {boolean} [withEpisodes]
- * @property {string} [episodeVideoSource]
+ * @property {string | null} [episodeVideoSource]
  */
 
 function databaseFailure(operation, target) {
@@ -310,8 +310,7 @@ export async function removeTaxonomyBySlug(resource, slug) {
  * @param {DramaFixture} fixture
  * @returns {Promise<void>}
  */
-export async function removeDrama(fixture) {
-  const { target, client } = requireTestClient();
+export async function removeDrama(fixture) {  const { target, client } = requireTestClient();
 
   try {
     try {
@@ -407,6 +406,77 @@ export async function removeDrama(fixture) {
       await run(client, 'roll the transaction back', target, 'ROLLBACK').catch(() => {});
       throw error;
     }
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+/**
+ * Read the stored video source of an episode.
+ *
+ * The browser test asserts what the database actually holds after a
+ * replacement, so the check does not depend on what the page renders.
+ *
+ * @param {string} episodeId
+ * @returns {Promise<string | null>}
+ */
+export async function readEpisodeVideoSource(episodeId) {
+  const { target, client } = requireTestClient();
+
+  try {
+    try {
+      await client.connect();
+    } catch {
+      throw databaseFailure('connect to', target);
+    }
+
+    const result = await run(
+      client,
+      'read the episode video source',
+      target,
+      'SELECT video_source FROM episodes WHERE id = $1',
+      [episodeId]
+    );
+
+    return result.rows[0]?.video_source ?? null;
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+/**
+ * Insert a playback-failure report for an episode.
+ *
+ * The report is what a viewer submits when an external source does not play.
+ * The helper writes the same row the application writes, so the admin list is
+ * exercised against real data.
+ *
+ * @param {string} episodeId
+ * @param {{ reason?: string, detail?: string | null }} [options]
+ * @returns {Promise<string>} the report id
+ */
+export async function insertPlaybackFailure(episodeId, options = {}) {
+  const { reason = 'network', detail = null } = options;
+  const { target, client } = requireTestClient();
+  const id = randomUUID();
+
+  try {
+    try {
+      await client.connect();
+    } catch {
+      throw databaseFailure('connect to', target);
+    }
+
+    await run(
+      client,
+      'insert the playback failure report',
+      target,
+      `INSERT INTO playback_failure_reports (id, episode_id, reason, detail, created_at)
+       VALUES ($1, $2, $3, $4, now())`,
+      [id, episodeId, reason, detail]
+    );
+
+    return id;
   } finally {
     await client.end().catch(() => {});
   }

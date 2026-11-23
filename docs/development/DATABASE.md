@@ -88,8 +88,8 @@ Each module owns its schema file and tables. The planned ownership is:
 | `auth`           | `users`, `accounts`, `sessions`, `verifications` (Better Auth schema plus account status)                                                                                                                                                                                |
 | `authorization`  | `roles`, `permissions`, `user_roles`                                                                                                                                                                                                                                     |
 | `content`        | `dramas`, `seasons`, `episodes`, `movies`, `categories`, `platforms`, `drama_categories`, `drama_platforms`, `movie_categories`, `movie_platforms`, `similar_dramas`, `information_pages`, `content_slug_history`, `content_seo`, `content_assets`, `sitemap_exclusions` |
-| `users`          | `bookmarks`                                                                                                                                                                                                                                                              |
-| `playback`       | `subtitle_tracks`, `playback_progress`, `watch_history`, `episode_watch_state`                                                                                                                                                                                           |
+| `users`          | `bookmarks`, `playback_progress`, `watched_state`, `watch_history` (the last three are the target `playback` tables; the ownership refactor is tracked in D-040)                                                                                  |
+| `playback`       | `subtitle_tracks`, `playback_failure_reports`                                                                                                                                                                                                                          |
 | `reviews`        | `ratings`, `reviews`, `review_reactions`, `review_reports`                                                                                                                                                                                                               |
 | `moderation`     | `content_reports`, `moderation_actions`                                                                                                                                                                                                                                  |
 | `notifications`  | `notification_preferences`, `notifications`, `push_subscriptions`, `notification_deliveries`, `announcements`, `admin_notifications`                                                                                                                                     |
@@ -280,7 +280,12 @@ This catalog is filled in as tables are implemented. Each entry records the tabl
 | users_bookmarks                | users User bookmarks                                     | ✅ Implemented                                                           |
 | users_watch_history            | users Watch history                                      | ✅ Implemented                                                           |
 | users_watched_state            | users Per-episode watched state                          | ✅ Implemented                                                           |
-| users_bookmarks                | users User bookmarks                                     | ✅ Implemented                                                           |
+| playback_progress              | users Playback position per user and episode (target owner: `playback` — see D-040) | ✅ Implemented                                                           |
+| watched_state                  | users Per-episode watched/unwatched state (target owner: `playback` — see D-040) | ✅ Implemented                                                           |
+| watch_history                  | users Append-only watch history (target owner: `playback` — see D-040) | ✅ Implemented                                                           |
+| subtitle_tracks                | playback Per-episode subtitle tracks: language, label, format, default selection, direct source URL | ✅ Implemented                                                           |
+| playback_failure_reports       | playback Viewer-reported failures of an external source  | ✅ Implemented                                                           |
+| admin_audit_log                | administration Operational record of administrative actions | ✅ Implemented                                                           |
 | ratings                        | reviews User ratings (1–5)                               | ✅ Implemented                                                           |
 | reviews                        | reviews User reviews                                     | ✅ Implemented                                                           |
 | review_reactions               | reviews Review reactions (likes)                         | ✅ Implemented                                                           |
@@ -305,15 +310,12 @@ This catalog is filled in as tables are implemented. Each entry records the tabl
 | playback_analytics_events      | analytics Playback analytics events                      | ✅ Implemented                                                           |
 | analytics_daily_aggregates     | analytics Daily aggregate metrics                        | ✅ Implemented                                                           |
 | search_events                  | analytics Search event logs                              | ✅ Implemented                                                           |
-| users_playback_progress        | playback Playback progress tracking                      | ✅ Implemented                                                           |
-| users_subtitle_tracks          | playback Subtitle track assignments                      | ✅ Implemented                                                           |
 | admin_accounts                 | administration Admin user accounts                       | ⏳ Pending migration                                                     |
 | admin_login_attempts           | administration Admin login attempts                      | ⏳ Pending migration                                                     |
 | admin_session_events           | administration Admin session events                      | ⏳ Pending migration                                                     |
 | system_settings                | administration System configuration                      | ⏳ Pending migration                                                     |
 | system_setting_versions        | administration System setting versions                   | ⏳ Pending migration                                                     |
 | admin_dashboard_layouts        | administration Admin dashboard layouts                   | ⏳ Pending migration                                                     |
-| admin_audit_log                | administration Admin audit log                           | ⏳ Pending migration                                                     |
 | maintenance_task_runs          | maintenance Scheduled maintenance runs                   | ⏳ Pending migration                                                     |
 | backup_manifests               | maintenance Backup file manifests                        | ⏳ Pending migration                                                     |
 | system_alerts                  | maintenance System alerts                                | ⏳ Pending migration                                                     |
@@ -524,6 +526,39 @@ column or table.
 | Author CHECK        | `ck_ratings_anonymized_author` / `ck_reviews_anonymized_author` (migration `0012`) reject a row whose `anonymized_at IS NOT NULL` while `user_id` is still present, so an anonymized row can never keep its author.                                |
 | Retention           | `TRASH_RETENTION_DAYS` (default 30). The expiry command is `scripts/trash-cleanup.mjs`, triggered by systemd, not by the application.                                                                                                        |
 | Expiry locking      | The expiry command removes one candidate per transaction: it locks the row with `FOR UPDATE`, re-checks `deleted_at` under that lock, and removes the hierarchy in the same transaction. A candidate whose drama is the source of an existing movie is skipped, because `fk_movies_converted_from_drama_id` is `ON DELETE RESTRICT`. |
+
+### 8.7 Direct video source workflow (Prompts 080–090)
+
+Migration `drizzle/0013_video_source_workflow.sql` adds three tables. No column
+stores a provider id, a claim id, an upload record, a staging path, or any
+transcoding metadata: an episode carries one direct HTTPS URL and the tables
+below carry metadata about it.
+
+| Table                       | Module         | Purpose                                                                             | Key relationships                                                                                                                     | Indexes / constraints                                                                                                                                                      |
+| --------------------------- | -------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `subtitle_tracks`           | `playback`     | The subtitle files an episode offers: language, label, format, default selection, and the direct source URL the browser fetches | `episode_id` → `episodes.id` (`ON DELETE CASCADE`)                          | `uq_subtitle_tracks_episode_id_language` (one track per language per episode), `uq_subtitle_tracks_episode_id_default` (at most one default per episode), `idx_subtitle_tracks_episode_id` |
+| `playback_failure_reports`  | `playback`     | Viewer-reported failures of an external source, so an administrator can see which episodes do not play. The report never stores the source URL | `episode_id` → `episodes.id` (`ON DELETE CASCADE`), `reported_by` → `users.id` (`ON DELETE SET NULL`) | `idx_playback_failure_reports_episode_id_created_at`, `idx_playback_failure_reports_created_at`, `idx_playback_failure_reports_reported_by` |
+| `admin_audit_log`           | `administration` | The operational record of administrative actions that change what viewers receive. It records what happened, to which entity, by whom, and when — never the URL that was changed | `actor_id` → `users.id` (`ON DELETE SET NULL`)                              | `idx_admin_audit_log_entity_type_entity_id`, `idx_admin_audit_log_actor_id`, `idx_admin_audit_log_created_at` |
+
+Notes:
+
+- The three cross-module foreign keys are declared in the SQL migration only.
+  A module may not import another module's `schema.ts`, so Drizzle cannot
+  express them in the TypeScript schema.
+- `subtitle_tracks.source_url` is validated as a direct HTTPS URL on the
+  server, but the server never fetches it: the browser requests the subtitle
+  file directly from the external host. There is no subtitle transcoding or
+  conversion service.
+- A failure report outlives the reporter: deleting a viewer account sets
+  `reported_by` to `NULL` instead of deleting the operational record or
+  blocking the account deletion.
+- The source-replacement reset reuses the existing `playback_progress`,
+  `watched_state`, and `watch_history` tables — no new table is introduced for
+  it. `watch_history` rows and their historical dates are deliberately left
+  untouched by the reset.
+- `episodes.video_source` holds the direct URL and nothing else. The ordinary
+  episode update refuses to change it; replacement is a separate transactional
+  operation that also resets viewer progress and writes the audit record.
 
 ---
 

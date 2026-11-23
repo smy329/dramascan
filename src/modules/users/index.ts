@@ -21,3 +21,12 @@ export {
   parseAdminUsersQuery,
 } from './validation';
 export type { AdminUserSortField, AdminUserStatus, AdminUsersQuery } from './validation';
+
+export { resetEpisodeWatchState } from './watch-state';
+export type { EpisodeWatchStateResetResult } from './watch-state';
+
+export { savePlaybackProgress } from './progress';
+export type { PlaybackProgressSaveOptions, PlaybackProgressSaveResult } from './progress';
+
+export { parsePlaybackProgressInput } from './validation';
+export type { PlaybackProgressInput } from './validation';

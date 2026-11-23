@@ -98,3 +98,19 @@ export type {
 } from './public-dramas.shared';
 
 export { listPublicDramas } from './public-dramas';
+
+export {
+  getPublicEpisodePlayback,
+  listPublicDramaEpisodes,
+} from './public-episodes';
+
+export { getEpisodeContentReference } from './episode-references';
+
+export type { EpisodeContentReference } from './episode-references';
+
+export { isPubliclyPlayableEpisode } from './public-episodes.shared';
+
+export type {
+  PublicEpisodeAvailabilityInput,
+  PublicEpisodePlayback,
+} from './public-episodes.shared';

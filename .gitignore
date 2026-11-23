@@ -39,5 +39,8 @@ Thumbs.db
 /playwright-report/
 /blob-report/
 
+# Superpowers execution workspace (plan ledger and briefs)
+/.superpowers/
+
 # Uploaded original poster and banner artwork
 /storage/

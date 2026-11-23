@@ -9,7 +9,7 @@ import {
 import { resolveActor, requirePermission } from '@/modules/authorization';
 import { parseOrThrow } from '@/modules/content/validation';
 
-import { toActionError, withFieldError } from './action-errors';
+import { toActionError, withFieldError } from '../action-errors';
 import { createDrama, deleteDrama, updateDrama } from './dramas';
 
 /**

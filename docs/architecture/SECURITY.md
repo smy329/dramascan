@@ -2,9 +2,11 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform
 **Document:** Security principles, planned controls, and known limitations
-**Version:** 1.0
-**Date:** 2026-11-08
-**Status:** Conventions established by Prompt 004. No security control is implemented yet; implementation begins in later prompts.
+**Version:** 1.1
+**Date:** 2026-11-23
+**Status:** Conventions established by Prompt 004. The controls listed as
+**Implemented** in §1 are implemented and tested; the rest are explicitly
+deferred and recorded in §12.
 
 **Authority chain:** `AGENTS.md` → `REQUIREMENTS.md` → `DECISIONS.md` → `ARCHITECTURE.md` → `CONVENTIONS.md` → this document.
 
@@ -19,16 +21,17 @@
 | Area                                                 | Status                                   | Implemented in             |
 | ---------------------------------------------------- | ---------------------------------------- | -------------------------- |
 | Authentication (Google OAuth via Better Auth)        | **Implemented**                          | **Prompts 033/034**        |
-| Session and cookie security                          | **Implemented** (session gate; header/CSP hardening pending) | **Prompts 033/034** |
+| Session and cookie security                          | **Implemented** (session gate; HSTS and `Permissions-Policy` deferred — see §10.3) | **Prompts 033/034** |
 | RBAC and server-side authorization                   | **Implemented**                          | **Authorization phase (Prompt 039)** |
-| Input validation with Zod                            | Not implemented                          | Per feature                |
+| Input validation with Zod                            | **Implemented per feature**              | Per feature                |
 | Environment configuration validation (server-only)   | **Implemented**                          | Prompt 009                 |
 | Rate limiting (PostgreSQL-backed)                    | Not implemented                          | Auth/abuse-prone features  |
-| HTTP security headers and CSP                        | Not implemented                          | Foundation/security phase  |
+| HTTP security headers and CSP                        | **Implemented** (CSP, `nosniff`, `Referrer-Policy`, `X-Frame-Options`; HSTS and `Permissions-Policy` deferred) | **Prompts 080–090** |
 | Structured logging with redaction                    | **Implemented**                          | Prompt 016                 |
 | PostgreSQL connection pool, URL validation, timeouts | **Implemented**                          | Prompt 019                 |
 | Database role separation and local-only access       | Operator-managed deployment prerequisite | Server setup (Prompt 019+) |
-| Image upload validation                              | Not implemented                          | Media phase                |
+| Image upload validation                              | **Implemented**                          | Prompts 075–078            |
+| External media URL validation (no server-side fetch) | **Implemented**                          | Prompts 080–090            |
 | Backup integrity and restore validation              | Not implemented                          | Maintenance phase          |
 | Error monitoring records                             | Not implemented                          | Operations phase           |
 
@@ -173,7 +176,39 @@ The platform plays administrator-supplied, public, direct HTTPS MP4 URLs. This h
 - **CSP media permissions** are limited to required sources. Do not add an unrestricted wildcard `media-src` or `img-src` to make an external host work. A new host is added deliberately and documented.
 - **Source URL confidentiality is not claimed.** The URL is visible to viewers and in network traffic. Do not describe it as hidden, DRM-protected, or access-controlled by the platform.
 
-### 7.1 Source replacement
+### 7.1 Direct video source workflow (implemented, Prompts 080–090)
+
+- **The server validates the URL; the browser proves it plays.** The URL is
+  checked server-side for the HTTPS scheme, a well-formed URL, a
+  credential-free host, and a direct MP4 path. The server never issues an HTTP
+  request against it, so an administrator-supplied URL is not an SSRF vector.
+  A valid syntax is explicitly **not** a claim that the file plays.
+- **The preview is the gate.** The administrator plays the URL in the browser
+  preview and confirms the replacement. The server cannot observe browser
+  playback, so it cannot be the gate on its own. The preview requests the
+  media with `crossorigin="anonymous"`, exactly like the viewer's player, so a
+  host that does not send CORS headers fails the preview rather than passing
+  it and then failing for every viewer.
+- **The ordinary episode edit cannot change the source.** `updateEpisode`
+  refuses a changed `video_source`, and the episode edit form does not submit
+  the field. Replacement is a separate, confirmed, audited operation.
+- **No video pipeline exists.** There is no upload endpoint, staging
+  directory, multipart or resumable upload code, upload progress, upload
+  retry, upload cleanup, transcoding, processing worker, or backend proxy for
+  video. `tests/unit/architecture/direct-video-source.test.ts` fails the suite
+  if any of them reappear. Poster and banner image uploads are a separate,
+  approved feature and are outside that guard.
+- **Subtitles are external files too.** The server validates the subtitle URL
+  and format but never fetches, converts, or rehosts a subtitle file; the
+  browser requests it directly. The URL rules — HTTPS only, an absolute URL,
+  no embedded credentials, a supported format — are enforced on the server,
+  not only in the browser form.
+- **The stored source is never changed by a viewer-side event.** A playback
+  failure produces a viewer-visible message with a manual retry and, at the
+  viewer's option, a failure report. There is no automatic retry, URL search,
+  repair, provider switching, or background retry.
+
+### 7.2 Source replacement
 
 Replacing an episode or movie source is a consequential operation:
 
@@ -183,7 +218,7 @@ Replacing an episode or movie source is a consequential operation:
 4. The replacement is applied transactionally; progress for the affected episode is reset while watch-history records and their historical dates are preserved.
 5. The old URL is not treated as secret and is not retained as a fallback unless the approved schema stores replacement history.
 
-### 7.2 Image asset uploads (implemented, Prompts 075–078)
+### 7.3 Image asset uploads (implemented, Prompts 075–078)
 
 Uploaded artwork is untrusted input and is validated from its bytes on the
 server:
@@ -291,17 +326,74 @@ its authorization is deliberately narrow:
 
 ## 10. HTTP Security Headers and CSP
 
-Planned controls:
+### 10.1 Implemented controls
 
-- `Content-Security-Policy` with explicit `default-src`, `script-src`, `style-src`, `img-src`, `media-src`, `connect-src`, `frame-src`, and `frame-ancestors` values.
-- `X-Content-Type-Options: nosniff`.
-- Frame protection appropriate to the application (`frame-ancestors 'none'` unless a documented need exists).
-- `Referrer-Policy` that avoids leaking sensitive URLs.
+- **`Content-Security-Policy`** — built per request by `src/proxy.ts` and
+  `src/platform/security/csp.ts`. A fresh nonce is generated for every
+  document request, passed to Next.js through the `x-nonce` request header, and
+  repeated in the response header. The root layout calls `connection()` so
+  that no document is served prerendered without a matching nonce.
+
+  | Directive                  | Value                                                                                                     |
+  | -------------------------- | --------------------------------------------------------------------------------------------------------- |
+  | `default-src`              | `'self'`                                                                                                    |
+  | `script-src`               | `'self' 'nonce-<per-request>' 'strict-dynamic'` (`'unsafe-eval'` in development only)                     |
+  | `style-src`                | `'self' 'nonce-<per-request>'`                                                                              |
+  | `style-src-attr`           | `'unsafe-inline'` (React renders `style` props as attributes)                                              |
+  | `style-src-elem`           | `'self' 'unsafe-inline'` — **development only**, for the Next.js dev overlay                               |
+  | `img-src`                  | `'self' data: blob: https:`                                                                                 |
+  | `font-src`                 | `'self' data:`                                                                                              |
+  | `media-src`                | `'self'` + the trusted media origins (never `*`)                                                            |
+  | `connect-src`              | `'self'` + the trusted media origins (the player fetches subtitle files)                                    |
+  | `worker-src`               | `'self' blob:`                                                                                              |
+  | `manifest-src`             | `'self'`                                                                                                    |
+  | `object-src`               | `'none'`                                                                                                    |
+  | `base-uri`                 | `'self'`                                                                                                    |
+  | `form-action`              | `'self'`                                                                                                    |
+  | `frame-ancestors`          | `'none'`                                                                                                    |
+  | `upgrade-insecure-requests` | production only                                                                                            |
+
+  Directive separation is deliberate: allowing a host to serve a video does
+  not allow it to serve an image, a stylesheet, or a script. There is no
+  wildcard option for media — the operator pins the hosts instead.
+
+- **`X-Content-Type-Options: nosniff`**, **`Referrer-Policy:
+  strict-origin-when-cross-origin`**, and **`X-Frame-Options: DENY`** — set for
+  every route in `next.config.ts`. `X-Frame-Options` is defence in depth
+  behind the `frame-ancestors 'none'` directive.
+
+### 10.2 Trusted media hosts
+
+`MEDIA_ALLOWED_HOSTS` is a comma-separated list of plain HTTPS origins the
+browser may load video and subtitle files from. The list is written into both
+`media-src` and `connect-src`.
+
+- **Empty (the default)** — the policy allows any HTTPS origin
+  (`https:`). This is appropriate for development and for a deployment that
+  has not yet pinned its media hosts.
+- **Non-empty** — only the listed origins may serve media or subtitle files.
+- **Adding a host** is an operator action: set `MEDIA_ALLOWED_HOSTS` and
+  restart the application. There is no wildcard option and no code change.
+- Every entry is validated at startup: HTTPS only, no credentials, and no
+  path, query, or fragment.
+
+**In production, pin the list.** An empty value leaves the media policy open
+to any HTTPS origin.
+
+### 10.3 Deferred controls
+
+These are still planned and are **not** implemented:
+
+- `Strict-Transport-Security` — the value is documented in `next.config.ts`
+  but commented out; the reverse proxy (Nginx) is the intended place to set
+  it, once the deployment terminates TLS there.
 - `Permissions-Policy` limiting unnecessary browser capabilities.
-- `Strict-Transport-Security` in production over HTTPS.
-- No `unsafe-eval`. Inline script/style allowances are minimized and documented if required by a framework constraint.
 
-Policies must remain compatible with Google OAuth, Vidstack, approved external MP4 hosts, and browser push. When an integration breaks under CSP, the fix is a specific allowlisted source, not a global wildcard.
+### 10.4 Compatibility
+
+The policy must remain compatible with Google OAuth, Vidstack, the approved
+external MP4 hosts, and browser push. When an integration breaks under CSP,
+the fix is a specific allowlisted source, not a global wildcard.
 
 ---
 
@@ -337,6 +429,8 @@ These are explicit, accepted limitations of the initial release. They are not hi
 | No external secret manager                       | Secrets live in server environment configuration                                  | Accepted                                          |
 | No virus scanning of uploads                     | Image/subtitle/attachment uploads rely on type/size validation and access control | Accepted initially; revisit if attachments expand |
 | No per-request database RLS                      | Authorization is enforced in the application layer                                | Accepted initially                                |
+| `MEDIA_ALLOWED_HOSTS` empty allows any HTTPS origin | The browser may load media from any HTTPS host until the operator pins the list | Accepted in development; pin in production      |
+| No HSTS or `Permissions-Policy` header           | Transport security and capability limits are the reverse proxy's responsibility | Deferred (see §10.3)                             |
 
 Deferred controls must not be presented as delivered. If a limitation becomes unacceptable, it requires a recorded decision and a scheduled prompt.
 

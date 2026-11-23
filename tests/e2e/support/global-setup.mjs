@@ -11,12 +11,16 @@
 //      expected `_test` database.
 //
 // Once the target is proven to be the dedicated `_test` database, the setup
-// sweeps the fixture rows an interrupted earlier run left behind. The sweep is
-// limited to rows carrying the `e2e-` fixture prefix, so it can only ever
-// remove rows this suite created. No migration or seed is performed.
+// warms the routes the suite exercises, so the development server has compiled
+// them before the first test runs, and then sweeps the fixture rows an
+// interrupted earlier run left behind. The sweep is limited to rows carrying
+// the `e2e-` fixture prefix, so it can only ever remove rows this suite
+// created. No migration or seed is performed.
 
 import { createRequire } from 'node:module';
 import pg from 'pg';
+
+import { warmupRoutes } from './warmup.mjs';
 
 // Playwright loads the global setup as an ES module but transforms project
 // modules to CommonJS, which makes named ES imports of those modules fail.
@@ -53,6 +57,11 @@ export default async function globalSetup() {
   await verifyServerIdentity();
   verifyServerIsManagedByThisRun(target);
   await verifyTestDatabaseConnection(target);
+
+  // The development server compiles a route the first time it is requested.
+  // Compiling before the first test runs keeps the suite from measuring the
+  // cold start of the development server instead of the application.
+  await warmupRoutes(BASE_URL);
 
   const removed = await removeStaleFixtures(target);
 

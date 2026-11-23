@@ -4,6 +4,115 @@ All notable changes to the DramaScan project will be documented in this file.
 
 ## [Unreleased] - 2026-11-22
 
+### feat: complete the episode video source workflow (Prompts 080–090)
+
+An episode now carries one administrator-supplied, public, direct HTTPS MP4 URL
+that the browser plays directly with Vidstack. The application server never
+fetches, proxies, relays, rehosts, transcodes, or uploads video.
+
+- `src/modules/content/schema.ts` (modified): `episodes.video_source` holds the
+  direct URL and nothing else — no claim id, provider id, upload record,
+  staging path, or transcoding metadata (Prompt 080).
+- `src/modules/content/validation.ts` (modified): server-side Zod validation
+  for the source URL. HTTPS only, valid URL, credential-free host, direct MP4
+  path, no suspicious input. The server never issues an HTTP request against an
+  administrator-supplied URL, so there is no SSRF surface. The validation
+  explicitly does not claim that the file plays (Prompt 081).
+- `src/components/admin/dramas/episode-manager.tsx` (modified): the episode
+  form has a clearly labelled "direct MP4 URL" field with inline validation
+  errors, a browser preview, and no file picker, upload control, or automatic
+  metadata extraction. Title, description, thumbnail, taxonomy, season,
+  episode number, and publication metadata stay administrator-authored
+  (Prompts 082/083).
+- `src/components/admin/media/video-source-preview.tsx` (modified): the
+  preview plays the entered URL in the real browser player and reports whether
+  playback actually started. It requests the media with
+  `crossorigin="anonymous"`, exactly like the viewer's player, so a host
+  without CORS headers fails the preview instead of passing it and failing for
+  every viewer. A successful save or an `.mp4` suffix is never treated as
+  proof of playability (Prompt 084).
+- `src/app/(public)/drama/[dramaId]/[slug]/episode/[episodeId]/page.tsx`
+  (new) and `src/components/player/vidstack-player.tsx` (new): the viewer page
+  renders the stored URL through Vidstack with standard controls, seeking,
+  volume, fullscreen, playback speed, and a responsive layout. The browser
+  requests the media directly from the external host (Prompt 085).
+- `src/proxy.ts` (new), `src/platform/security/csp.ts` (new),
+  `src/app/layout.tsx` (modified): a per-request nonce Content Security
+  Policy. `media-src` and `connect-src` list the trusted media origins and
+  never use `*`; image, script, and style policies stay separate.
+  `MEDIA_ALLOWED_HOSTS` pins the approved hosts — an empty value means any
+  HTTPS origin (Prompt 086).
+- `src/workflows/admin/episodes.ts` (modified):
+  `replaceEpisodeVideoSource` runs one transaction that updates the source,
+  resets every viewer's progress to zero and the episode to unwatched, and
+  writes the operational record. Watch-history rows and their historical dates
+  are preserved; the episode id, metadata, hierarchy, reviews, and ratings are
+  untouched. `updateEpisode` refuses a changed `video_source`, and the episode
+  edit form no longer submits the field at all (Prompt 087).
+- `src/components/player/vidstack-player.tsx` (new): when the source fails the
+  viewer sees a clear error and a manual *Try again* control. There is no
+  automatic retry, URL search, repair, provider switching, or background retry,
+  and the stored source stays unchanged until an administrator replaces it.
+  `src/components/admin/dramas/playback-failure-list.tsx` (new) gives
+  administrators visibility into viewer-reported failures (Prompt 088).
+- `src/modules/playback/schema.ts` (modified): `subtitle_tracks` stores
+  per-episode subtitle metadata and direct source URLs. The **server** validates
+  each URL — HTTPS only, an absolute URL, no embedded credentials, a closed
+  format set (`vtt`, `srt`, `ssa`, `ass`, `json`), and an extension that
+  matches the declared format. The player offers language labels and a
+  default-track selection. The browser fetches subtitle files directly; the
+  server never fetches, transcodes, or converts them.
+  `src/components/admin/dramas/subtitle-track-manager.tsx` (new) manages them
+  (Prompt 089).
+- `tests/unit/architecture/direct-video-source.test.ts` (new): a
+  repository-wide guard fails the suite if upload endpoints, staging
+  directories, temp video storage, multipart or resumable upload code, upload
+  progress, upload retries, upload cleanup, transcoding, processing workers,
+  or a video proxy/relay/rehost reappear. Poster and banner image uploads are
+  explicitly out of its scope and are untouched (Prompt 090).
+- `drizzle/0013_video_source_workflow.sql` (new): creates `subtitle_tracks`,
+  `playback_failure_reports`, and `admin_audit_log` with their indexes and
+  cross-module foreign keys.
+- `src/modules/users/progress.ts` (new): `savePlaybackProgress(actor, input,
+  options?)` upserts one `playback_progress` row and one `watched_state` row
+  per user and episode. An update that was observed earlier never overwrites a
+  newer one, the watched state is sticky and keeps its first completion date,
+  and no watch-history row is written.
+  `PLAYBACK_COMPLETION_THRESHOLD_PERCENT` (default 90) is the single
+  completion threshold: the server applies it when it stores the watched state,
+  and the watch page hands the same value to the player, so the client and the
+  server never apply divergent rules.
+- `src/modules/users/watch-state.ts` (new),
+  `src/modules/administration/audit-log.ts` (new),
+  `src/modules/content/episode-references.ts` (new), and
+  `src/platform/db/executor.ts` (new) support the transactional replacement.
+- `src/workflows/action-errors.ts` (moved from `src/workflows/admin/action-errors.ts`)
+  so the public playback workflow can reuse the shared error adapter.
+- Tests: `tests/e2e/{admin-episode-video-source.spec.ts,public-episode-playback.spec.ts}`,
+  `tests/integration/{content/episode-video-source.integration.test.ts,content/public-episodes.integration.test.ts,users/episode-watch-state.integration.test.ts,users/playback-progress.integration.test.ts}`,
+  `tests/unit/components/{video-source-preview.test.tsx,vidstack-player.test.tsx}`,
+  `tests/unit/modules/{content/public-episodes.test.ts,playback/*}`,
+  `tests/unit/platform/{config/playback-completion-threshold.test.ts,security/*}`.
+- Verified: typecheck PASS; lint PASS; unit 973/973 PASS; integration 576/576
+  PASS; Playwright E2E 49/49 PASS; production build PASS.
+
+### test: warm the development server before the end-to-end suite
+
+The end-to-end launcher runs `next dev`, and a development server compiles a
+route the first time it is requested. On a slow filesystem that compile can
+take longer than a test's own timeout, which made five unrelated tests fail
+with a timeout while the server was still compiling the page the test had just
+navigated to.
+
+`tests/e2e/support/warmup.mjs` (new) requests every route the suite exercises
+before the first test runs, so the compile cost is paid once, up front.
+`tests/e2e/support/global-setup.mjs` (modified) calls it after the server
+identity and the test database have been verified. The warm-up only issues
+plain GET requests: a redirect and a not-found response both prove that the
+route compiled, so it needs no session and creates no data. The per-test
+timeouts are unchanged — the suite now measures the application instead of the
+development server's cold start.
+
 ### feat: implement content publication controls and bulk publication (Prompts 068–069)
 
 Publication state is now set explicitly, item by item, and a bulk operation

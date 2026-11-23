@@ -52,6 +52,19 @@ export const deleteEpisodeFormSchema = z.strictObject({
   id: z.string().uuid(),
 });
 
+/**
+ * Video-source replacement payload.
+ *
+ * The source is replaced only after the administrator has watched the new URL
+ * play in the browser preview and confirmed the replacement. The contract
+ * carries the episode and the new URL; the confirmation itself is the
+ * administrator's action in the UI, and the server re-checks the URL.
+ */
+export const replaceVideoSourceFormSchema = z.strictObject({
+  episodeId: z.string().uuid(),
+  videoSource: publicationReadyVideoSourceSchema,
+});
+
 export const reorderEpisodesFormSchema = z.strictObject({
   drama_id: z.string().uuid(),
   ids: z.array(z.string().uuid()).min(1, 'At least one episode ID is required.'),
@@ -64,6 +77,7 @@ export const renumberEpisodesFormSchema = z.strictObject({
 export type EpisodeFormValues = z.infer<typeof episodeFormSchema>;
 export type UpdateEpisodeFormValues = z.infer<typeof updateEpisodeFormSchema>;
 export type DeleteEpisodeFormValues = z.infer<typeof deleteEpisodeFormSchema>;
+export type ReplaceVideoSourceFormValues = z.infer<typeof replaceVideoSourceFormSchema>;
 export type ReorderEpisodesFormValues = z.infer<typeof reorderEpisodesFormSchema>;
 export type RenumberEpisodesFormValues = z.infer<typeof renumberEpisodesFormSchema>;
 

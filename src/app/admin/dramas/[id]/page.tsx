@@ -5,9 +5,12 @@ import { notFound } from 'next/navigation';
 import { SeasonManager } from '@/components/admin/dramas/season-manager';
 import { EpisodeManager } from '@/components/admin/dramas/episode-manager';
 import { DramaTrashButton } from '@/components/admin/dramas/drama-trash-button';
+import { PlaybackFailureList } from '@/components/admin/dramas/playback-failure-list';
 import { hasPermission, toPermissionKey } from '@/modules/authorization';
 import type { SeasonDto } from '@/lib/contracts/season-form';
 import type { EpisodeDto } from '@/lib/contracts/episode-form';
+import type { SubtitleTrackDto } from '@/lib/contracts/subtitle-track-form';
+import { listPlaybackFailures, listSubtitleTracksByEpisodeIds } from '@/modules/playback';
 import { getDramaForAdmin } from '@/workflows/admin/dramas';
 import { listSeasons } from '@/workflows/admin/seasons';
 import { listEpisodes } from '@/workflows/admin/episodes';
@@ -66,6 +69,33 @@ export default async function AdminDramaDetailPage({
     const listed = await listEpisodes(actor, id, { page: 1, pageSize: 100 });
     episodesData = listed.episodes;
   }
+
+  const episodeIds = episodesData.map(episode => episode.id);
+
+  // The subtitle tracks and the reported failures of the whole drama are read
+  // in two queries, not one query per episode.
+  const [subtitleTracks, playbackFailures] = await Promise.all([
+    episodeIds.length > 0 ? listSubtitleTracksByEpisodeIds(episodeIds) : [],
+    episodeIds.length > 0 ? listPlaybackFailures({ episodeIds }) : [],
+  ]);
+
+  const subtitleTracksByEpisode: Record<string, SubtitleTrackDto[]> = {};
+
+  for (const track of subtitleTracks) {
+    const list = subtitleTracksByEpisode[track.episodeId] ?? [];
+    list.push({
+      id: track.id,
+      episodeId: track.episodeId,
+      language: track.language,
+      label: track.label,
+      sourceUrl: track.sourceUrl,
+      format: track.format,
+      isDefault: track.isDefault,
+    });
+    subtitleTracksByEpisode[track.episodeId] = list;
+  }
+
+  const episodeTitles = new Map(episodesData.map(episode => [episode.id, episode.title]));
 
   return (
     <div className="space-y-8">
@@ -158,8 +188,23 @@ export default async function AdminDramaDetailPage({
             structureType={drama.structure_type}
             seasons={seasons}
             episodes={episodesData}
+            subtitleTracks={subtitleTracksByEpisode}
           />
         </section>
+      ) : null}
+
+      {canManageEpisodes ? (
+        <PlaybackFailureList
+          failures={playbackFailures.map(failure => ({
+            id: failure.id,
+            episodeId: failure.episodeId,
+            episodeTitle: episodeTitles.get(failure.episodeId) ?? 'Unknown episode',
+            reason: failure.reason,
+            detail: failure.detail,
+            reportedBy: failure.reportedBy,
+            createdAt: failure.createdAt.toISOString(),
+          }))}
+        />
       ) : null}
     </div>
   );

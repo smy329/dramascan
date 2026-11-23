@@ -8,18 +8,20 @@ import {
   episodeFormSchema,
   renumberEpisodesFormSchema,
   reorderEpisodesFormSchema,
+  replaceVideoSourceFormSchema,
   updateEpisodeFormSchema,
   type EpisodeDto,
 } from '@/lib/contracts/episode-form';
 import { resolveActor, requirePermission } from '@/modules/authorization';
 import { parseOrThrow } from '@/modules/content/validation';
 
-import { toActionError } from './action-errors';
+import { toActionError } from '../action-errors';
 import {
   createEpisode,
   deleteEpisode,
   renumberEpisodes,
   reorderEpisodes,
+  replaceEpisodeVideoSource,
   updateEpisode,
 } from './episodes';
 
@@ -85,10 +87,38 @@ export async function updateEpisodeAction(
   }
 }
 
+/**
+ * Replace an episode's video source.
+ *
+ * The action is only reachable after the administrator has watched the new URL
+ * play in the browser preview and confirmed the replacement. The server
+ * re-validates the URL and performs the replacement, the viewer-progress
+ * reset, and the operational record as one transaction.
+ */
+export async function replaceEpisodeVideoSourceAction(
+  input: unknown
+): Promise<Result<EpisodeDto>> {
+  try {
+    const actor = await resolveActor();
+    requirePermission(actor, 'episode.manage');
+
+    const values = parseOrThrow(replaceVideoSourceFormSchema, input);
+
+    const result = await replaceEpisodeVideoSource(actor, values.episodeId, values.videoSource);
+
+    if (!result.ok) {
+      return { ok: false, error: toActionError(result.error) };
+    }
+
+    return { ok: true, data: result.episode };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
 export async function deleteEpisodeAction(
   input: unknown
-): Promise<Result<{ id: string }>> {
-  try {
+): Promise<Result<{ id: string }>> {  try {
     const actor = await resolveActor();
     requirePermission(actor, 'episode.manage');
 
