@@ -125,6 +125,33 @@ export const watched_state = pgTable(
   ]
 );
 
+// ----- report_submissions -----
+// User-submitted content reports. Each report is linked to a content item
+// (drama or movie) and a reason from the canonical report reason catalog.
+// Status flows: pending → reviewed → resolved.
+export const report_submissions = pgTable(
+  'report_submissions',
+  {
+    id: uuidPrimaryKey(),
+    user_id: uuid('user_id'), // null for anonymous reports
+    content_type: text('content_type').notNull().default('drama'), // drama | movie
+    content_id: uuid('content_id').notNull(), // target drama_id or movie_id
+    reason: text('reason').notNull(), // report reason from the catalog
+    description: text('description'), // optional free-form description
+    ip_address: text('ip_address'),
+    user_agent: text('user_agent'),
+    status: text('status').notNull().default('pending'), // pending | reviewed | resolved
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    indexOn('report_submissions', table.user_id),
+    indexOn('report_submissions', table.content_type, table.content_id),
+    indexOn('report_submissions', table.status),
+    indexOn('report_submissions', table.created_at),
+  ]
+);
+
 // ----- watch_history -----
 // History is append-only by design: the same user may watch the same episode on
 // several dates, and those sessions are the record. There is deliberately no

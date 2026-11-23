@@ -20,6 +20,8 @@ import { ContentCard } from '@/components/public/ContentCard';
 import { ContentHero } from '@/components/public/content-hero';
 import { ContinueWatching } from '@/components/public/continue-watching';
 import { EpisodeNavigation } from '@/components/public/episode-navigation';
+import { ShareButton } from '@/components/public/share-button';
+import { ReportForm } from '@/components/public/report-form';
 import { PublicPageLayout } from '@/components/public/Layout';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -51,9 +53,31 @@ export async function generateMetadata({ params }: DramaDetailPageProps): Promis
     return { title: 'Drama not found' };
   }
 
+  // Only generate metadata for published content; unpublished content gets
+  // a 404 rather than exposed metadata (per the approved requirements).
   return {
     title: drama.title,
     description: drama.description ?? undefined,
+    // Use the canonical drama URL as the og:url
+    openGraph: {
+      title: drama.title,
+      description: drama.description,
+      images: drama.poster ? [
+        {
+          url: drama.poster,
+          width: 1200,
+          height: 630,
+          alt: drama.title,
+        },
+      ] : undefined,
+      url: `/drama/${dramaId}/${slug}`,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: drama.title,
+      description: drama.description,
+      images: drama.poster ? [drama.poster] : undefined,
+    },
   };
 }
 
@@ -102,38 +126,52 @@ export default async function DramaDetailPage({ params }: DramaDetailPageProps) 
   const firstEpisode = drama.episodes[0] ?? null;
 
   const actions = (
-    <>
-      {resumeEpisode ? (
-        <ContinueWatching
-          href={publicEpisodeHref(drama.id, drama.slug, resumeEpisode.id)}
-          label={episodeLabel(resumeEpisode)}
-          positionSeconds={resumePoint?.positionSeconds ?? 0}
-          durationSeconds={resumePoint?.durationSeconds ?? 0}
-        />
-      ) : firstEpisode ? (
-        <Link
-          href={publicEpisodeHref(drama.id, drama.slug, firstEpisode.id)}
-          className={cn(buttonVariants({ variant: 'default', size: 'lg' }), 'gap-2')}
-        >
-          <Play className="size-4" aria-hidden="true" />
-          {firstEpisode.episodeNumber !== null
-            ? `Play episode ${firstEpisode.episodeNumber}`
-            : 'Play'}
-        </Link>
-      ) : (
-        <span className="inline-flex h-9 items-center rounded-lg border border-border bg-muted px-4 text-sm text-muted-foreground">
-          Coming soon
-        </span>
-      )}
+      <>
+        {resumeEpisode ? (
+          <ContinueWatching
+            href={publicEpisodeHref(drama.id, drama.slug, resumeEpisode.id)}
+            label={episodeLabel(resumeEpisode)}
+            positionSeconds={resumePoint?.positionSeconds ?? 0}
+            durationSeconds={resumePoint?.durationSeconds ?? 0}
+          />
+        ) : firstEpisode ? (
+          <Link
+            href={publicEpisodeHref(drama.id, drama.slug, firstEpisode.id)}
+            className={cn(buttonVariants({ variant: 'default', size: 'lg' }), 'gap-2')}
+          >
+            <Play className="size-4" aria-hidden="true" />
+            {firstEpisode.episodeNumber !== null
+              ? `Play episode ${firstEpisode.episodeNumber}`
+              : 'Play'}
+          </Link>
+        ) : (
+          <span className="inline-flex h-9 items-center rounded-lg border border-border bg-muted px-4 text-sm text-muted-foreground">
+            Coming soon
+          </span>
+        )}
 
-      <BookmarkButton
-        type="drama"
-        id={drama.id}
-        initialBookmarked={bookmarked}
-        signedIn={actor.userId !== null}
-      />
-    </>
-  );
+        <BookmarkButton
+          type="drama"
+          id={drama.id}
+          initialBookmarked={bookmarked}
+          signedIn={actor.userId !== null}
+        />
+
+        <ShareButton
+          type="drama"
+          id={drama.id}
+          title={drama.title}
+        />
+
+        {actor.userId !== null && (
+          <ReportForm
+            contentType="drama"
+            contentId={drama.id}
+            title={drama.title}
+          />
+        )}
+      </>
+    );
 
   return (
     <PublicPageLayout title={drama.title}>

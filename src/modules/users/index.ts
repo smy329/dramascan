@@ -57,3 +57,11 @@ export type {
   EpisodeWatchedStateInput,
   PlaybackProgressInput,
 } from './validation';
+
+export { submitReport } from '@/workflows/users/report-action';
+export type {
+  ReportReason,
+  ReportReasonLabel,
+  ReportReasons,
+  isValidReportReason,
+} from './report-types';

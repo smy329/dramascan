@@ -16,6 +16,8 @@ import { getMoviePlaybackState, isBookmarked } from '@/modules/users';
 import { BookmarkButton } from '@/components/public/bookmark-button';
 import { ContentHero } from '@/components/public/content-hero';
 import { ContinueWatching } from '@/components/public/continue-watching';
+import { ShareButton } from '@/components/public/share-button';
+import { ReportForm } from '@/components/public/report-form';
 import { PublicPageLayout } from '@/components/public/Layout';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -47,9 +49,31 @@ export async function generateMetadata({ params }: MovieDetailPageProps): Promis
     return { title: 'Movie not found' };
   }
 
+  // Only generate metadata for published content; unpublished content gets
+  // a 404 rather than exposed metadata (per the approved requirements).
   return {
     title: movie.title,
     description: movie.description ?? undefined,
+    // Use the canonical movie URL as the og:url
+    openGraph: {
+      title: movie.title,
+      description: movie.description,
+      images: movie.poster ? [
+        {
+          url: movie.poster,
+          width: 1200,
+          height: 630,
+          alt: movie.title,
+        },
+      ] : undefined,
+      url: `/movie/${id}/${slug}`,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: movie.title,
+      description: movie.description,
+      images: movie.poster ? [movie.poster] : undefined,
+    },
   };
 }
 
@@ -112,6 +136,21 @@ export default async function MovieDetailPage({ params }: MovieDetailPageProps) 
         initialBookmarked={bookmarked}
         signedIn={actor.userId !== null}
       />
+
+      <ShareButton
+        type="movie"
+        id={movie.id}
+        title={movie.title}
+      />
+
+      {actor.userId !== null && (
+        <ReportForm
+          contentType="movie"
+          contentId={movie.id}
+          title={movie.title}
+        />
+      )}
+
     </>
   );
 
