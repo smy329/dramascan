@@ -84,6 +84,16 @@ vi.mock('@vidstack/react', () => ({
       <button type="button" data-testid="simulate-ended" onClick={() => onEnded?.()}>
         simulate ended
       </button>
+      <button
+        type="button"
+        data-testid="simulate-complete"
+        onClick={() => {
+          onTimeUpdate?.({ currentTime: 1000 });
+          onEnded?.();
+        }}
+      >
+        simulate complete
+      </button>
       {children}
     </div>
   ),
@@ -108,6 +118,10 @@ vi.mock('@vidstack/react/player/layouts/default', () => ({
 }));
 
 import { VidstackPlayer, type PlayerSubtitleTrack } from '@/components/player/vidstack-player';
+import {
+  PlaybackResetProvider,
+  usePlaybackReset,
+} from '@/components/player/playback-reset';
 
 const fetchMock = vi.fn();
 
@@ -115,6 +129,7 @@ vi.stubGlobal('fetch', fetchMock);
 
 const SOURCE = 'https://media.example.com/episodes/1.mp4';
 const EPISODE_ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+const MOVIE_ID = '9c858901-8a57-4791-81fe-4c455b099bc9';
 
 const SUBTITLES: PlayerSubtitleTrack[] = [
   {
@@ -141,18 +156,50 @@ function renderPlayer(
     signedIn: boolean;
     completionThresholdPercent: number;
     subtitleTracks: PlayerSubtitleTrack[];
-  }> = {}
+    resumePositionSeconds: number;
+    nextHref: string | null;
+    onNavigateToNext: (_href: string) => void;
+    movieId: string;
+  }> = {},
+  wrap?: (_player: React.ReactElement) => React.ReactElement
 ): void {
-  render(
+  const player = (
     <VidstackPlayer
-      episodeId={EPISODE_ID}
+      episodeId={overrides.movieId ? undefined : EPISODE_ID}
+      movieId={overrides.movieId}
       title="Episode 1"
       source={SOURCE}
       sourceVersion={1}
       subtitleTracks={overrides.subtitleTracks ?? []}
       signedIn={overrides.signedIn ?? true}
       completionThresholdPercent={overrides.completionThresholdPercent ?? 90}
+      resumePositionSeconds={overrides.resumePositionSeconds ?? 0}
+      nextHref={overrides.nextHref ?? null}
+      onNavigateToNext={overrides.onNavigateToNext}
     />
+  );
+
+  render(wrap ? wrap(player) : player);
+}
+
+/**
+ * The control the watched toggle uses.
+ *
+ * The toggle itself is a Server Action, so this test drives the shared reset
+ * signal directly: the player has to react to the same signal the toggle
+ * raises.
+ */
+function ResetControl(): React.ReactElement {
+  const playbackReset = usePlaybackReset();
+
+  return (
+    <button
+      type="button"
+      data-testid="request-reset"
+      onClick={() => playbackReset?.requestReset()}
+    >
+      request reset
+    </button>
   );
 }
 
@@ -354,5 +401,147 @@ describe('VidstackPlayer progress reporting', () => {
     await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('reports a movie position instead of an episode position', async () => {
+    renderPlayer({ movieId: MOVIE_ID });
+
+    fireEvent.click(screen.getByTestId('simulate-duration'));
+    fireEvent.click(screen.getByTestId('simulate-time-update'));
+    fireEvent.click(screen.getByTestId('simulate-pause'));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const payload = JSON.parse(String(init.body)) as {
+      episodeId?: string;
+      movieId?: string;
+      positionSeconds: number;
+      durationSeconds: number;
+    };
+
+    expect(payload.movieId).toBe(MOVIE_ID);
+    expect(payload.episodeId).toBeUndefined();
+    expect(payload.positionSeconds).toBe(120);
+    expect(payload.durationSeconds).toBe(1000);
+  });
+});
+
+describe('VidstackPlayer continue playback', () => {
+  it('offers to continue from the stored position', () => {
+    renderPlayer({ resumePositionSeconds: 120 });
+
+    expect(screen.getByRole('button', { name: /resume from 2:00/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /start from the beginning/i })).toBeTruthy();
+  });
+
+  it('offers nothing when there is no stored position', () => {
+    renderPlayer();
+
+    expect(screen.queryByRole('button', { name: /resume from/i })).toBeNull();
+  });
+
+  it('drops the offer once the viewer has chosen', () => {
+    renderPlayer({ resumePositionSeconds: 120 });
+
+    fireEvent.click(screen.getByRole('button', { name: /resume from 2:00/i }));
+
+    expect(screen.queryByRole('button', { name: /resume from/i })).toBeNull();
+  });
+
+  it('also drops the offer when the viewer restarts', () => {
+    renderPlayer({ resumePositionSeconds: 120 });
+
+    fireEvent.click(screen.getByRole('button', { name: /start from the beginning/i }));
+
+    expect(screen.queryByRole('button', { name: /resume from/i })).toBeNull();
+  });
+});
+
+describe('VidstackPlayer manual unwatched reset', () => {
+  it('drops the pending report and the resume offer when the viewer marks the episode unwatched', async () => {
+    renderPlayer({ resumePositionSeconds: 120 }, player => (
+      <PlaybackResetProvider>
+        <ResetControl />
+        {player}
+      </PlaybackResetProvider>
+    ));
+
+    // The viewer watches a little, and the position is reported.
+    fireEvent.click(screen.getByTestId('simulate-duration'));
+    fireEvent.click(screen.getByTestId('simulate-time-update'));
+    fireEvent.click(screen.getByTestId('simulate-pause'));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    // The viewer marks the episode unwatched.
+    fireEvent.click(screen.getByTestId('request-reset'));
+
+    // The resume offer disappears: the stored position is back at the
+    // beginning.
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /resume from/i })).toBeNull();
+    });
+
+    // The next heartbeat is sent again. Without the reset the player would
+    // still consider the old position reported and would stay silent, and the
+    // viewer's decision would be undone by the next report.
+    fireEvent.click(screen.getByTestId('simulate-time-update'));
+    fireEvent.click(screen.getByTestId('simulate-pause'));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    const payload = JSON.parse(String(init.body)) as { positionSeconds: number };
+
+    expect(payload.positionSeconds).toBe(120);
+  });
+});
+
+describe('VidstackPlayer automatic next episode', () => {
+  const NEXT_HREF = '/drama/drama-id/the-drama/episode/next-episode-id';
+
+  it('moves to the next episode as soon as the current one ends', () => {
+    const navigate = vi.fn();
+    renderPlayer({ nextHref: NEXT_HREF, onNavigateToNext: navigate });
+
+    fireEvent.click(screen.getByTestId('simulate-duration'));
+    fireEvent.click(screen.getByTestId('simulate-complete'));
+
+    expect(navigate).toHaveBeenCalledTimes(1);
+    // The next page is told to start playing immediately: there is no countdown.
+    expect(navigate).toHaveBeenCalledWith(`${NEXT_HREF}?autoplay=1`);
+  });
+
+  it('stays on the episode when there is no next episode', () => {
+    const navigate = vi.fn();
+    renderPlayer({ onNavigateToNext: navigate });
+
+    fireEvent.click(screen.getByTestId('simulate-duration'));
+    fireEvent.click(screen.getByTestId('simulate-time-update'));
+    fireEvent.click(screen.getByTestId('simulate-ended'));
+
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('does not move on when the completion threshold was not reached', () => {
+    const navigate = vi.fn();
+    renderPlayer({
+      nextHref: NEXT_HREF,
+      onNavigateToNext: navigate,
+      completionThresholdPercent: 99,
+    });
+
+    fireEvent.click(screen.getByTestId('simulate-duration'));
+    fireEvent.click(screen.getByTestId('simulate-time-update'));
+    fireEvent.click(screen.getByTestId('simulate-ended'));
+
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

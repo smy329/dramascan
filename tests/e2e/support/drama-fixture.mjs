@@ -400,6 +400,13 @@ export async function removeDrama(fixture) {  const { target, client } = require
       );
       await run(
         client,
+        'delete the seeded slug history',
+        target,
+        'DELETE FROM content_slug_history WHERE content_id = $1',
+        [fixture.id]
+      );
+      await run(
+        client,
         'delete the seeded episodes',
         target,
         'DELETE FROM episodes WHERE drama_id = $1',

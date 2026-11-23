@@ -42,7 +42,7 @@ type TargetColumns = {
  * to the legacy pair. The two cases are mutually exclusive, so a row is never
  * counted twice and never moved twice.
  */
-function matchesTarget(columns: TargetColumns, type: 'drama' | 'movie', id: string): SQL {
+export function matchesTarget(columns: TargetColumns, type: 'drama' | 'movie', id: string): SQL {
   const typed = type === 'drama' ? eq(columns.drama_id, id) : eq(columns.movie_id, id);
   const legacy = and(
     isNull(columns.drama_id),

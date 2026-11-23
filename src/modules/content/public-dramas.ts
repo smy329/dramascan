@@ -45,7 +45,7 @@ import { dramas, episodes, seasons } from './schema';
  * Season-based dramas require a published, non-deleted season. Flat dramas do
  * not: their episodes carry no season and are ordered directly under the drama.
  */
-function playableEpisodeExists() {
+export function playableEpisodeExists() {
   return exists(
     db
       .select({ one: sql`1` })
@@ -95,7 +95,7 @@ function discoverableDrama() {
  * result. `IS DISTINCT FROM` keeps a NULL visibility on the visible side,
  * which is what the shared rule does as well.
  */
-function notHiddenWhileEmpty() {
+export function notHiddenWhileEmpty() {
   if (serverConfig.emptyDramaVisibility === 'hidden') {
     return sql`false`;
   }

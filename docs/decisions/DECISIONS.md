@@ -1771,10 +1771,24 @@ without the two drifting apart.
    an update that is not newer than the stored one. Two tabs or two devices
    therefore converge on the newer observation, whichever request arrives last.
    The server clock is injectable so the rule is testable without sleeping.
-5. **The watched state is sticky, and the first completion date is kept.**
+5. **The staleness rule is enforced by the database, not by the read that
+   precedes the write.** The two target rows are locked with `FOR UPDATE` for
+   the duration of the transaction, and both upserts carry the condition
+   `last_watched_at <= excluded.last_watched_at`. A read-then-write decision
+   alone is not enough: two overlapping requests could both read the same old
+   row and then write in the opposite order. With the lock and the condition,
+   an older observation cannot roll the position, the watched minutes, or the
+   completion backwards — whichever request arrives last.
+6. **Every path locks and writes the two rows in the same order.** The progress
+   row comes first, the watched-state row second — in the lock step and in the
+   write step. A row that does not exist yet is inserted, and an inserted row
+   takes a lock too, so the write order has to match the lock order. The
+   manual watched-state change follows the same order. Two paths that touch the
+   same rows in the same order cannot deadlock.
+7. **The watched state is sticky, and the first completion date is kept.**
    Once the threshold has been reached, the episode stays watched until an
    administrator replaces the source, which resets it explicitly.
-6. **A progress write never creates a watch-history row.** History is
+8. **A progress write never creates a watch-history row.** History is
    append-only and belongs to the watch-history feature; writing a row on
    every debounced update would duplicate history for every tick.
 
@@ -1783,6 +1797,9 @@ without the two drifting apart.
 - A device whose clock lags behind the server can lose progress updates for
   that episode. The server remains the authority, and the limitation is
   documented rather than hidden behind a last-write-wins race.
+- The write serializes on the two target rows, so two reports for the same
+  viewer and episode wait for each other. The lock is held for the length of
+  one short transaction.
 - The progress service sits in a different module than the target architecture
   describes. The documentation records the difference; it does not pretend the
   refactor has happened.
@@ -1880,3 +1897,217 @@ rows of several other modules through their own ownership services.
 - The `playback` module's purge service is actor-first like every other
   administrative service, so the permanent-delete path is still subject to the
   authorization rules.
+
+---
+
+## D-043 — An episode has two reference levels: administrative and public
+
+**Date:** 2026-11-23
+**Status:** Approved by user (Prompts 091–103 implementation)
+**Extends:** D-035 (publication), D-034 (empty-drama visibility), D-039
+(direct external MP4 playback), and D-040 (progress writes in the users
+module).
+
+**Context:** `content.getEpisodeContentReference(episodeId, executor?)` resolves
+the drama an episode belongs to, and it is the content module's public API for
+that mapping (D-040 §2). Two callers need different answers from it. The
+`playback` module asks whether the episode is still in the catalogue, so an
+administrator can manage it — subtitle tracks are attached to a draft episode
+long before it is published. The `users` module asks whether the public may
+watch the episode *right now*, so a viewer's progress row and a viewer's manual
+watched state may only point at something that is publicly playable (D-035,
+D-039).
+
+The first implementation of Prompts 091–103 made the shared reference enforce
+public playability. That broke the administrative path: adding a subtitle
+track to a draft episode failed with "Episode not found", and the end-to-end
+test `admin episode video source › manages the subtitle tracks of an episode`
+failed. The failure was silent for the administrator — the form reported an
+error and the track was never stored.
+
+**Decision:**
+
+1. **The content module exposes two reference levels.**
+   `getEpisodeContentReference(episodeId, executor?)` answers "does this episode
+   exist and is it still in the catalogue?" — it refuses only a missing or
+   trashed episode. `getPublicEpisodeContentReference(episodeId, executor?)`
+   answers "may the public watch this episode right now?" — it additionally
+   applies the full hierarchy rule: the episode, its drama, and its season have
+   to be published and untrashed, and the episode has to carry a source.
+2. **The administrative path uses the administrative reference.** The
+   `playback` module's subtitle management keeps working on a draft episode.
+3. **The viewer path uses the public reference.** A progress write, a manual
+   watched-state change, and a resume point may only refer to an episode the
+   public may play. A guessed episode id of a draft, unpublished, source-less,
+   or trashed episode is refused with the same rule the watch page uses.
+4. **Both levels read the hierarchy in one query.** The two functions share a
+   single row reader, so the administrative level can never drift from the
+   public level by reading a different hierarchy.
+
+**Consequences:**
+
+- Administrator access and public access are separate by construction, which
+  is what Prompt 103 requires ("keep admin preview access separate from public
+  availability").
+- A viewer cannot create a progress row for content the public cannot reach,
+  but an administrator can still prepare that content before it is published.
+- Every new caller has to choose a level deliberately. A caller that wants the
+  administrative answer must say so; it is not the default.
+
+---
+
+## D-044 — The public pages compose module read models; the content module never reads ratings or view counts
+
+**Date:** 2026-11-23
+**Status:** Approved by user (Prompts 091–103 implementation)
+**Extends:** D-008 (module boundaries), D-011 (data ownership), and D-035
+(publication).
+
+**Context:** The drama and movie details pages show a rating and a view count.
+The rating lives in the `reviews` module and the view count in the `analytics`
+module, while the details themselves belong to `content`. A `content` service
+that returned the rating and the view count would have to import two other
+modules — which the dependency matrix forbids — and it would give the content
+module write-adjacent knowledge of tables it does not own.
+
+**Decision:**
+
+1. **Every module keeps its own read model.**
+   `reviews.getRatingSummary(type, id)` returns the aggregate rating, and
+   `analytics.getContentViewCount(type, id)` returns the recorded view count.
+   `content` exposes the details, the episode list, the taxonomy, the similar
+   dramas, and the canonical hrefs — and nothing else.
+2. **The page composes the read models.** The details page is an async Server
+   Component that reads the content module's details and, in parallel, the
+   rating summary, the view count, the bookmark state, and the resume point.
+   The composition happens in the page, which is allowed to depend on several
+   modules.
+3. **Nothing is fabricated.** A rating is shown only when real ratings exist;
+   the page says "No ratings yet" otherwise. A view count of zero is a real
+   zero and is shown as such. No seed, estimate, or placeholder number is ever
+   displayed.
+4. **The public pages are server-rendered.** The details pages, the episode
+   navigation, and the resume card are Server Components; the client islands
+   are limited to the actions that need a browser — the bookmark button, the
+   watched toggle, and the player.
+
+**Consequences:**
+
+- The content module stays free of cross-module imports, and a rating or a
+  view count can never be read through the content module's public API.
+- A page that shows a detail has to decide which read models it composes; a
+  new metric is a new read model in its owning module, not a new column on the
+  content read model.
+- The pages are dynamic by design (`force-dynamic`): a viewer's bookmark state
+  and resume point are personal, and a cached page would show one viewer's
+  state to another.
+
+---
+
+## D-045 — The watched state moves with the position, and the automatic next episode is a navigation
+
+**Date:** 2026-11-23
+**Status:** Approved by user (Prompts 091–103 implementation)
+**Extends:** D-040 (progress writes and the completion threshold), D-041 (the
+source version), and D-039 (direct external MP4 playback).
+
+**Context:** Two behaviours of Prompts 096 and 100 needed a rule that the
+earlier decisions did not cover. First, a viewer may mark an episode watched
+or unwatched by hand. The stored position and the watched state are two
+columns of two tables, and they can disagree: an episode marked unwatched while
+its position still sits at the end would be completed again by the very next
+playback heartbeat, and the viewer's explicit decision would silently reverse.
+Second, the automatic next-episode behaviour needs to start the next episode
+immediately, without a countdown.
+
+**Decision:**
+
+1. **The manual watched-state change moves the progress with it.** Marking an
+   episode unwatched sets the stored position back to zero and clears the
+   watched state; marking it watched sets the watched state and keeps the
+   first completion date that was ever recorded for it.
+2. **The first completion date is never rewritten.** A later manual change
+   does not move the moment the episode was first completed; the watch history
+   keeps its own dates. The reset itself is recorded separately, in
+   `completed_at_reset_at`, so the two moments are never confused with one
+   another.
+3. **The manual change moves the observation time forward.** The decision is
+   dated with the server clock, and the playback report carries the moment it
+   observed the position. A report that was already in flight when the viewer
+   marked the episode unwatched describes the position from before the
+   decision, so it is stale and is ignored. The viewer's decision therefore
+   survives a report that arrives late.
+4. **The browser follows the server.** The server resets the stored position;
+   the media element still sits at the end of the episode. The watched toggle
+   therefore raises a shared *start over* signal
+   (`src/components/player/playback-reset.tsx`), and the player answers by
+   dropping the pending report, returning the media to the beginning, clearing
+   the resume offer, and clearing the completion flag it had reached. The
+   client-side signal is a client island; it never carries the decision
+   itself, which stays on the server.
+5. **The automatic next episode is a full navigation to the next episode's
+   canonical URL with `autoplay=1`.** The next page reads the parameter and
+   starts its own player immediately. A full page load — rather than a
+   client-side router transition — means the next player starts from a clean
+   state, with no leftover player instance or progress timer.
+6. **The browser's autoplay policy still decides.** When the browser refuses
+   to start playback without a gesture, the player stays usable and the
+   viewer presses play. The application does not attempt to bypass the policy.
+7. **There is no countdown.** The next episode starts as soon as the current
+   one ends and the completion threshold has been reached.
+
+**Consequences:**
+
+- The viewer's explicit decision survives the next heartbeat; the watched state
+  and the position cannot drift apart.
+- An item that already counts as watched is complete, not unfinished, so the
+  watch pages and the details pages offer *Play* instead of a resume offer.
+- The automatic next-episode flow is observable in a test through the player's
+  navigation hook, and the parameter it adds is part of the public URL
+  contract.
+- A viewer who prefers to start an episode themselves can ignore the resume
+  offer; the automatic flow only runs after an episode has actually ended.
+
+---
+
+## D-046 — A slug change keeps the old URL through a redirect, and the content module owns the lookup
+
+**Date:** 2026-11-23
+**Status:** Approved by user (Prompts 091–103 implementation review fixes)
+**Extends:** D-007 (movie canonical URL), D-043 (episode reference levels), and
+`REQUIREMENTS.md` §4.3 and §6.6.
+
+**Context:** The canonical URL of a drama and of a movie carries its slug
+(requirements §6.6), and a slug change has to preserve the old URL through a
+redirect (§4.3). The first implementation of the public pages required an
+exact match of the requested slug, so a renamed drama or movie answered 404 on
+its old URL, and the end-to-end suite even asserted that behaviour. The
+`content_slug_history` table and the admin workflows that write it already
+existed; only the read was missing.
+
+**Decision:**
+
+1. **The content module owns the redirect lookup.**
+   `content.resolvePublicContentSlug(type, contentId, requestedSlug)` reads
+   `content_slug_history` and returns the *current* slug when the requested one
+   is a slug the item really used. The four public routes — the drama details
+   page, the episode watch page, the movie details page, and the movie watch
+   page — redirect the old URL to the current canonical URL.
+2. **A guessed slug is still a 404.** The resolver never invents a redirect: it
+   only answers for a slug that appears in the item's own history.
+3. **The redirect never reveals an unpublished item.** The resolver applies the
+   same availability rule as the page it redirects to, so the current slug of a
+   draft, trashed, or source-less item stays hidden.
+4. **The redirect always points at the current slug.** The history records
+   every change, so an old slug that was used twice is still found, and the
+   answer is always the slug the item carries now.
+
+**Consequences:**
+
+- The public URLs keep working after a rename, which is what the requirements
+  ask for; the canonical metadata and every internal link use the current slug.
+- The redirect is a server-side lookup, so it costs one indexed read per
+  request that reaches a stale slug. Requests for the current slug never touch
+  the history table.
+- The availability rule stays in one place: a redirect can never be a way
+  around the public availability decision.

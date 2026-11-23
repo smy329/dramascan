@@ -122,6 +122,12 @@ export const STALE_FIXTURE_STATEMENTS = Object.freeze([
           WHERE episode_id IN ${FIXTURE_EPISODE_IDS}`,
   },
   {
+    key: 'contentSlugHistory',
+    sql: `DELETE FROM content_slug_history
+          WHERE content_id IN ${FIXTURE_DRAMA_IDS}
+             OR content_id IN ${FIXTURE_MOVIE_IDS}`,
+  },
+  {
     key: 'episodes',
     sql: `DELETE FROM episodes WHERE drama_id IN ${FIXTURE_DRAMA_IDS}`,
   },

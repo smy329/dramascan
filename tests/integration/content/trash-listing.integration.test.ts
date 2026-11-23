@@ -26,10 +26,24 @@ import { listTrashItems, parseTrashListQuery } from '@/workflows/admin/trash';
  * The Trash merges four content types into one list. The listing is proved
  * against the real database here: the merged order, the search filter, the
  * server-side pagination, the per-type filter, and the permission boundary.
+ *
+ * The merged list is a *global* read: it contains every trashed row in the
+ * database, not only the rows this file created. The integration suite shares
+ * one database and runs its files in parallel, so another file can trash a row
+ * while this file reads the list. Every read below is therefore scoped with a
+ * token that only this test's own rows carry. The assertions stay exactly as
+ * strong — the merged list still has to contain all four content types in
+ * Trash-date order — but they no longer depend on what another file does at
+ * the same moment.
  */
 
 const TEST_SLUG_PREFIX = 'it-trash-list-drama-';
 const TEST_MOVIE_PREFIX = 'it-trash-list-movie-';
+
+/** A token that appears in the title of this test's own rows and nowhere else. */
+function testToken(label: string): string {
+  return `tl-${label}-${randomUUID().slice(0, 8)}`;
+}
 
 const managerActor = {
   userId: 'it-trash-list-manager',
@@ -119,22 +133,29 @@ afterAll(async () => {
 
 describe('listTrashItems', () => {
   it('merges the four content types in one list ordered by the Trash date', async () => {
-    const dramaId = await seedDrama('merged');
-    const season = await createSeason(managerActor, dramaId, { title: 'Merged Season' });
+    const token = testToken('merged');
+
+    const dramaId = await seedDrama(token);
+    const season = await createSeason(managerActor, dramaId, {
+      title: `Merged Season ${token}`,
+    });
     const seasonId = season.ok ? season.season.id : '';
     const episode = await createEpisode(managerActor, dramaId, {
-      title: 'Merged Episode',
+      title: `Merged Episode ${token}`,
       season_id: seasonId,
     });
     const episodeId = episode.ok ? episode.episode.id : '';
-    const movieId = await seedMovie('merged');
+    const movieId = await seedMovie(token);
 
     await trashAt('dramas', dramaId, new Date('2026-01-01T00:00:00.000Z'));
     await trashAt('seasons', seasonId, new Date('2026-01-04T00:00:00.000Z'));
     await trashAt('episodes', episodeId, new Date('2026-01-02T00:00:00.000Z'));
     await trashAt('movies', movieId, new Date('2026-01-03T00:00:00.000Z'));
 
-    const result = await listTrashItems(managerActor, parseTrashListQuery({ type: 'all' }));
+    const result = await listTrashItems(
+      managerActor,
+      parseTrashListQuery({ type: 'all', search: token })
+    );
 
     expect(result.total).toBe(4);
     expect(result.items.map(item => item.contentType)).toEqual([
@@ -147,11 +168,15 @@ describe('listTrashItems', () => {
   });
 
   it('reports the parent title and the trashed child counts of a drama', async () => {
-    const dramaId = await seedDrama('children');
-    const season = await createSeason(managerActor, dramaId, { title: 'Child Season' });
+    const token = testToken('children');
+
+    const dramaId = await seedDrama(token);
+    const season = await createSeason(managerActor, dramaId, {
+      title: `Child Season ${token}`,
+    });
     const seasonId = season.ok ? season.season.id : '';
     const episode = await createEpisode(managerActor, dramaId, {
-      title: 'Child Episode',
+      title: `Child Episode ${token}`,
       season_id: seasonId,
     });
     const episodeId = episode.ok ? episode.episode.id : '';
@@ -160,20 +185,28 @@ describe('listTrashItems', () => {
     await trashAt('seasons', seasonId, new Date('2026-01-01T00:00:00.000Z'));
     await trashAt('episodes', episodeId, new Date('2026-01-01T00:00:00.000Z'));
 
-    const result = await listTrashItems(managerActor, parseTrashListQuery({ type: 'drama' }));
+    const result = await listTrashItems(
+      managerActor,
+      parseTrashListQuery({ type: 'drama', search: token })
+    );
 
     expect(result.items).toHaveLength(1);
     expect(result.items[0]?.childCounts).toEqual({ seasons: 1, episodes: 1 });
     expect(result.items[0]?.parentTitle).toBeNull();
 
-    const seasonResult = await listTrashItems(managerActor, parseTrashListQuery({ type: 'season' }));
+    const seasonResult = await listTrashItems(
+      managerActor,
+      parseTrashListQuery({ type: 'season', search: token })
+    );
 
-    expect(seasonResult.items[0]?.parentTitle).toBe('Trash List Drama children');
+    expect(seasonResult.items[0]?.parentTitle).toBe(`Trash List Drama ${token}`);
     expect(seasonResult.items[0]?.childCounts).toEqual({ seasons: 0, episodes: 1 });
   });
 
   it('filters the merged list by the search term', async () => {
-    const dramaId = await seedDrama('searchable');
+    const token = testToken('searchable');
+
+    const dramaId = await seedDrama(token);
     const movieId = await seedMovie('other');
 
     await trashAt('dramas', dramaId, new Date('2026-01-01T00:00:00.000Z'));
@@ -181,7 +214,7 @@ describe('listTrashItems', () => {
 
     const result = await listTrashItems(
       managerActor,
-      parseTrashListQuery({ type: 'all', search: 'searchable' })
+      parseTrashListQuery({ type: 'all', search: token })
     );
 
     expect(result.total).toBe(1);
@@ -189,15 +222,17 @@ describe('listTrashItems', () => {
   });
 
   it('pages the merged list in the database', async () => {
-    const dramaId = await seedDrama('page-one');
-    const movieId = await seedMovie('page-two');
+    const token = testToken('paged');
+
+    const dramaId = await seedDrama(token);
+    const movieId = await seedMovie(token);
 
     await trashAt('dramas', dramaId, new Date('2026-01-01T00:00:00.000Z'));
     await trashAt('movies', movieId, new Date('2026-01-02T00:00:00.000Z'));
 
     const firstPage = await listTrashItems(
       managerActor,
-      parseTrashListQuery({ type: 'all', page: 1, pageSize: 1 })
+      parseTrashListQuery({ type: 'all', search: token, page: 1, pageSize: 1 })
     );
 
     expect(firstPage.total).toBe(2);
@@ -209,7 +244,7 @@ describe('listTrashItems', () => {
 
     const secondPage = await listTrashItems(
       managerActor,
-      parseTrashListQuery({ type: 'all', page: 2, pageSize: 1 })
+      parseTrashListQuery({ type: 'all', search: token, page: 2, pageSize: 1 })
     );
 
     expect(secondPage.items).toHaveLength(1);
@@ -219,32 +254,42 @@ describe('listTrashItems', () => {
   });
 
   it('shows only the requested content type', async () => {
-    const dramaId = await seedDrama('only-drama');
-    const movieId = await seedMovie('only-movie');
+    const token = testToken('typed');
+
+    const dramaId = await seedDrama(token);
+    const movieId = await seedMovie(token);
 
     await trashAt('dramas', dramaId, new Date('2026-01-01T00:00:00.000Z'));
     await trashAt('movies', movieId, new Date('2026-01-02T00:00:00.000Z'));
 
-    const result = await listTrashItems(managerActor, parseTrashListQuery({ type: 'movie' }));
+    const result = await listTrashItems(
+      managerActor,
+      parseTrashListQuery({ type: 'movie', search: token })
+    );
 
     expect(result.total).toBe(1);
     expect(result.items[0]?.id).toBe(movieId);
   });
 
   it('never shows a content type the actor may not manage', async () => {
-    const dramaId = await seedDrama('permission-drama');
-    const movieId = await seedMovie('permission-movie');
+    const token = testToken('permission');
+
+    const dramaId = await seedDrama(token);
+    const movieId = await seedMovie(token);
 
     await trashAt('dramas', dramaId, new Date('2026-01-01T00:00:00.000Z'));
     await trashAt('movies', movieId, new Date('2026-01-02T00:00:00.000Z'));
 
-    const result = await listTrashItems(dramaOnlyActor, parseTrashListQuery({ type: 'all' }));
+    const result = await listTrashItems(
+      dramaOnlyActor,
+      parseTrashListQuery({ type: 'all', search: token })
+    );
 
     expect(result.total).toBe(1);
     expect(result.items[0]?.id).toBe(dramaId);
 
     await expect(
-      listTrashItems(dramaOnlyActor, parseTrashListQuery({ type: 'movie' }))
+      listTrashItems(dramaOnlyActor, parseTrashListQuery({ type: 'movie', search: token }))
     ).rejects.toBeInstanceOf(AuthorizationError);
   });
 

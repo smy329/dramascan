@@ -27,7 +27,7 @@ vi.hoisted(() => {
 
 vi.mock('server-only', () => ({}));
 
-import { eq, inArray, like } from 'drizzle-orm';
+import { eq, inArray, like, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { users } from '@/modules/auth/schema';
@@ -137,10 +137,41 @@ async function cleanup(): Promise<void> {
   await db.delete(users).where(like(users.email, `${TEST_PREFIX}%`));
 }
 
+/**
+ * Wait until a backend is waiting for the progress row lock.
+ *
+ * The concurrency test has to know that the older report has reached its
+ * write — and has therefore already read the old value — before the newer
+ * report is allowed to commit. The database reports the waiting backend, so
+ * the test waits for that condition instead of guessing with a sleep.
+ */
+async function waitForBlockedProgressWrite(): Promise<void> {
+  const deadline = Date.now() + 10_000;
+
+  while (Date.now() < deadline) {
+    const result = await db.execute(sql`
+      select count(*)::int as count
+      from pg_stat_activity
+      where datname = current_database()
+        and wait_event_type = 'Lock'
+        and query like '%playback_progress%'
+    `);
+
+    const count = Number(result.rows[0]?.count ?? 0);
+
+    if (count > 0) {
+      return;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+
+  throw new Error('The older playback report never reached the blocked write.');
+}
+
 beforeEach(async () => {
   await cleanup();
 });
-
 afterEach(async () => {
   await cleanup();
 });
@@ -254,6 +285,102 @@ describe('savePlaybackProgress', () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0]?.position).toBe(600);
+  });
+
+  it('never lets an older observation overwrite a newer one that is already committed', async () => {
+    const seeded = await seed();
+    const actor = userActor(seeded.userId);
+
+    // The viewer watched the episode a little while ago.
+    await savePlaybackProgress(
+      actor,
+      {
+        episodeId: seeded.episodeId,
+        positionSeconds: 100,
+        durationSeconds: 1000,
+        sourceVersion: 1,
+        watchedAt: '2026-01-02T09:00:00.000Z',
+      },
+      { now: new Date('2026-01-02T09:00:05.000Z') }
+    );
+
+    // Two reports overlap: the older one observes 10:00, the newer one 11:00.
+    // The newer report is applied inside a transaction that holds the row
+    // lock, so the older report cannot write before it. The older report has
+    // already read the old value and is waiting to write when the newer report
+    // commits — the exact window in which an unguarded write would roll the
+    // position and the completion backwards.
+    let releaseNewer: () => void = () => {};
+    const newerMayCommit = new Promise<void>(resolve => {
+      releaseNewer = resolve;
+    });
+
+    const newer = db.transaction(async tx => {
+      await tx
+        .select({ id: playback_progress.id })
+        .from(playback_progress)
+        .where(eq(playback_progress.episode_id, seeded.episodeId))
+        .for('update');
+
+      await savePlaybackProgress(
+        actor,
+        {
+          episodeId: seeded.episodeId,
+          positionSeconds: 950,
+          durationSeconds: 1000,
+          sourceVersion: 1,
+          watchedAt: '2026-01-02T11:00:00.000Z',
+        },
+        { executor: tx, now: new Date('2026-01-02T11:00:05.000Z') }
+      );
+
+      // Keep the transaction open until the older report is waiting for the
+      // lock. Its write then happens strictly after the newer one.
+      await newerMayCommit;
+    });
+
+    // The older report starts while the newer one is still open. It reads the
+    // old value and blocks on the row lock.
+    const older = savePlaybackProgress(
+      actor,
+      {
+        episodeId: seeded.episodeId,
+        positionSeconds: 60,
+        durationSeconds: 1000,
+        sourceVersion: 1,
+        watchedAt: '2026-01-02T10:00:00.000Z',
+      },
+      { now: new Date('2026-01-02T11:00:06.000Z') }
+    );
+
+    await waitForBlockedProgressWrite();
+    releaseNewer();
+
+    const [olderResult] = await Promise.all([older, newer]);
+
+    // The older observation is stale: it was captured before the newer one and
+    // must not be applied.
+    expect(olderResult.applied).toBe(false);
+
+    const rows = await db
+      .select()
+      .from(playback_progress)
+      .where(eq(playback_progress.episode_id, seeded.episodeId));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.position).toBe(950);
+    expect(rows[0]?.completed).toBe(true);
+    expect(rows[0]?.last_watched_at?.toISOString()).toBe('2026-01-02T11:00:00.000Z');
+
+    const watched = await db
+      .select()
+      .from(watched_state)
+      .where(eq(watched_state.episode_id, seeded.episodeId));
+
+    expect(watched).toHaveLength(1);
+    expect(watched[0]?.threshold_met).toBe(true);
+    expect(watched[0]?.watched_minutes).toBe(15);
+    expect(watched[0]?.completed_at).not.toBeNull();
   });
 
   it('ignores a position that belongs to a source that was replaced', async () => {

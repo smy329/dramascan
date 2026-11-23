@@ -151,6 +151,19 @@ Status values: **Planned**, **Implemented**, **Deprecated**.
 
 Public page data is rendered by Server Components through module query services, not REST. Do not add REST endpoints for ordinary page reads.
 
+The public detail and watch pages are Server Component routes, not REST
+endpoints:
+
+| Route                                                       | Availability rule                                                          | Notes                                                              |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `/drama/{dramaId}/{slug}`                                   | The drama is discoverable and the slug is current                          | An old slug redirects to the canonical URL (D-046)                |
+| `/drama/{dramaId}/{slug}/episode/{episodeId}`               | The episode is publicly playable and belongs to the drama                   | An old slug redirects to the canonical episode URL                |
+| `/movie/{id}/{slug}`                                        | The movie is published, not in the Trash, and has a source                  | An old slug redirects to the canonical URL (D-046)                |
+| `/movie/{id}/{slug}/watch`                                  | The same rule as the movie details page                                     | An old slug redirects to the canonical watch URL                  |
+
+A guessed slug is a 404, and a slug change never reveals the current slug of
+an item that is not publicly available.
+
 ### 3.3 Analytics beacons
 
 | Method | Path                      | Auth                           | Permission | Purpose                                                                | Status  |
@@ -171,18 +184,33 @@ The endpoint is a **beacon**: the player sends it with
 closed. It is a REST endpoint rather than a Server Action for that reason
 alone — a Server Action cannot promise that its request outlives the document.
 
-The body carries `episodeId`, `position`, `duration`, `observedAt`, and
-`sourceVersion`. `sourceVersion` is **required**: it is the
+The body carries exactly one target — `episodeId` **or** `movieId` — together
+with `positionSeconds`, `durationSeconds`, and `watchedAt` (the moment the
+browser observed the position). A body that names both targets or neither is
+rejected.
+
+For an episode, `sourceVersion` is **required**: it is the
 `episodes.video_source_version` counter the episode carried when the player
 loaded it. A write whose version is no longer the episode's current version is
 ignored and reported as not applied, so a heartbeat that was in flight when an
 administrator replaced the source cannot restore the progress the replacement
 reset (D-041). The comparison is on a counter, not on a timestamp, so it does
-not depend on the server clock or the client clock.
+not depend on the server clock or the client clock. A movie report carries no
+source version: a standalone movie has no replaceable episode source.
 
 The request is checked for a same-origin `Origin` header before it is parsed.
 Progress updates also carry a client timestamp; the server rejects older
 updates that would overwrite newer progress.
+
+The rejection is enforced by the database, not by the read that precedes the
+write: the write locks the two target rows with `FOR UPDATE` and both upserts
+carry the condition `last_watched_at <= excluded.last_watched_at`. An older
+observation therefore cannot roll the position, the watched minutes, or the
+completion backwards — not even when two reports overlap (D-040).
+
+The target has to be publicly playable: a report that names a draft,
+unpublished, source-less, or trashed item is refused, because the viewer could
+not have watched it (D-043).
 
 ### 3.5 Notifications
 

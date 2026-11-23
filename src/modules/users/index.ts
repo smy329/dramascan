@@ -22,11 +22,38 @@ export {
 } from './validation';
 export type { AdminUserSortField, AdminUserStatus, AdminUsersQuery } from './validation';
 
-export { resetEpisodeWatchState } from './watch-state';
-export type { EpisodeWatchStateResetResult } from './watch-state';
+export {
+  resetEpisodeWatchState,
+  setEpisodeWatchedState,
+} from './watch-state';
+export type {
+  EpisodeWatchStateResetResult,
+  SetEpisodeWatchedStateOptions,
+  SetEpisodeWatchedStateResult,
+} from './watch-state';
 
 export { savePlaybackProgress } from './progress';
 export type { PlaybackProgressSaveOptions, PlaybackProgressSaveResult } from './progress';
 
-export { parsePlaybackProgressInput } from './validation';
-export type { PlaybackProgressInput } from './validation';
+export {
+  getDramaResumePoint,
+  getEpisodePlaybackState,
+  getMoviePlaybackState,
+} from './playback-state';
+export type { DramaResumePoint, PlaybackState } from './playback-state';
+
+export { isBookmarked, toggleBookmark } from './bookmarks';
+export type { BookmarkTarget } from './bookmarks';
+
+export {
+  bookmarkTargetSchema,
+  episodeWatchedStateInputSchema,
+  parseBookmarkTarget,
+  parseEpisodeWatchedStateInput,
+  parsePlaybackProgressInput,
+} from './validation';
+export type {
+  BookmarkTargetInput,
+  EpisodeWatchedStateInput,
+  PlaybackProgressInput,
+} from './validation';

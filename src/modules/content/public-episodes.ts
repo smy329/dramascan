@@ -1,11 +1,12 @@
 import 'server-only';
 
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 
 import {
   isPubliclyPlayableEpisode,
+  publicEpisodeHref,
   type PublicEpisodePlayback,
   type PublicEpisodeSummary,
 } from './public-episodes.shared';
@@ -52,11 +53,14 @@ export async function getPublicEpisodePlayback(
       dramaPublicationStatus: dramas.publication_status,
       dramaDeleted: dramas.deleted_at,
       seasonId: episodes.season_id,
+      seasonTitle: seasons.title,
+      seasonPosition: seasons.position,
       seasonPublicationStatus: seasons.publication_status,
       seasonDeleted: seasons.deleted_at,
       title: episodes.title,
       description: episodes.description,
       episodeNumber: episodes.episode_number,
+      position: episodes.position,
       episodePublicationStatus: episodes.publication_status,
       episodeDeleted: episodes.deleted_at,
       videoSource: episodes.video_source,
@@ -100,9 +104,12 @@ export async function getPublicEpisodePlayback(
     dramaSlug: row.dramaSlug,
     dramaTitle: row.dramaTitle,
     seasonId: row.seasonId,
+    seasonTitle: row.seasonTitle,
+    seasonPosition: row.seasonPosition,
     title: row.title,
     description: row.description,
     episodeNumber: row.episodeNumber,
+    position: row.position,
     videoSource: source,
     sourceVersion: row.sourceVersion,
   };
@@ -130,11 +137,14 @@ export async function listPublicDramaEpisodes(
       dramaPublicationStatus: dramas.publication_status,
       dramaDeleted: dramas.deleted_at,
       seasonId: episodes.season_id,
+      seasonTitle: seasons.title,
+      seasonPosition: seasons.position,
       seasonPublicationStatus: seasons.publication_status,
       seasonDeleted: seasons.deleted_at,
       title: episodes.title,
       description: episodes.description,
       episodeNumber: episodes.episode_number,
+      position: episodes.position,
       episodePublicationStatus: episodes.publication_status,
       episodeDeleted: episodes.deleted_at,
       videoSource: episodes.video_source,
@@ -142,7 +152,17 @@ export async function listPublicDramaEpisodes(
     .from(episodes)
     .innerJoin(dramas, eq(dramas.id, episodes.drama_id))
     .leftJoin(seasons, eq(seasons.id, episodes.season_id))
-    .where(and(eq(episodes.drama_id, dramaId), isNotNull(episodes.video_source)));
+    .where(and(eq(episodes.drama_id, dramaId), isNotNull(episodes.video_source)))
+    // The actual content order: season position first, then the episode's
+    // position inside its season, then the drama-wide episode number. A null
+    // position falls back to the episode number so a legacy row still lands in
+    // a sensible place instead of the end of the list.
+    .orderBy(
+      sql`coalesce(${seasons.position}, 0)`,
+      sql`coalesce(${episodes.position}, ${episodes.episode_number}, 0)`,
+      asc(episodes.episode_number),
+      asc(episodes.id)
+    );
 
   return rows
     .filter(
@@ -167,8 +187,21 @@ export async function listPublicDramaEpisodes(
       dramaSlug: row.dramaSlug,
       dramaTitle: row.dramaTitle,
       seasonId: row.seasonId,
+      seasonTitle: row.seasonTitle,
+      seasonPosition: row.seasonPosition,
       title: row.title,
       description: row.description,
       episodeNumber: row.episodeNumber,
+      position: row.position,
+      href: publicEpisodeHref(row.dramaId, row.dramaSlug, row.id),
     }));
 }
+
+/**
+ * The episode after `episodeId` in the drama's public content order.
+ *
+ * The list is already filtered to publicly playable episodes and ordered by
+ * season then episode, so "next" never crosses into an unpublished or
+ * unavailable episode and never jumps back to the start of a season.
+ */
+export { nextPublicEpisode, previousPublicEpisode } from './public-episodes.shared';

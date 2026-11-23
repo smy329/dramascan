@@ -102,9 +102,42 @@ export { listPublicDramas } from './public-dramas';
 export {
   getPublicEpisodePlayback,
   listPublicDramaEpisodes,
+  nextPublicEpisode,
+  previousPublicEpisode,
 } from './public-episodes';
 
-export { getEpisodeContentReference } from './episode-references';
+export { publicEpisodeHref } from './public-episodes.shared';
+export {
+  isPubliclyPlayableMovie,
+  publicMovieHref,
+  publicMovieWatchHref,
+} from './public-movies.shared';
+
+export { getMovieContentReference, getPublicMoviePlayback } from './public-movies';
+
+export type { MovieContentReference } from './public-movies';
+
+export type { PublicMoviePlayback } from './public-movies.shared';
+
+export {
+  getBookmarkableContentTarget,
+  getPublicDramaDetail,
+  getPublicMovieDetail,
+  listPublicSimilarDramas,
+} from './public-details';
+
+export type {
+  BookmarkableContentTarget,
+  PublicDramaDetail,
+  PublicMovieDetail,
+  PublicSeasonGroup,
+  PublicTaxonomyRef,
+} from './public-details';
+
+export {
+  getEpisodeContentReference,
+  getPublicEpisodeContentReference,
+} from './episode-references';
 
 export type { EpisodeContentReference } from './episode-references';
 
@@ -115,3 +148,7 @@ export type {
   PublicEpisodePlayback,
   PublicEpisodeSummary,
 } from './public-episodes.shared';
+
+export { resolvePublicContentSlug } from './public-slugs';
+
+export type { PublicSluggedType } from './public-slugs';

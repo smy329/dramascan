@@ -18,6 +18,15 @@ test.describe('admin content management', () => {
     context,
     page,
   }) => {
+    // This flow creates a category, a platform, a drama, a season, and an
+    // episode through the real admin pages. Every step is a Server Action
+    // against the real database, and every admin route is compiled by the
+    // development server on its first request. The suite's global 30-second
+    // budget is smaller than the configured 45-second navigation timeout, so
+    // a cold route compile plus the real work does not fit in it. The budget
+    // is raised here; no assertion is weakened.
+    test.setTimeout(120_000);
+
     const session = await adminSession.seed({ email: 'e2e-content-admin@example.com' });
     const suffix = Date.now().toString(36);
     const categoryName = `E2E Category ${suffix}`;

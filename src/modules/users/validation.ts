@@ -144,8 +144,10 @@ const watchedAtSchema = z
 
 export const playbackProgressInputSchema = z
   .strictObject({
-    /** The episode the viewer is watching. */
-    episodeId: z.string().uuid(),
+    /** The episode the viewer is watching. Exactly one of this or `movieId`. */
+    episodeId: z.string().uuid().optional(),
+    /** The standalone movie the viewer is watching. */
+    movieId: z.string().uuid().optional(),
     /** The playback position, in seconds. */
     positionSeconds: z
       .number()
@@ -161,17 +163,37 @@ export const playbackProgressInputSchema = z
     /**
      * The version of the video source the viewer was watching.
      *
-     * The browser learns the version from the watch page. When an
-     * administrator replaces the source, the version moves on, and a report
-     * that still carries the old version describes a position in a file that
-     * is no longer served — so the server refuses to apply it.
+     * Required for an episode. The browser learns the version from the watch
+     * page. When an administrator replaces the source, the version moves on,
+     * and a report that still carries the old version describes a position in
+     * a file that is no longer served — so the server refuses to apply it.
      */
     sourceVersion: z
       .number()
       .int()
-      .min(1, 'The source version must be a positive integer.'),
+      .min(1, 'The source version must be a positive integer.')
+      .optional(),
   })
   .superRefine((value, ctx) => {
+    const hasEpisode = value.episodeId !== undefined;
+    const hasMovie = value.movieId !== undefined;
+
+    if (hasEpisode === hasMovie) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['episodeId'],
+        message: 'Exactly one of episodeId or movieId is required.',
+      });
+    }
+
+    if (hasEpisode && value.sourceVersion === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['sourceVersion'],
+        message: 'The source version is required for an episode.',
+      });
+    }
+
     if (value.durationSeconds > 0 && value.positionSeconds > value.durationSeconds + 1) {
       ctx.addIssue({
         code: 'custom',
@@ -199,6 +221,67 @@ export function parsePlaybackProgressInput(input: unknown): PlaybackProgressInpu
     }
 
     throw new ValidationError('Invalid playback progress.', fieldErrors);
+  }
+
+  return parsed.data;
+}
+
+/**
+ * A bookmark target.
+ *
+ * The type and id are the whole payload. The content module validates that the
+ * item is publicly available; this schema only guarantees a well-formed pair.
+ */
+export const bookmarkTargetSchema = z.strictObject({
+  type: z.enum(['drama', 'movie']),
+  id: z.string().uuid(),
+});
+
+export type BookmarkTargetInput = z.infer<typeof bookmarkTargetSchema>;
+
+/** Parse an untrusted bookmark target. */
+export function parseBookmarkTarget(input: unknown): BookmarkTargetInput {
+  const parsed = bookmarkTargetSchema.safeParse(input);
+
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string[]> = {};
+
+    for (const issue of parsed.error.issues) {
+      const field = issue.path.length > 0 ? String(issue.path[0]) : 'form';
+      const messages = fieldErrors[field] ?? [];
+      messages.push(issue.message);
+      fieldErrors[field] = messages;
+    }
+
+    throw new ValidationError('Invalid bookmark target.', fieldErrors);
+  }
+
+  return parsed.data;
+}
+
+/** A manual watched-state change for one episode. */
+export const episodeWatchedStateInputSchema = z.strictObject({
+  episodeId: z.string().uuid(),
+  watched: z.boolean(),
+});
+
+export type EpisodeWatchedStateInput = z.infer<typeof episodeWatchedStateInputSchema>;
+
+/** Parse an untrusted watched-state change. */
+export function parseEpisodeWatchedStateInput(input: unknown): EpisodeWatchedStateInput {
+  const parsed = episodeWatchedStateInputSchema.safeParse(input);
+
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string[]> = {};
+
+    for (const issue of parsed.error.issues) {
+      const field = issue.path.length > 0 ? String(issue.path[0]) : 'form';
+      const messages = fieldErrors[field] ?? [];
+      messages.push(issue.message);
+      fieldErrors[field] = messages;
+    }
+
+    throw new ValidationError('Invalid watched-state change.', fieldErrors);
   }
 
   return parsed.data;

@@ -126,6 +126,13 @@ test.describe('public site shell', () => {
   });
 
   test('footer reaches every public route', async ({ page }) => {
+    // This test walks every public route in the footer and returns home
+    // between each one, so it compiles eight routes on its first run. The
+    // development server does that work on demand, and the suite's global
+    // 30-second budget is smaller than the configured 45-second navigation
+    // timeout. The budget is raised here; no assertion is weakened.
+    test.setTimeout(120_000);
+
     const failures = await openHome(page);
 
     const destinations = [

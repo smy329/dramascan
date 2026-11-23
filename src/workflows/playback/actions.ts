@@ -7,8 +7,10 @@ type Result<T> = { ok: true; data: T } | { ok: false; error: ActionError };
 import { resolveActor } from '@/modules/authorization';
 import { playbackFailureReportSchema, recordPlaybackFailure } from '@/modules/playback';
 import { parseOrThrow } from '@/modules/content/validation';
+import { parseEpisodeWatchedStateInput } from '@/modules/users';
 
 import { toActionError } from '../action-errors';
+import { setEpisodeWatchedWorkflow } from './set-episode-watched';
 
 /**
  * Server Actions behind the viewer's player.
@@ -36,6 +38,27 @@ export async function reportPlaybackFailureAction(input: unknown): Promise<Resul
     const report = await recordPlaybackFailure(actor, values);
 
     return { ok: true, data: { id: report.id } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * Mark an episode watched or unwatched manually.
+ *
+ * The viewer is resolved from the session, never from the payload, so the
+ * change always belongs to the caller.
+ */
+export async function setEpisodeWatchedAction(
+  input: unknown
+): Promise<Result<{ watched: boolean }>> {
+  try {
+    const actor = await resolveActor();
+    const values = parseEpisodeWatchedStateInput(input);
+
+    const result = await setEpisodeWatchedWorkflow(actor, values.episodeId, values.watched);
+
+    return { ok: true, data: result };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
   }

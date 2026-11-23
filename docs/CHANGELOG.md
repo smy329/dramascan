@@ -4,6 +4,211 @@ All notable changes to the DramaScan project will be documented in this file.
 
 ## [Unreleased] - 2026-11-22
 
+### feat: implement public details, navigation, and playback (Prompts 091–103)
+
+The public site now has the four pages it was missing — a drama details page, a
+standalone-movie details page, an episode watch page, and a movie watch page —
+and every rule that decides what a viewer may see is owned by the `content`
+module.
+
+- `src/app/(public)/drama/[dramaId]/[slug]/page.tsx` (new): the drama details
+  page shows poster, banner, title, description, categories, platforms,
+  Ongoing/Completed status, rating, view count, the bookmark action, the
+  Play/Continue action, the episode count, the seasons, and the similar
+  dramas. A drama that is not discoverable is a 404, and an unpublished
+  episode never appears (Prompt 091).
+- `src/app/(public)/movie/[id]/[slug]/page.tsx` (new) and
+  `src/app/(public)/movie/[id]/[slug]/watch/page.tsx` (new): the movie details
+  page uses the same shared hero and the same visual quality as the drama
+  page and renders no season or episode navigation (Prompts 092, 094).
+- `src/components/public/episode-navigation.tsx` (rewritten): a client island
+  that imports no module and receives plain data. A season-based drama gets a
+  season selector — an ARIA tab list with one tab per season, arrow-key
+  navigation, and one episode panel per season — a flat drama is one list
+  without season controls, only publicly playable episodes are passed in, and
+  the current episode carries `aria-current="page"` (Prompt 093).
+- `src/app/(public)/drama/[dramaId]/[slug]/episode/[episodeId]/page.tsx`
+  (modified): the watch page adds the previous/next links, the end-of-content
+  state, the manual watched toggle, the resume offer, and the automatic
+  next-episode parameter. The URL slug has to match the stored slug, and an
+  unavailable episode is a 404 (Prompts 094, 096, 099, 100).
+- `src/components/player/vidstack-player.tsx` (modified): the player reports
+  the observed position every 15 seconds and flushes it on pause, on end, and
+  when the page is left, through a `keepalive` beacon. It offers *Resume from
+  m:ss* and *Start from the beginning*, plays inline, moves to the next
+  episode with `?autoplay=1` when the media ends and the threshold has been
+  reached, and shows a clear error with a manual *Try again* control when the
+  source fails. There is no automatic retry, no source search, and no
+  provider switching (Prompts 095, 098, 100, 101, 102).
+- `src/modules/content/public-details.ts` (new),
+  `src/modules/content/public-movies.ts` (new),
+  `src/modules/content/public-movies.shared.ts` (new),
+  `src/modules/content/public-episodes.shared.ts` (modified): the content
+  module owns the public details, the playable episode list, the taxonomy, the
+  similar dramas, the canonical hrefs, and the playability rules
+  (`isPubliclyPlayableEpisode`, `isPubliclyPlayableMovie`). The next and
+  previous episode follow the published content order (Prompts 091–093, 099,
+  103).
+- `src/modules/reviews/rating-summary.ts` (new) and
+  `src/modules/analytics/view-counts.ts` (new): the rating summary and the
+  view count are read models of their own modules. The content module does not
+  import either of them; the page composes them. A rating appears only when
+  real ratings exist, and a view count of zero is a real zero — no number is
+  ever fabricated (Prompts 091, 092, 104 of the module boundaries, D-044).
+- `src/modules/users/bookmarks.ts` (new),
+  `src/modules/users/playback-state.ts` (new),
+  `src/modules/users/progress.ts` (modified),
+  `src/modules/users/watch-state.ts` (modified),
+  `src/modules/users/validation.ts` (modified): the bookmark toggle, the
+  resume point, the movie progress branch, and the manual watched-state
+  change. Marking an episode unwatched returns the stored position to zero,
+  preserves the first completion date, and the browser follows the server
+  (D-045).
+- `src/workflows/library/actions.ts` (new) and
+  `src/workflows/playback/set-episode-watched.ts` (new): the two Server
+  Actions behind the bookmark button and the watched toggle. The actor is
+  resolved from the session on the server; the client is never the authority.
+- `src/modules/content/episode-references.ts` (modified): the episode
+  reference has two levels. `getEpisodeContentReference` answers "does the
+  episode exist and is it still in the catalogue?" and is used by the
+  administrative path; `getPublicEpisodeContentReference` answers "may the
+  public watch it right now?" and is used by the viewer's progress and
+  watched-state writes (D-043).
+- `src/app/public/drama/**` and `src/app/public/movie/**` were removed: the
+  public routes live in the `(public)` route group. The intentional public API
+  route `src/app/public/api/dramas/route.ts` was kept.
+- Tests: `tests/e2e/public-details.spec.ts` (new),
+  `tests/e2e/support/movie-fixture.mjs` (new),
+  `tests/e2e/support/slug-history-fixture.mjs` (new),
+  `tests/integration/content/public-details.integration.test.ts` (new),
+  `tests/integration/users/{bookmarks,watch-state,movie-progress,playback-progress}.integration.test.ts`
+  (new),
+  `tests/unit/modules/content/{public-movies,public-episode-order}.test.ts`
+  (new),
+  `tests/unit/modules/users/playback-progress-validation.test.ts` (new),
+  `tests/unit/components/vidstack-player.test.tsx` (modified).
+- Verified: typecheck PASS; lint PASS; unit 1049/1049 PASS; integration
+  629/629 PASS; Playwright E2E 62/62 PASS; production build PASS (with HTTPS
+  `APP_URL`/`TRUSTED_ORIGINS` overrides, because the local `.env.local` uses
+  `http://localhost`, which the production configuration rejects).
+
+### fix: make the playback progress write atomic (Prompts 091–103 review)
+
+`savePlaybackProgress` read the stored row, decided on the observation time,
+and then wrote unconditionally. Two overlapping requests could therefore both
+read the same old row and write in the opposite order: an older report that
+arrived late rolled the position, the watched minutes, and the completion
+backwards, contradicting the deterministic-update rule of `REQUIREMENTS.md`
+§7.3 and D-040.
+
+The write is now one atomic step. The two target rows are locked with
+`FOR UPDATE` for the duration of the transaction, and both upserts carry the
+condition `last_watched_at <= excluded.last_watched_at`, so the database
+refuses an older observation even when the requests overlap. The service opens
+its own transaction when the caller does not provide one.
+
+`tests/integration/users/playback-progress.integration.test.ts` forces the
+interleaving — the newer report is applied inside a transaction that holds the
+row lock while the older report reads the old value and waits to write — and
+fails without the fix.
+
+### fix: lock and write the playback rows in one order (Prompts 091–103 review)
+
+The progress write locked the progress row first and the watched-state row
+second; the manual watched-state change did the reverse. Two paths that touch
+the same rows in opposite orders can deadlock, and the overlap is realistic: a
+heartbeat that is already in flight when the viewer marks the episode
+unwatched.
+
+Both paths now lock *and* write the progress row first and the watched-state
+row second (D-040). A row that does not exist yet is inserted, and an inserted
+row takes a lock too, so the write order has to match the lock order.
+
+`tests/integration/users/watch-state.integration.test.ts` ("does not deadlock
+when a playback report and a manual change overlap") holds one row lock,
+overlaps the two writes, and fails — with a lock wait that never clears — when
+the order is wrong.
+
+### fix: keep a manual "unwatched" decision alive (Prompts 091–103 review)
+
+Marking an episode unwatched reset the stored position, but the browser still
+held the old position and the next heartbeat completed the episode again. The
+first completion date was erased as well, although D-045 says it is never
+rewritten.
+
+- The manual change now preserves the first completion date and records the
+  reset separately in `completed_at_reset_at`.
+- The decision moves the observation time forward, so a report that was
+  already in flight describes the position from before the decision and is
+  stale.
+- `src/components/player/playback-reset.tsx` (new) carries one *start over*
+  signal from the watched toggle to the player. The player drops the pending
+  report, returns the media to the beginning, and clears the resume offer, so
+  the viewer's decision survives the next heartbeat.
+- An item that already counts as watched is complete, not unfinished, so the
+  watch pages and the details pages no longer offer a resume for it.
+
+### fix: apply one availability rule to the movie details page (Prompts 091–103 review)
+
+The movie details page checked the publication state and the Trash state, but
+not the source, while the watch route and the bookmark write used
+`isPubliclyPlayableMovie`. A published movie without a source therefore showed
+a *Coming soon* page whose watch link was a 404 and whose bookmark was
+refused. The details page now uses the same rule, and the unreachable
+*Coming soon* branch is gone.
+
+### test: give the two heavy end-to-end flows an explicit budget
+
+The suite raises the navigation timeout to 45 s because a development server
+compiles a route on its first request, but the overall per-test budget stayed
+at the default 30 s — smaller than a single allowed navigation. The admin
+content management flow needed 37.7 s and failed intermittently, and the
+footer flow (eight public routes, each compiled on its first request) failed
+under load. Both tests now set an explicit 120 s budget with a comment that
+explains why. No assertion was weakened, and every other test keeps the 30 s
+budget.
+
+### feat: redirect an old slug to the current canonical URL (Prompts 091–103 review)
+
+`REQUIREMENTS.md` §4.3 and §6.6 require a slug change to preserve the old URL
+through a redirect, but the public pages required an exact slug match, so a
+renamed drama or movie answered 404 on its old URL.
+
+`src/modules/content/public-slugs.ts` (new) exposes
+`resolvePublicContentSlug(type, contentId, requestedSlug)`, which reads
+`content_slug_history` and returns the current slug when the requested one is
+a slug the item really used. The four public routes redirect the old URL to
+the current canonical URL. A guessed slug is still a 404, and the lookup
+applies the same availability rule as the page it redirects to, so it never
+reveals the current slug of a draft, trashed, or source-less item (D-046).
+
+### fix: keep the administrative episode reference separate from the public one
+
+The first implementation of Prompts 091–103 made the shared
+`content.getEpisodeContentReference` enforce public playability. An
+administrator could therefore no longer attach a subtitle track to a draft
+episode: the write failed with "Episode not found", and the end-to-end test
+`admin episode video source › manages the subtitle tracks of an episode`
+failed. The reference now has two levels (D-043): the administrative one
+refuses only a missing or trashed episode, and the public one applies the
+full hierarchy rule. The viewer's progress and watched-state writes use the
+public level.
+
+### fix: keep the first completion date of a manual watched-state change
+
+`setEpisodeWatchedState` rewrote `completed_at` every time an episode was
+marked watched. The first completion date is now preserved, so the moment an
+episode was first completed stays the moment it was first completed (D-045).
+
+### test: scope the merged Trash listing to the rows a test owns
+
+`tests/integration/content/trash-listing.integration.test.ts` asserted global
+counts and global rows of the merged Trash list. The integration suite shares
+one database and runs its files in parallel, so a row that another file trashed
+at the same moment changed the result and the test failed intermittently.
+Every read in that file is now scoped with a token that only its own rows
+carry; the assertions are unchanged in strength.
+
 ### feat: complete the episode video source workflow (Prompts 080–090)
 
 An episode now carries one administrator-supplied, public, direct HTTPS MP4 URL

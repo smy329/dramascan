@@ -16,9 +16,12 @@ export type PublicEpisodePlayback = {
   dramaSlug: string;
   dramaTitle: string;
   seasonId: string | null;
+  seasonTitle: string | null;
+  seasonPosition: number | null;
   title: string;
   description: string | null;
   episodeNumber: number | null;
+  position: number | null;
   videoSource: string;
   /**
    * The version of the stored source.
@@ -34,6 +37,10 @@ export type PublicEpisodePlayback = {
  *
  * A listing is not a playback view: the source URL is deliberately not part of
  * this projection. Only the watch query hands out a media URL.
+ *
+ * The canonical href is part of the projection: the content module owns the
+ * public routes, so the href is computed once, here, and every list that
+ * renders an episode link uses the same URL.
  */
 export type PublicEpisodeSummary = {
   id: string;
@@ -41,10 +48,50 @@ export type PublicEpisodeSummary = {
   dramaSlug: string;
   dramaTitle: string;
   seasonId: string | null;
+  seasonTitle: string | null;
+  seasonPosition: number | null;
   title: string;
   description: string | null;
   episodeNumber: number | null;
+  position: number | null;
+  /** The canonical watch route of the episode. */
+  href: string;
 };
+
+/** Canonical public episode route (requirements §6.6). */
+export function publicEpisodeHref(
+  dramaId: string,
+  dramaSlug: string,
+  episodeId: string
+): string {
+  return `/drama/${dramaId}/${dramaSlug}/episode/${episodeId}`;
+}
+
+/**
+ * The episode after `episodeId` in the drama's public content order.
+ *
+ * The list is already filtered to publicly playable episodes and ordered by
+ * season then episode, so "next" never crosses into an unpublished or
+ * unavailable episode and never jumps back to the start of a season.
+ */
+export function nextPublicEpisode(
+  episodes: readonly PublicEpisodeSummary[],
+  episodeId: string
+): PublicEpisodeSummary | null {
+  const index = episodes.findIndex(episode => episode.id === episodeId);
+
+  return index >= 0 ? episodes[index + 1] ?? null : null;
+}
+
+/** The episode before `episodeId` in the drama's public content order. */
+export function previousPublicEpisode(
+  episodes: readonly PublicEpisodeSummary[],
+  episodeId: string
+): PublicEpisodeSummary | null {
+  const index = episodes.findIndex(episode => episode.id === episodeId);
+
+  return index > 0 ? episodes[index - 1] ?? null : null;
+}
 
 /** The row shape the availability rule is evaluated against. */
 export type PublicEpisodeAvailabilityInput = {
