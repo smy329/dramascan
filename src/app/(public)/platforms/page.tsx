@@ -1,17 +1,56 @@
 import { PageHeader, PublicPageLayout } from '@/components/public/Layout';
+import { db } from '@/db/client';
+import { movies, platforms, movie_platforms } from '@/modules/content/schema';
+import { eq, sql, desc, inArray } from 'drizzle-orm';
 
-const PLATFORMS = [
-  { name: 'Viki', note: 'Korean, Chinese, Japanese, and Taiwanese series with subtitles.' },
-  { name: 'Netflix', note: 'Original productions plus a broad licensed catalogue.' },
-  { name: 'Prime Video', note: 'Regional catalogues that vary by country.' },
-  { name: 'Disney+', note: 'Korean originals and select Asian film titles.' },
-  { name: 'iQIYI', note: 'Chinese drama and variety, with international subtitles.' },
-  { name: 'Kocowa', note: 'Korean broadcast content, often close to air date.' },
-  { name: 'TVBAnywhere+', note: 'Cantonese-language drama and film.' },
-  { name: 'Seezn', note: 'Korean streaming catalogue and originals.' },
-];
+export const dynamic = 'force-dynamic';
 
-export default function PlatformsPage() {
+export default async function PlatformsPage() {
+  const platforms = await db
+    .select({
+      id: platforms.id,
+      name: platforms.name,
+      slug: platforms.slug,
+    })
+    .from(platforms)
+    .where(sql`${platforms.deleted_at} IS NULL`)
+    .orderBy(asc(platforms.position), asc(platforms.name));
+
+  // Get movies for each platform
+  const platformMoviesMap = new Map<string, Array<{ id: string; title: string; poster: string }>>();
+
+  for (const platform of platforms) {
+    const platformAssociations = await db
+      .select({
+        movieId: movie_platforms.movie_id,
+      })
+      .from(movie_platforms)
+      .where(eq(movie_platforms.platform_id, platform.id));
+
+    const movieIds = platformAssociations.map(a => a.movieId).filter((id): id is string => id !== null);
+
+    const moviesInPlatform = await db
+      .select({
+        id: movies.id,
+        title: movies.title,
+        poster: movies.poster,
+      })
+      .from(movies)
+      .where(
+        and(
+          eq(movies.isActive, true),
+          sql`${movies.publication_status} = 'published'`,
+          inArray(movies.id, movieIds as string[])
+        )
+      )
+      .orderBy(desc(movies.position), desc(movies.created_at))
+      .limit(8);
+
+    if (moviesInPlatform.length > 0) {
+      platformMoviesMap.set(platform.id, moviesInPlatform);
+    }
+  }
+
   return (
     <PublicPageLayout title="Platforms">
       <div className="space-y-10">
@@ -22,14 +61,23 @@ export default function PlatformsPage() {
         />
 
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {PLATFORMS.map(platform =>
-            <li key={platform.name} className="rounded-xl border border-border bg-card p-5">
-              <p className="text-sm font-medium text-foreground">{platform.name}</p>
-              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                {platform.note}
-              </p>
-            </li>
-          )}
+          {platforms.map((platform) => {
+            const movies = platformMoviesMap.get(platform.id) || [];
+            return (
+              <li key={platform.id} className="rounded-xl border border-border bg-card p-5">
+                <p className="text-sm font-medium text-foreground">{platform.name}</p>
+                {movies.length > 0 ? (
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    {movies} movies
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    No movies
+                  </p>
+                )}
+              </li>
+            );
+          })}
         </ul>
 
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
