@@ -3,7 +3,12 @@
  */
 
 import { z } from 'zod';
-import { publicationReadyVideoSourceSchema } from '@/modules/content/validation';
+
+import {
+  publicationReadyVideoSourceSchema,
+  requireVideoSourcePreviewConfirmation,
+  videoSourcePreviewConfirmedSchema,
+} from '@/modules/content/validation';
 
 /**
  * Treat a blank string as "not provided".
@@ -20,18 +25,30 @@ const blankToUndefined = <T>(schema: z.ZodType<T>): z.ZodType<T | undefined> =>
     schema.optional()
   );
 
-export const episodeFormSchema = z.strictObject({
-  dramaId: z.string().uuid(),
-  title: z
-    .string()
-    .trim()
-    .min(1, 'Title is required.')
-    .max(200, 'Title must be 200 characters or fewer.'),
-  description: z.string().trim().max(2000).optional(),
-  season_id: blankToUndefined(z.string().uuid()),
-  episode_number: blankToUndefined(z.coerce.number().int().min(1)),
-  video_source: publicationReadyVideoSourceSchema.optional(),
-});
+/**
+ * Episode create payload.
+ *
+ * The source is stored only after the browser preview proved that it plays, so
+ * a payload that carries a source has to carry the administrator's
+ * confirmation. The rule itself lives in the content module — the server
+ * applies it again — and is composed here so the client and the server never
+ * disagree about it.
+ */
+export const episodeFormSchema = z
+  .strictObject({
+    dramaId: z.string().uuid(),
+    title: z
+      .string()
+      .trim()
+      .min(1, 'Title is required.')
+      .max(200, 'Title must be 200 characters or fewer.'),
+    description: z.string().trim().max(2000).optional(),
+    season_id: blankToUndefined(z.string().uuid()),
+    episode_number: blankToUndefined(z.coerce.number().int().min(1)),
+    video_source: blankToUndefined(publicationReadyVideoSourceSchema),
+    video_source_preview_confirmed: z.boolean().optional(),
+  })
+  .superRefine(requireVideoSourcePreviewConfirmation);
 
 export const updateEpisodeFormSchema = z.strictObject({
   id: z.string().uuid(),
@@ -57,12 +74,13 @@ export const deleteEpisodeFormSchema = z.strictObject({
  *
  * The source is replaced only after the administrator has watched the new URL
  * play in the browser preview and confirmed the replacement. The contract
- * carries the episode and the new URL; the confirmation itself is the
- * administrator's action in the UI, and the server re-checks the URL.
+ * carries the episode, the new URL, and that confirmation; the server
+ * re-checks the URL.
  */
 export const replaceVideoSourceFormSchema = z.strictObject({
   episodeId: z.string().uuid(),
   videoSource: publicationReadyVideoSourceSchema,
+  previewConfirmed: videoSourcePreviewConfirmedSchema,
 });
 
 export const reorderEpisodesFormSchema = z.strictObject({

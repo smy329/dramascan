@@ -85,6 +85,7 @@ export default async function EpisodePage({ params }: EpisodePageProps) {
           episodeId={episode.id}
           title={episode.title}
           source={episode.videoSource}
+          sourceVersion={episode.sourceVersion}
           subtitleTracks={subtitleTracks}
           signedIn={actor.userId !== null}
           completionThresholdPercent={serverConfig.playbackCompletionThresholdPercent}

@@ -12,21 +12,21 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
  * the viewer's manual retry when the source fails, and never retry on its own.
  *
  * The player also reports the viewer's position for a signed-in viewer. The
- * report is debounced: the browser must not write to PostgreSQL on every
- * time-update, and an anonymous viewer has no progress to store.
+ * report is a REST beacon with a keepalive `fetch` — it has to survive the
+ * page being closed — and it is debounced: the browser must not write to
+ * PostgreSQL on every time-update, and an anonymous viewer has no progress to
+ * store.
  *
  * The Vidstack components are mocked here: this test covers the player's own
  * behaviour, and the end-to-end suite covers the real player in Chromium.
  */
 
-const { reportPlaybackFailureActionMock, savePlaybackProgressActionMock } = vi.hoisted(() => ({
+const { reportPlaybackFailureActionMock } = vi.hoisted(() => ({
   reportPlaybackFailureActionMock: vi.fn(),
-  savePlaybackProgressActionMock: vi.fn(),
 }));
 
 vi.mock('@/workflows/playback/actions', () => ({
   reportPlaybackFailureAction: reportPlaybackFailureActionMock,
-  savePlaybackProgressAction: savePlaybackProgressActionMock,
 }));
 
 vi.mock('@vidstack/react', () => ({
@@ -109,6 +109,10 @@ vi.mock('@vidstack/react/player/layouts/default', () => ({
 
 import { VidstackPlayer, type PlayerSubtitleTrack } from '@/components/player/vidstack-player';
 
+const fetchMock = vi.fn();
+
+vi.stubGlobal('fetch', fetchMock);
+
 const SOURCE = 'https://media.example.com/episodes/1.mp4';
 const EPISODE_ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
 
@@ -144,6 +148,7 @@ function renderPlayer(
       episodeId={EPISODE_ID}
       title="Episode 1"
       source={SOURCE}
+      sourceVersion={1}
       subtitleTracks={overrides.subtitleTracks ?? []}
       signedIn={overrides.signedIn ?? true}
       completionThresholdPercent={overrides.completionThresholdPercent ?? 90}
@@ -154,8 +159,8 @@ function renderPlayer(
 beforeEach(() => {
   reportPlaybackFailureActionMock.mockReset();
   reportPlaybackFailureActionMock.mockResolvedValue({ ok: true, data: { id: 'report-1' } });
-  savePlaybackProgressActionMock.mockReset();
-  savePlaybackProgressActionMock.mockResolvedValue({ ok: true, data: { applied: true } });
+  fetchMock.mockReset();
+  fetchMock.mockResolvedValue(new Response('{}', { status: 200 }));
 });
 
 afterEach(() => {
@@ -272,7 +277,7 @@ describe('VidstackPlayer', () => {
 });
 
 describe('VidstackPlayer progress reporting', () => {
-  it('reports the observed position when the viewer pauses', async () => {
+  it('reports the observed position to the heartbeat endpoint when the viewer pauses', async () => {
     renderPlayer();
 
     fireEvent.click(screen.getByTestId('simulate-duration'));
@@ -280,20 +285,32 @@ describe('VidstackPlayer progress reporting', () => {
     fireEvent.click(screen.getByTestId('simulate-pause'));
 
     await waitFor(() => {
-      expect(savePlaybackProgressActionMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    const payload = savePlaybackProgressActionMock.mock.calls[0]?.[0] as {
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+
+    // The heartbeat is a REST beacon, not a Server Action: it has to survive
+    // the page being closed.
+    expect(url).toBe('/api/playback/progress');
+    expect(init.method).toBe('POST');
+    expect(init.keepalive).toBe(true);
+
+    const payload = JSON.parse(String(init.body)) as {
       episodeId: string;
       positionSeconds: number;
       durationSeconds: number;
       watchedAt: string;
+      sourceVersion: number;
     };
 
     expect(payload.episodeId).toBe(EPISODE_ID);
     expect(payload.positionSeconds).toBe(120);
     expect(payload.durationSeconds).toBe(1000);
     expect(Number.isNaN(Date.parse(payload.watchedAt))).toBe(false);
+    // The report names the source version it belongs to, so the server can
+    // ignore it when an administrator replaces the source.
+    expect(payload.sourceVersion).toBe(1);
   });
 
   it('does not write on every time update', async () => {
@@ -306,12 +323,12 @@ describe('VidstackPlayer progress reporting', () => {
 
     // The write is debounced: the position is reported on the next pause, not
     // on every time update.
-    expect(savePlaybackProgressActionMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId('simulate-pause'));
 
     await waitFor(() => {
-      expect(savePlaybackProgressActionMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -323,7 +340,7 @@ describe('VidstackPlayer progress reporting', () => {
     fireEvent.click(screen.getByTestId('simulate-ended'));
 
     await waitFor(() => {
-      expect(savePlaybackProgressActionMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -336,6 +353,6 @@ describe('VidstackPlayer progress reporting', () => {
 
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    expect(savePlaybackProgressActionMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

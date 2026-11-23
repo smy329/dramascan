@@ -146,6 +146,10 @@ export const episodes = pgTable(
     publication_status: publicationStatusColumn(),
     published_at: publishedAt(),
     video_source: text('video_source'),
+    // The version of the stored source. It is bumped whenever the source is
+    // replaced, so a playback position that refers to the previous file can be
+    // recognised and ignored instead of being applied to the new one.
+    video_source_version: integer('video_source_version').notNull().default(1),
     created_at: created,
     updated_at: updated,
     deleted_at: deleted,

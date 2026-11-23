@@ -216,4 +216,24 @@ describe('public episode playback lookup', () => {
     expect(result.map(item => item.id)).toEqual([playable.episodeId]);
     expect(result).not.toContainEqual(expect.objectContaining({ id: draft.episodeId }));
   });
+
+  it('does not hand out the source URL in an episode listing', async () => {
+    const playable = await seed();
+
+    const result = await listPublicDramaEpisodes(playable.dramaId);
+
+    // A listing is not a playback view: only the watch query hands out a
+    // media URL.
+    expect(result).toHaveLength(1);
+    expect(result[0]).not.toHaveProperty('videoSource');
+    expect(JSON.stringify(result)).not.toContain('media.example.com');
+  });
+
+  it('reports the version of the stored source with the watch data', async () => {
+    const seeded = await seed();
+
+    const result = await getPublicEpisodePlayback(seeded.dramaId, seeded.episodeId);
+
+    expect(result?.sourceVersion).toBe(1);
+  });
 });

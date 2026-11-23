@@ -4,14 +4,8 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 
-import {
-  deleteSubtitleTrack,
-  recordPlaybackFailure,
-  upsertSubtitleTrack,
-  type PlaybackFailureReport,
-  type SubtitleTrack,
-} from './repository';
 import { playback_failure_reports, subtitle_tracks } from './schema';
+import type { SubtitleTrack } from './repository';
 import type { SubtitleFormat } from './validation';
 
 /**
@@ -21,6 +15,9 @@ import type { SubtitleFormat } from './validation';
  * identifiers, and the public view carries only what a player needs — the
  * language, the label, the URL the browser fetches directly, the format, and
  * whether the track is the default.
+ *
+ * These are the row-level reads. The module's services add the actor and the
+ * permission check on top of them.
  */
 
 /** A subtitle track as the player consumes it. */
@@ -65,7 +62,7 @@ function toSubtitleTrack(row: typeof subtitle_tracks.$inferSelect): SubtitleTrac
 }
 
 /** Read every subtitle track of an episode, ordered by language. */
-export async function listSubtitleTracks(episodeId: string): Promise<SubtitleTrack[]> {
+export async function listSubtitleTrackRows(episodeId: string): Promise<SubtitleTrack[]> {
   const rows = await db
     .select()
     .from(subtitle_tracks)
@@ -82,7 +79,7 @@ export async function listSubtitleTracks(episodeId: string): Promise<SubtitleTra
  * one episode at a time would issue one query per episode, so the page asks
  * for the whole drama in a single read.
  */
-export async function listSubtitleTracksByEpisodeIds(
+export async function listSubtitleTrackRowsByEpisodeIds(
   episodeIds: readonly string[]
 ): Promise<SubtitleTrack[]> {
   if (episodeIds.length === 0) {
@@ -98,7 +95,13 @@ export async function listSubtitleTracksByEpisodeIds(
   return rows.map(toSubtitleTrack);
 }
 
-/** Read the subtitle tracks a viewer may select, ordered by language. */
+/**
+ * Read the subtitle tracks a viewer may select, ordered by language.
+ *
+ * This read needs no actor and no permission: the tracks belong to an episode
+ * the viewer is already allowed to watch, and the browser fetches the files
+ * directly from the external host.
+ */
 export async function listPublicSubtitleTracks(
   episodeId: string
 ): Promise<PublicSubtitleTrack[]> {
@@ -119,7 +122,7 @@ export async function listPublicSubtitleTracks(
 }
 
 /** Read the reported playback failures, newest first. */
-export async function listPlaybackFailures(
+export async function listPlaybackFailureRows(
   query: PlaybackFailureQuery = {}
 ): Promise<PlaybackFailureListItem[]> {
   const limit = Math.min(Math.max(query.limit ?? 100, 1), 500);
@@ -150,6 +153,3 @@ export async function listPlaybackFailures(
     createdAt: row.created_at,
   }));
 }
-
-export { deleteSubtitleTrack, recordPlaybackFailure, upsertSubtitleTrack };
-export type { PlaybackFailureReport, SubtitleTrack };

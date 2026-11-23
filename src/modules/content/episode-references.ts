@@ -21,6 +21,14 @@ import { episodes } from './schema';
 export type EpisodeContentReference = {
   episodeId: string;
   dramaId: string;
+  /**
+   * The version of the episode's stored video source.
+   *
+   * The version moves on whenever an administrator replaces the source. A
+   * playback position that refers to an older version belongs to a file that is
+   * no longer served, so the caller can refuse to apply it.
+   */
+  sourceVersion: number;
 };
 
 /**
@@ -37,7 +45,11 @@ export async function getEpisodeContentReference(
   executor: DbExecutor = db
 ): Promise<EpisodeContentReference | null> {
   const [row] = await executor
-    .select({ id: episodes.id, dramaId: episodes.drama_id })
+    .select({
+      id: episodes.id,
+      dramaId: episodes.drama_id,
+      sourceVersion: episodes.video_source_version,
+    })
     .from(episodes)
     .where(and(eq(episodes.id, episodeId), isNull(episodes.deleted_at)))
     .limit(1);
@@ -46,5 +58,9 @@ export async function getEpisodeContentReference(
     return null;
   }
 
-  return { episodeId: row.id, dramaId: row.dramaId };
+  return {
+    episodeId: row.id,
+    dramaId: row.dramaId,
+    sourceVersion: row.sourceVersion,
+  };
 }

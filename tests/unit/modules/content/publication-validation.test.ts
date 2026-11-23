@@ -56,11 +56,35 @@ describe('publicationReadyVideoSourceSchema', () => {
 describe('createEpisodeSchema', () => {
   it('accepts a publication-ready video source and never sets publication state', () => {
     const parsed = createEpisodeSchema.parse(
-      validEpisode({ video_source: 'https://media.example.com/episodes/1.mp4' })
+      validEpisode({
+        video_source: 'https://media.example.com/episodes/1.mp4',
+        video_source_preview_confirmed: true,
+      })
     );
 
     expect(parsed.video_source).toBe('https://media.example.com/episodes/1.mp4');
     expect(parsed).not.toHaveProperty('publication_status');
+  });
+
+  it('refuses a video source the administrator did not preview', () => {
+    // The browser is the only component that can prove that a source plays, so
+    // a source without the preview confirmation is refused.
+    const result = createEpisodeSchema.safeParse(
+      validEpisode({ video_source: 'https://media.example.com/episodes/1.mp4' })
+    );
+
+    expect(result.success).toBe(false);
+  });
+
+  it('refuses a video source whose preview confirmation is false', () => {
+    const result = createEpisodeSchema.safeParse(
+      validEpisode({
+        video_source: 'https://media.example.com/episodes/1.mp4',
+        video_source_preview_confirmed: false,
+      })
+    );
+
+    expect(result.success).toBe(false);
   });
 
   it('allows a draft episode without a source', () => {
@@ -89,7 +113,10 @@ describe('createEpisodeSchema', () => {
   it('rejects an HTTP video source', () => {
     expect(
       createEpisodeSchema.safeParse(
-        validEpisode({ video_source: 'http://media.example.com/episodes/1.mp4' })
+        validEpisode({
+          video_source: 'http://media.example.com/episodes/1.mp4',
+          video_source_preview_confirmed: true,
+        })
       ).success
     ).toBe(false);
   });
@@ -97,7 +124,10 @@ describe('createEpisodeSchema', () => {
   it('rejects a non-.mp4 HTTPS video source', () => {
     expect(
       createEpisodeSchema.safeParse(
-        validEpisode({ video_source: 'https://media.example.com/episodes/1.mov' })
+        validEpisode({
+          video_source: 'https://media.example.com/episodes/1.mov',
+          video_source_preview_confirmed: true,
+        })
       ).success
     ).toBe(false);
   });

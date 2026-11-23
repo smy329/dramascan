@@ -26,6 +26,11 @@ import { parsePlaybackProgressInput } from './validation';
  *    update that is not newer than the stored one. Two tabs or two devices
  *    reporting at the same time therefore converge on the newer observation,
  *    whichever request arrives last.
+ *  - **A position never crosses a source replacement.** The browser sends the
+ *    version of the source it was watching. When an administrator replaces the
+ *    source, the version moves on and every stored position is reset; a report
+ *    that was already in flight still carries the old version, and it describes
+ *    a position in a file that is no longer served. Such a report is ignored.
  *  - **The watched state is sticky.** Once the completion threshold has been
  *    reached, the episode stays watched until an administrator replaces the
  *    video source, which resets it explicitly. The first completion date is
@@ -86,7 +91,35 @@ export async function savePlaybackProgress(
     throw new NotFoundError('Episode not found.');
   }
 
-  const { dramaId } = reference;
+  const { dramaId, sourceVersion } = reference;
+
+  // A position that belongs to a replaced source describes a file that is no
+  // longer served. The report is ignored: applying it would move the viewer
+  // into the middle of a different video, and would undo the reset the
+  // replacement performed.
+  if (values.sourceVersion !== sourceVersion) {
+    const [stored] = await executor
+      .select({
+        position: playback_progress.position,
+        duration: playback_progress.duration,
+        completed: playback_progress.completed,
+      })
+      .from(playback_progress)
+      .where(
+        and(
+          eq(playback_progress.user_id, userId),
+          eq(playback_progress.episode_id, values.episodeId)
+        )
+      )
+      .limit(1);
+
+    return {
+      applied: false,
+      positionSeconds: stored?.position ?? 0,
+      durationSeconds: stored?.duration ?? 0,
+      thresholdMet: stored?.completed === true,
+    };
+  }
 
   // A position beyond the end of the media means the duration was reported
   // late or incorrectly; the media itself is the authority.

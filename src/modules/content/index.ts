@@ -113,4 +113,5 @@ export { isPubliclyPlayableEpisode } from './public-episodes.shared';
 export type {
   PublicEpisodeAvailabilityInput,
   PublicEpisodePlayback,
+  PublicEpisodeSummary,
 } from './public-episodes.shared';

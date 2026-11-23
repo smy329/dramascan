@@ -226,6 +226,22 @@ export async function removeDramaBySlug(slug) {
       );
       await run(
         client,
+        'delete the created subtitle tracks',
+        target,
+        `DELETE FROM subtitle_tracks
+         WHERE episode_id IN (SELECT id FROM episodes WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1))`,
+        [slug]
+      );
+      await run(
+        client,
+        'delete the created playback failure reports',
+        target,
+        `DELETE FROM playback_failure_reports
+         WHERE episode_id IN (SELECT id FROM episodes WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1))`,
+        [slug]
+      );
+      await run(
+        client,
         'delete the created episodes',
         target,
         'DELETE FROM episodes WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1)',
@@ -364,6 +380,22 @@ export async function removeDrama(fixture) {  const { target, client } = require
         'delete the converted movie',
         target,
         'DELETE FROM movies WHERE converted_from_drama_id = $1',
+        [fixture.id]
+      );
+      await run(
+        client,
+        'delete the seeded subtitle tracks',
+        target,
+        `DELETE FROM subtitle_tracks
+         WHERE episode_id IN (SELECT id FROM episodes WHERE drama_id = $1)`,
+        [fixture.id]
+      );
+      await run(
+        client,
+        'delete the seeded playback failure reports',
+        target,
+        `DELETE FROM playback_failure_reports
+         WHERE episode_id IN (SELECT id FROM episodes WHERE drama_id = $1)`,
         [fixture.id]
       );
       await run(

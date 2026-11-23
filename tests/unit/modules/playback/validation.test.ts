@@ -200,3 +200,53 @@ describe('parsePlaybackFailureReport', () => {
     expect(() => parsePlaybackFailureReport({ ...valid, detail: 'x'.repeat(2001) })).toThrow();
   });
 });
+
+/**
+ * The failure detail.
+ *
+ * The detail is free text from the viewer's browser, and the failure table
+ * must never become a second copy of the content table. A viewer who pastes
+ * the source URL — or a credential — into the detail would store it, so the
+ * server removes both before the report is written.
+ */
+describe('parsePlaybackFailureReport — the detail', () => {
+  const valid = {
+    episodeId: '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
+    reason: 'network',
+  };
+
+  it('removes an absolute source URL from the detail', () => {
+    const result = parsePlaybackFailureReport({
+      ...valid,
+      detail: 'The media request to https://cdn.example.com/episodes/ep1.mp4 failed.',
+    });
+
+    expect(result.detail).not.toContain('cdn.example.com');
+    expect(result.detail).not.toContain('https://');
+  });
+
+  it('removes a credential from the detail', () => {
+    const result = parsePlaybackFailureReport({
+      ...valid,
+      detail: 'The host answered with user:hunter2@media.example.com.',
+    });
+
+    expect(result.detail).not.toContain('hunter2');
+  });
+
+  it('keeps the diagnostic text around the redacted part', () => {
+    const result = parsePlaybackFailureReport({
+      ...valid,
+      detail: 'The media request to https://cdn.example.com/ep1.mp4 failed.',
+    });
+
+    expect(result.detail).toContain('The media request to');
+    expect(result.detail).toContain('failed.');
+  });
+
+  it('leaves an ordinary detail untouched', () => {
+    const result = parsePlaybackFailureReport({ ...valid, detail: 'The media request failed.' });
+
+    expect(result.detail).toBe('The media request failed.');
+  });
+});

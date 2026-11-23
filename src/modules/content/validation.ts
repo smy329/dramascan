@@ -151,27 +151,103 @@ export function parseOrThrow<T>(schema: z.ZodType<T>, input: unknown): T {
 }
 
 /**
+ * The administrator's preview confirmation.
+ *
+ * The browser is the only component that can prove that an external source
+ * plays: the server never fetches the URL, so it cannot make the same check.
+ * A source may therefore only be stored when the payload carries the
+ * administrator's explicit confirmation that the browser preview verified it.
+ *
+ * The flag is a declaration, not a proof — the server has no way to check it —
+ * which is exactly why it travels with the payload instead of being inferred
+ * from the URL.
+ */
+export const VIDEO_SOURCE_PREVIEW_REQUIRED_MESSAGE =
+  'Preview the video source in the browser and confirm that it plays before it is stored.';
+
+/**
+ * A preview confirmation.
+ *
+ * The value has to be `true`: `false` is a refusal, and a missing value is no
+ * confirmation at all.
+ */
+export const videoSourcePreviewConfirmedSchema = z
+  .boolean()
+  .refine(value => value === true, VIDEO_SOURCE_PREVIEW_REQUIRED_MESSAGE);
+
+/**
+ * Require the preview confirmation whenever the payload carries a source.
+ *
+ * The issue is attached to the source field, so the form renders it next to the
+ * input the administrator has to fix.
+ */
+export function requireVideoSourcePreviewConfirmation(
+  value: {
+    video_source?: string | undefined;
+    video_source_preview_confirmed?: boolean | undefined;
+  },
+  ctx: z.RefinementCtx
+): void {
+  if (value.video_source !== undefined && value.video_source_preview_confirmed !== true) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['video_source'],
+      message: VIDEO_SOURCE_PREVIEW_REQUIRED_MESSAGE,
+    });
+  }
+}
+
+/**
  * Episode create schema with minimal metadata.
  *
  * The parent drama is the workflow's `dramaId` argument, never a body field:
  * a second, ignored parent source is how an episode ends up validated against
  * the wrong drama (H-05). `season_id` is the only parent a payload may name,
  * and the workflow proves it belongs to that drama.
+ *
+ * A source may only be stored after the administrator previewed it in the
+ * browser, so a payload that carries a source has to carry the confirmation
+ * as well.
  */
-export const createEpisodeSchema = z.strictObject({
-  title: z.string().trim().min(1).max(200),
-  description: z.string().optional(),
-  episode_number: z.coerce.number().int().min(1).optional(),
-  position: z.coerce.number().int().min(0).optional(),
-  season_id: z.string().uuid().optional(),
-  video_source: publicationReadyVideoSourceSchema.optional(),
-});
+export const createEpisodeSchema = z
+  .strictObject({
+    title: z.string().trim().min(1).max(200),
+    description: z.string().optional(),
+    episode_number: z.coerce.number().int().min(1).optional(),
+    position: z.coerce.number().int().min(0).optional(),
+    season_id: z.string().uuid().optional(),
+    video_source: publicationReadyVideoSourceSchema.optional(),
+    video_source_preview_confirmed: z.boolean().optional(),
+  })
+  .superRefine(requireVideoSourcePreviewConfirmation);
 
 export type CreateEpisodeInput = z.infer<typeof createEpisodeSchema>;
 
 /** Parse create episode input, throwing a REST-safe validation error on failure. */
 export function parseCreateEpisodeInput(input: unknown): CreateEpisodeInput {
   return parseOrThrow(createEpisodeSchema, input);
+}
+
+/**
+ * Video-source replacement payload.
+ *
+ * The source of an existing episode is replaced only after the browser preview
+ * proved that the new URL plays and the administrator confirmed it. The
+ * confirmation travels with the payload; the server re-validates the URL and
+ * applies the replacement in one transaction.
+ */
+export const replaceEpisodeVideoSourceSchema = z.strictObject({
+  videoSource: publicationReadyVideoSourceSchema,
+  previewConfirmed: videoSourcePreviewConfirmedSchema,
+});
+
+export type ReplaceEpisodeVideoSourceInput = z.infer<typeof replaceEpisodeVideoSourceSchema>;
+
+/** Parse a video-source replacement payload, throwing a validation error on failure. */
+export function parseReplaceEpisodeVideoSourceInput(
+  input: unknown
+): ReplaceEpisodeVideoSourceInput {
+  return parseOrThrow(replaceEpisodeVideoSourceSchema, input);
 }
 
 // ----- standalone movies ----------------------------------------------------

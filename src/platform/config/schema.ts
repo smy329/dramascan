@@ -424,12 +424,17 @@ function validateTrustedOrigins(
  * Every entry must be a plain HTTPS origin. A media host is contacted by the
  * browser, so an entry that carried credentials, a path, or a query would
  * either leak a secret into the policy or silently never match.
+ *
+ * An empty (or whitespace-only) value is the same as an unset one: the
+ * operator has not pinned the media hosts, and the policy allows any HTTPS
+ * origin. The shipped `.env.example` sets the variable to an empty value, so
+ * this case has to be a valid configuration rather than a startup failure.
  */
 function validateAllowedMediaOrigins(
   value: string | undefined,
   ctx: z.RefinementCtx
 ): void {
-  if (value === undefined) {
+  if (value === undefined || value.trim().length === 0) {
     return;
   }
 

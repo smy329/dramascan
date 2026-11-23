@@ -48,6 +48,16 @@ const TEST_PREFIX = 'it-video-source-';
 const ORIGINAL_SOURCE = 'https://media.example.com/episodes/original.mp4';
 const REPLACEMENT_SOURCE = 'https://media.example.com/episodes/replacement.mp4';
 
+/**
+ * A replacement payload.
+ *
+ * The browser preview verified the new URL and the administrator confirmed the
+ * replacement; that confirmation travels with the payload.
+ */
+function replacementPayload(): { videoSource: string; previewConfirmed: boolean } {
+  return { videoSource: REPLACEMENT_SOURCE, previewConfirmed: true };
+}
+
 type Seed = {
   adminId: string;
   viewerId: string;
@@ -207,7 +217,7 @@ describe('replaceEpisodeVideoSource', () => {
     const seeded = await seed();
     const actor = userActor(seeded.adminId, { isSuperAdmin: true });
 
-    const result = await replaceEpisodeVideoSource(actor, seeded.episodeId, REPLACEMENT_SOURCE);
+    const result = await replaceEpisodeVideoSource(actor, seeded.episodeId, replacementPayload());
 
     expect(result.ok).toBe(true);
 
@@ -219,11 +229,51 @@ describe('replaceEpisodeVideoSource', () => {
     expect(row?.video_source).toBe(REPLACEMENT_SOURCE);
   });
 
+  it('moves the source version on, so a position of the old source is ignored', async () => {
+    const seeded = await seed();
+    const actor = userActor(seeded.adminId, { isSuperAdmin: true });
+
+    const [before] = await db
+      .select({ version: episodes.video_source_version })
+      .from(episodes)
+      .where(eq(episodes.id, seeded.episodeId));
+
+    expect(before?.version).toBe(1);
+
+    await replaceEpisodeVideoSource(actor, seeded.episodeId, replacementPayload());
+
+    const [after] = await db
+      .select({ version: episodes.video_source_version })
+      .from(episodes)
+      .where(eq(episodes.id, seeded.episodeId));
+
+    expect(after?.version).toBe(2);
+  });
+
+  it('refuses a replacement without the preview confirmation', async () => {
+    const seeded = await seed();
+    const actor = userActor(seeded.adminId, { isSuperAdmin: true });
+
+    await expect(
+      replaceEpisodeVideoSource(actor, seeded.episodeId, {
+        videoSource: REPLACEMENT_SOURCE,
+        previewConfirmed: false,
+      })
+    ).rejects.toThrow();
+
+    const [row] = await db
+      .select()
+      .from(episodes)
+      .where(eq(episodes.id, seeded.episodeId));
+
+    expect(row?.video_source).toBe(ORIGINAL_SOURCE);
+  });
+
   it('preserves the rest of the episode', async () => {
     const seeded = await seed();
     const actor = userActor(seeded.adminId, { isSuperAdmin: true });
 
-    await replaceEpisodeVideoSource(actor, seeded.episodeId, REPLACEMENT_SOURCE);
+    await replaceEpisodeVideoSource(actor, seeded.episodeId, replacementPayload());
 
     const [row] = await db
       .select()
@@ -245,7 +295,7 @@ describe('replaceEpisodeVideoSource', () => {
     const seeded = await seed();
     const actor = userActor(seeded.adminId, { isSuperAdmin: true });
 
-    await replaceEpisodeVideoSource(actor, seeded.episodeId, REPLACEMENT_SOURCE);
+    await replaceEpisodeVideoSource(actor, seeded.episodeId, replacementPayload());
 
     const [progress] = await db
       .select()
@@ -269,7 +319,7 @@ describe('replaceEpisodeVideoSource', () => {
     const seeded = await seed();
     const actor = userActor(seeded.adminId, { isSuperAdmin: true });
 
-    await replaceEpisodeVideoSource(actor, seeded.episodeId, REPLACEMENT_SOURCE);
+    await replaceEpisodeVideoSource(actor, seeded.episodeId, replacementPayload());
 
     const rows = await db
       .select()
@@ -285,7 +335,7 @@ describe('replaceEpisodeVideoSource', () => {
     const seeded = await seed();
     const actor = userActor(seeded.adminId, { isSuperAdmin: true });
 
-    await replaceEpisodeVideoSource(actor, seeded.episodeId, REPLACEMENT_SOURCE);
+    await replaceEpisodeVideoSource(actor, seeded.episodeId, replacementPayload());
 
     const rows = await db
       .select()
@@ -305,7 +355,7 @@ describe('replaceEpisodeVideoSource', () => {
     const seeded = await seed();
     const actor = userActor(seeded.adminId, { isSuperAdmin: true });
 
-    await replaceEpisodeVideoSource(actor, seeded.episodeId, REPLACEMENT_SOURCE);
+    await replaceEpisodeVideoSource(actor, seeded.episodeId, replacementPayload());
 
     const [row] = await db
       .select()
@@ -320,7 +370,10 @@ describe('replaceEpisodeVideoSource', () => {
     const actor = userActor(seeded.adminId, { isSuperAdmin: true });
 
     await expect(
-      replaceEpisodeVideoSource(actor, seeded.episodeId, 'http://media.example.com/episode.mp4')
+      replaceEpisodeVideoSource(actor, seeded.episodeId, {
+        videoSource: 'http://media.example.com/episode.mp4',
+        previewConfirmed: true,
+      })
     ).rejects.toThrow();
 
     const [row] = await db
@@ -339,7 +392,7 @@ describe('replaceEpisodeVideoSource', () => {
     const actor = userActor(randomUUID(), { isSuperAdmin: true });
 
     await expect(
-      replaceEpisodeVideoSource(actor, seeded.episodeId, REPLACEMENT_SOURCE)
+      replaceEpisodeVideoSource(actor, seeded.episodeId, replacementPayload())
     ).rejects.toThrow();
 
     const [row] = await db

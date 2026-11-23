@@ -65,6 +65,15 @@ describe('STALE_FIXTURE_STATEMENTS', () => {
     expect(positionOf('seasons')).toBeLessThan(positionOf('dramas'));
   });
 
+  it('deletes the playback rows before the episodes they point at', () => {
+    // The playback module's rows have a *restrictive* foreign key to the
+    // episode, so the sweep has to remove them first: deleting an episode that
+    // still carries a subtitle track or a failure report is refused by the
+    // database, and the whole sweep rolls back.
+    expect(positionOf('subtitleTracks')).toBeLessThan(positionOf('episodes'));
+    expect(positionOf('playbackFailureReports')).toBeLessThan(positionOf('episodes'));
+  });
+
   it('deletes a converted movie before the drama it was converted from', () => {
     expect(positionOf('movies')).toBeLessThan(positionOf('dramas'));
     expect(statementFor('movies')).toContain('converted_from_drama_id');

@@ -28,6 +28,8 @@ export type AdminFormProps = Readonly<{
   submitLabel?: string;
   /** Pending label. Default: 'Saving…'. */
   pendingLabel?: string;
+  /** Disables the submit button, e.g. while a precondition is unmet. */
+  submitDisabled?: boolean;
   className?: string;
   /** Fields; register through the RHF context provided by the shell. */
   children: ReactNode;
@@ -47,6 +49,7 @@ export function AdminForm({
   resetOnSuccess = true,
   submitLabel = 'Save',
   pendingLabel = 'Saving…',
+  submitDisabled = false,
   className,
   children,
 }: AdminFormProps): JSX.Element {
@@ -107,7 +110,12 @@ export function AdminForm({
       <form onSubmit={handleSubmit(handleValid)} noValidate className={cn('space-y-4', className)}>
         {serverError ? <AdminFormError message={serverError.message} /> : null}
         {children}
-        <Button type="submit" disabled={isSubmitting} aria-busy={isSubmitting} className="w-fit">
+        <Button
+          type="submit"
+          disabled={isSubmitting || submitDisabled}
+          aria-busy={isSubmitting}
+          className="w-fit"
+        >
           {isSubmitting ? pendingLabel : submitLabel}
         </Button>
       </form>

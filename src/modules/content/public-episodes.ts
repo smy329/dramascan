@@ -7,6 +7,7 @@ import { db } from '@/db/client';
 import {
   isPubliclyPlayableEpisode,
   type PublicEpisodePlayback,
+  type PublicEpisodeSummary,
 } from './public-episodes.shared';
 import { dramas, episodes, seasons } from './schema';
 
@@ -26,6 +27,8 @@ import { dramas, episodes, seasons } from './schema';
 
 /** The episode data the watch page needs, and nothing more. */
 export type { PublicEpisodePlayback } from './public-episodes.shared';
+/** The episode data a listing needs. */
+export type { PublicEpisodeSummary } from './public-episodes.shared';
 export { isPubliclyPlayableEpisode } from './public-episodes.shared';
 
 /**
@@ -57,6 +60,7 @@ export async function getPublicEpisodePlayback(
       episodePublicationStatus: episodes.publication_status,
       episodeDeleted: episodes.deleted_at,
       videoSource: episodes.video_source,
+      sourceVersion: episodes.video_source_version,
     })
     .from(episodes)
     .innerJoin(dramas, eq(dramas.id, episodes.drama_id))
@@ -67,10 +71,17 @@ export async function getPublicEpisodePlayback(
     return null;
   }
 
+  const source = row.videoSource;
+
+  // A source has to be a real URL: an empty or missing one is not playable.
+  if (source === null || source.trim().length === 0) {
+    return null;
+  }
+
   const isPlayable = isPubliclyPlayableEpisode({
     episodePublicationStatus: row.episodePublicationStatus,
     episodeDeleted: row.episodeDeleted !== null,
-    hasSource: typeof row.videoSource === 'string' && row.videoSource.trim().length > 0,
+    hasSource: true,
     dramaPublicationStatus: row.dramaPublicationStatus,
     dramaDeleted: row.dramaDeleted !== null,
     dramaStructureType: row.dramaStructureType,
@@ -92,7 +103,8 @@ export async function getPublicEpisodePlayback(
     title: row.title,
     description: row.description,
     episodeNumber: row.episodeNumber,
-    videoSource: row.videoSource as string,
+    videoSource: source,
+    sourceVersion: row.sourceVersion,
   };
 }
 
@@ -101,10 +113,13 @@ export async function getPublicEpisodePlayback(
  *
  * The drama detail page lists them; a trashed or unpublished episode is
  * never part of that list.
+ *
+ * The listing does not carry the source URL: a list is not a playback view,
+ * and only the watch query hands out a media URL.
  */
 export async function listPublicDramaEpisodes(
   dramaId: string
-): Promise<PublicEpisodePlayback[]> {
+): Promise<PublicEpisodeSummary[]> {
   const rows = await db
     .select({
       id: episodes.id,
@@ -130,18 +145,21 @@ export async function listPublicDramaEpisodes(
     .where(and(eq(episodes.drama_id, dramaId), isNotNull(episodes.video_source)));
 
   return rows
-    .filter(row =>
-      isPubliclyPlayableEpisode({
-        episodePublicationStatus: row.episodePublicationStatus,
-        episodeDeleted: row.episodeDeleted !== null,
-        hasSource: typeof row.videoSource === 'string' && row.videoSource.trim().length > 0,
-        dramaPublicationStatus: row.dramaPublicationStatus,
-        dramaDeleted: row.dramaDeleted !== null,
-        dramaStructureType: row.dramaStructureType,
-        hasSeason: row.seasonId !== null,
-        seasonPublicationStatus: row.seasonPublicationStatus,
-        seasonDeleted: row.seasonDeleted !== null,
-      })
+    .filter(
+      row =>
+        typeof row.videoSource === 'string' &&
+        row.videoSource.trim().length > 0 &&
+        isPubliclyPlayableEpisode({
+          episodePublicationStatus: row.episodePublicationStatus,
+          episodeDeleted: row.episodeDeleted !== null,
+          hasSource: true,
+          dramaPublicationStatus: row.dramaPublicationStatus,
+          dramaDeleted: row.dramaDeleted !== null,
+          dramaStructureType: row.dramaStructureType,
+          hasSeason: row.seasonId !== null,
+          seasonPublicationStatus: row.seasonPublicationStatus,
+          seasonDeleted: row.seasonDeleted !== null,
+        })
     )
     .map(row => ({
       id: row.id,
@@ -152,6 +170,5 @@ export async function listPublicDramaEpisodes(
       title: row.title,
       description: row.description,
       episodeNumber: row.episodeNumber,
-      videoSource: row.videoSource as string,
     }));
 }

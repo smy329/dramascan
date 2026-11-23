@@ -99,17 +99,63 @@ export const playbackFailureReasonSchema = z.enum(PLAYBACK_FAILURE_REASONS);
 
 export type PlaybackFailureReason = z.infer<typeof playbackFailureReasonSchema>;
 
+/** An absolute URL, whatever its scheme: `https://…`, `ftp://…`, `data:…`. */
+const ABSOLUTE_URL_PATTERN = /\b[a-z][a-z0-9+.-]*:\/\/[^\s]*/gi;
+
+/** A `user:password@host` pair, with or without a scheme in front of it. */
+const CREDENTIAL_PATTERN = /\b[^\s:@/]+:[^\s@/]*@[^\s/]+/g;
+
+/** Control characters, which would end the detail in a log line. */
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/g;
+
+/**
+ * Remove anything that must not be stored in a failure report.
+ *
+ * The detail explains *why* a source failed to play; it is never a place to
+ * keep the source itself. An absolute URL is therefore replaced, and so is a
+ * credential pair. The surrounding diagnostic text is kept, because that is
+ * what actually helps the administrator.
+ */
+export function sanitizePlaybackFailureDetail(detail: string): string {
+  return detail
+    .replace(CONTROL_CHARACTER_PATTERN, ' ')
+    .replace(ABSOLUTE_URL_PATTERN, '[redacted]')
+    .replace(CREDENTIAL_PATTERN, '[redacted]')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Sanitize the optional detail of a failure report.
+ *
+ * The detail is absent more often than not, and the schema has to keep it
+ * absent rather than turn it into an empty string: an empty detail is a
+ * different statement from "the viewer said nothing".
+ */
+function sanitizeOptionalDetail(detail: string | undefined): string | undefined {
+  if (detail === undefined) {
+    return undefined;
+  }
+
+  return sanitizePlaybackFailureDetail(detail);
+}
+
 /**
  * A viewer-reported playback failure.
  *
  * The schema is strict on purpose: a report that carried a `sourceUrl` would
  * copy the administrator's source into the failure table, so an unknown field
  * is rejected rather than silently dropped.
+ *
+ * The `detail` is free text from the viewer's browser, and it is sanitized
+ * before it is stored: the failure table must never become a second copy of
+ * the content table, and a viewer who pastes the source URL — or a credential
+ * — into the detail would otherwise store it.
  */
 export const playbackFailureReportSchema = z.strictObject({
   episodeId: z.uuid(),
   reason: playbackFailureReasonSchema,
-  detail: z.string().trim().max(2000).optional(),
+  detail: z.string().trim().max(2000).optional().transform(sanitizeOptionalDetail),
 });
 
 export type PlaybackFailureReportInput = z.infer<typeof playbackFailureReportSchema>;

@@ -158,6 +158,18 @@ export const playbackProgressInputSchema = z
       .max(MAX_PLAYBACK_DURATION_SECONDS, 'The duration is out of range.'),
     /** The moment the browser observed the position. */
     watchedAt: watchedAtSchema,
+    /**
+     * The version of the video source the viewer was watching.
+     *
+     * The browser learns the version from the watch page. When an
+     * administrator replaces the source, the version moves on, and a report
+     * that still carries the old version describes a position in a file that
+     * is no longer served — so the server refuses to apply it.
+     */
+    sourceVersion: z
+      .number()
+      .int()
+      .min(1, 'The source version must be a positive integer.'),
   })
   .superRefine((value, ctx) => {
     if (value.durationSeconds > 0 && value.positionSeconds > value.durationSeconds + 1) {

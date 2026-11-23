@@ -240,6 +240,8 @@ Migration tooling and practices are defined in `CONVENTIONS.md` §10. Database-s
 - `drizzle/0010_typed_analytics_targets_and_report_state.sql` extends `0009` with typed `drama_id`/`movie_id` targets on the three analytics tables (`content_view_events`, `playback_analytics_events`, `analytics_daily_aggregates`), the full `review_reports` state (`description`, `resolved_by`, `resolution_outcome`, `reported_at`, and the lifecycle CHECK), and replaces the report → review foreign key with an `ON DELETE RESTRICT` one so moderation history survives the removal of a review. `reported_at` is added as a nullable column and only afterwards given `DEFAULT now()`, so legacy reports keep an empty submission time instead of a fabricated one. All foreign keys and CHECK constraints are added `NOT VALID`; forward-fix-only; the operator procedure is `docs/development/DATA_INTEGRITY.md` and the command is `npm run db:integrity`.
 - `drizzle/0011_anonymized_ratings_and_reviews.sql` allows a rating or review to outlive its content (Prompt 073). It makes `ratings.user_id` and `reviews.user_id` nullable, adds the nullable `anonymized_at` timestamp to both tables, and replaces `ck_ratings_target` / `ck_reviews_target` with a version that accepts a third state: both target columns are `NULL` **and** `anonymized_at IS NOT NULL`. An ordinary row must still point at exactly one drama or movie, so the exactly-one rule of D-020 is preserved for every row that has not been anonymized. Forward-fix-only: rolling back would drop the `anonymized_at` column and its data, so the anonymized rows have to be re-derived or discarded first. No row is rewritten by the migration itself.
 - `drizzle/0012_anonymized_rows_have_no_author.sql` enforces the author half of the anonymization rule (Prompt 073). It adds `ck_ratings_anonymized_author` and `ck_reviews_anonymized_author`, each of which requires `anonymized_at IS NULL OR user_id IS NULL`. Migration `0011` made the author nullable and the target removable; this migration closes the gap where an anonymized row could still name its author. The constraints are additive: an existing row satisfies them, because a row with `anonymized_at IS NULL` is accepted by either branch. Reversible: `ALTER TABLE ratings DROP CONSTRAINT ck_ratings_anonymized_author; ALTER TABLE reviews DROP CONSTRAINT ck_reviews_anonymized_author;` — no row is dropped or rewritten, so the rollback restores `0011` exactly. No row is rewritten by the migration itself.
+- `drizzle/0013_video_source_workflow.sql` adds `subtitle_tracks`, `playback_failure_reports`, and `admin_audit_log` for the direct video source workflow (Prompts 080–090). The three cross-module foreign keys are added `NOT VALID`.
+- `drizzle/0014_video_source_version.sql` adds `episodes.video_source_version` and changes the two playback foreign keys to the episode from `ON DELETE CASCADE` to `ON DELETE RESTRICT` (Prompts 080–090 review fixes). See §8.8.
 - The content Trash (Prompts 072–074) needs no migration: it reuses the existing `deleted_at` columns on `dramas`, `seasons`, `episodes`, and `movies`, and the existing `deleted_at` indexes. The cascade timestamp is a value in those columns, not a new column.
 - Image assets (Prompts 075–078) need no migration: the stored artwork lives on the application disk, and the content tables keep only the managed `/media/...` path in `dramas.poster`, `dramas.banner`, `movies.poster`, and `movies.banner`.
 - `npm run db:generate` creates the next numbered migration from schema changes; `npm run db:migrate` applies pending migrations. `npm run db:push` is local-only and must never be used against production.
@@ -536,8 +538,8 @@ below carry metadata about it.
 
 | Table                       | Module         | Purpose                                                                             | Key relationships                                                                                                                     | Indexes / constraints                                                                                                                                                      |
 | --------------------------- | -------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `subtitle_tracks`           | `playback`     | The subtitle files an episode offers: language, label, format, default selection, and the direct source URL the browser fetches | `episode_id` → `episodes.id` (`ON DELETE CASCADE`)                          | `uq_subtitle_tracks_episode_id_language` (one track per language per episode), `uq_subtitle_tracks_episode_id_default` (at most one default per episode), `idx_subtitle_tracks_episode_id` |
-| `playback_failure_reports`  | `playback`     | Viewer-reported failures of an external source, so an administrator can see which episodes do not play. The report never stores the source URL | `episode_id` → `episodes.id` (`ON DELETE CASCADE`), `reported_by` → `users.id` (`ON DELETE SET NULL`) | `idx_playback_failure_reports_episode_id_created_at`, `idx_playback_failure_reports_created_at`, `idx_playback_failure_reports_reported_by` |
+| `subtitle_tracks`           | `playback`     | The subtitle files an episode offers: language, label, format, default selection, and the direct source URL the browser fetches | `episode_id` → `episodes.id` (`ON DELETE RESTRICT`)                         | `uq_subtitle_tracks_episode_id_language` (one track per language per episode), `uq_subtitle_tracks_episode_id_default` (at most one default per episode), `idx_subtitle_tracks_episode_id` |
+| `playback_failure_reports`  | `playback`     | Viewer-reported failures of an external source, so an administrator can see which episodes do not play. The report never stores the source URL | `episode_id` → `episodes.id` (`ON DELETE RESTRICT`), `reported_by` → `users.id` (`ON DELETE SET NULL`) | `idx_playback_failure_reports_episode_id_created_at`, `idx_playback_failure_reports_created_at`, `idx_playback_failure_reports_reported_by` |
 | `admin_audit_log`           | `administration` | The operational record of administrative actions that change what viewers receive. It records what happened, to which entity, by whom, and when — never the URL that was changed | `actor_id` → `users.id` (`ON DELETE SET NULL`)                              | `idx_admin_audit_log_entity_type_entity_id`, `idx_admin_audit_log_actor_id`, `idx_admin_audit_log_created_at` |
 
 Notes:
@@ -559,6 +561,45 @@ Notes:
 - `episodes.video_source` holds the direct URL and nothing else. The ordinary
   episode update refuses to change it; replacement is a separate transactional
   operation that also resets viewer progress and writes the audit record.
+
+### 8.8 Source version and restrictive playback foreign keys (Prompts 080–090 review fixes)
+
+Migration `drizzle/0014_video_source_version.sql` adds one column and changes
+the deletion behaviour of the two cross-module playback foreign keys.
+
+| Change | Detail |
+| ------ | ------ |
+| `episodes.video_source_version` | `integer NOT NULL DEFAULT 1`. The column counts the source versions of an episode: it starts at `1` and a confirmed replacement increments it. It is the staleness guard for playback progress — see §8.7 and D-041. |
+| `fk_subtitle_tracks_episode_id` | Changed from `ON DELETE CASCADE` to `ON DELETE RESTRICT`. |
+| `fk_playback_failure_reports_episode_id` | Changed from `ON DELETE CASCADE` to `ON DELETE RESTRICT`. |
+
+Why the deletion behaviour changes:
+
+- A cascading delete let a `content` deletion remove another module's rows
+  without that module's knowledge — the `playback` rows vanished silently and
+  the `playback` module could not audit or account for them.
+- A restrictive foreign key refuses the deletion instead. The permanent-delete
+  workflow therefore calls the `playback` module's own purge service
+  (`purgeEpisodePlaybackReferences`) inside the same transaction, and only then
+  deletes the episode. The module that owns the rows removes them.
+- The consequence reaches every code path that hard-deletes an episode. The
+  production path is `src/workflows/admin/permanent-delete.ts`; the end-to-end
+  fixtures (`tests/e2e/support/drama-fixture.mjs` and
+  `tests/e2e/support/stale-fixtures.mjs`) remove the playback rows before the
+  episodes for the same reason.
+
+Migration properties:
+
+- Reversible: `ALTER TABLE episodes DROP COLUMN video_source_version;` restores
+  the `0013` column set, and re-adding the two constraints with
+  `ON DELETE CASCADE` restores the previous deletion behaviour. No row is
+  rewritten by the migration itself.
+- The column has a `DEFAULT 1` and is `NOT NULL`, so the existing rows are
+  backfilled by PostgreSQL without a table rewrite of the data.
+- The two constraints are re-added `NOT VALID`, matching the convention of the
+  other cross-module foreign keys: the migration cannot abort on legacy data,
+  and the constraint is validated by `npm run db:integrity`.
+
 
 ---
 

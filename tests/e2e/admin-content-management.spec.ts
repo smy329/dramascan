@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { adminSession } from './support/admin-session.mjs';
 import { removeDramaBySlug, removeTaxonomyBySlug } from './support/drama-fixture.mjs';
+import { servePlayableMedia } from './support/playable-media.mjs';
 import { taxonomySlugFromName } from '../../src/lib/contracts/taxonomy-form';
 import { dramaSlugFromTitle } from '../../src/lib/contracts/drama-form';
 
@@ -100,9 +101,21 @@ test.describe('admin content management', () => {
       await addSeasonBtn.click();
       await expect(page.getByRole('cell', { name: 'Season 1', exact: true })).toBeVisible();
 
-      // Add an episode linked to Season 1
-      await page.getByRole('region', { name: 'New Episode' }).getByLabel(/^Title/).fill('Episode 1');
-      await page.getByRole('region', { name: 'New Episode' }).getByLabel(/Video Source/).fill('https://media.example.com/e2e/ep1.mp4');
+      // Add an episode linked to Season 1.
+      //
+      // A video source is only stored after the browser proved that it plays:
+      // the preview has to verify the URL before the episode can be saved.
+      const episodeSource = 'https://media.example.com/e2e/ep1.mp4';
+
+      await servePlayableMedia(page, '**/e2e/ep1.mp4');
+
+      const newEpisode = page.getByRole('region', { name: 'New Episode' });
+
+      await newEpisode.getByLabel(/^Title/).fill('Episode 1');
+      await newEpisode.getByLabel(/Video Source/).fill(episodeSource);
+
+      await expect(newEpisode.getByText(/Playback verified/i)).toBeVisible({ timeout: 20_000 });
+
       await page.getByRole('button', { name: 'Add episode' }).click();
 
       await expect(page.getByRole('cell', { name: 'Episode 1', exact: true })).toBeVisible();

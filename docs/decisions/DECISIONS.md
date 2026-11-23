@@ -1786,3 +1786,97 @@ without the two drifting apart.
 - The progress service sits in a different module than the target architecture
   describes. The documentation records the difference; it does not pretend the
   refactor has happened.
+
+---
+
+## D-041 — A source version guards playback progress against a replaced source
+
+**Date:** 2026-11-23
+**Status:** Approved by user (Prompts 080–090 review fixes)
+**Extends:** D-039 (direct external HTTPS MP4 playback), D-040 (progress writes
+in the users module), and D-013 (database conventions).
+
+**Context:** Replacing an episode's source resets every viewer's progress to
+zero and marks the episode unwatched. A viewer who already had the old source
+open keeps playing it, and the player keeps reporting the position it observes
+against the *old* source. Those late reports were accepted, because the
+progress write decided staleness from the observation timestamp alone (D-040
+§4). The result was a viewer whose freshly reset progress was immediately
+restored to the old position by a heartbeat that had been in flight when the
+replacement happened. The reset was therefore not reliable, and the failure was
+invisible: the stored progress simply grew back.
+
+**Decision:**
+
+1. **Every episode carries a source version.** `episodes.video_source_version`
+   is an `integer NOT NULL DEFAULT 1`. A confirmed source replacement increments
+   it in the same transaction that stores the new URL and resets the progress.
+2. **The version travels with every progress write.** `sourceVersion` is a
+   required field of the playback-progress input schema, and the player sends
+   the version it received with the episode.
+3. **A write for a version that is no longer current is ignored, not applied.**
+   The write is compared against the episode's current `video_source_version`;
+   a mismatch is discarded and the write reports that it was not applied. The
+   server stays the authority — the client cannot claim a version that the
+   database does not hold.
+4. **The guard is independent of any clock.** The comparison is an equality
+   check on a counter, not a timestamp comparison. It therefore works
+   regardless of the server clock, the client clock, or how long a heartbeat
+   was in flight.
+
+**Consequences:**
+
+- A viewer who keeps the old source open stops contributing progress as soon as
+  the source is replaced. Their player reports the old version, and the server
+  ignores the report.
+- The version is a counter and not a hash, so it says which generation of the
+  source a report belongs to, not what the source was. The audit record and
+  the history rows keep their own dates; the version does not replace them.
+- Every progress write now carries one more required field. The REST endpoint
+  and the workflow validate it, so a client that omits it is rejected rather
+  than silently accepted.
+
+---
+
+## D-042 — Cross-module foreign keys restrict, and the owning module purges its own rows
+
+**Date:** 2026-11-23
+**Status:** Approved by user (Prompts 080–090 review fixes)
+**Extends:** D-011 (data ownership), D-008 (module boundaries), and D-013
+(database conventions).
+
+**Context:** `subtitle_tracks` and `playback_failure_reports` belong to the
+`playback` module; `episodes` belongs to `content`. Migration `0013` gave both
+foreign keys `ON DELETE CASCADE`. A cascading delete therefore let a `content`
+deletion remove another module's rows without that module's knowledge: the
+`playback` rows vanished silently, the `playback` module could not audit or
+account for them, and a caller could not tell that anything had been removed.
+The same is true of the permanent-delete workflow, which already removes the
+rows of several other modules through their own ownership services.
+
+**Decision:**
+
+1. **A cross-module foreign key restricts.** The two episode foreign keys are
+   changed to `ON DELETE RESTRICT` in migration `0014`. The database refuses
+   the episode deletion while a playback row still points at it.
+2. **The owning module removes its own rows.** The `playback` module exposes
+   `purgeEpisodePlaybackReferences(actor, episodeIds, executor?)`. The
+   permanent-delete workflow calls it inside its own transaction, before the
+   episode is deleted, so the two steps are one unit of work: either the
+   playback rows and the episode are gone, or neither is.
+3. **Every path that hard-deletes an episode has to remove the playback rows
+   first.** This includes the test fixtures: the end-to-end helpers
+   (`tests/e2e/support/drama-fixture.mjs` and
+   `tests/e2e/support/stale-fixtures.mjs`) delete the playback rows before the
+   episodes, for the same reason the production workflow does.
+
+**Consequences:**
+
+- A deletion that forgets the purge is refused by the database rather than
+  silently dropping another module's rows. The failure is loud and immediate.
+- Every new code path that deletes an episode must call the purge first. This
+  is a deliberate cost of the ownership rule: a module's rows are removed by
+  that module.
+- The `playback` module's purge service is actor-first like every other
+  administrative service, so the permanent-delete path is still subject to the
+  authorization rules.

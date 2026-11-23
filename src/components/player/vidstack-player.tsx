@@ -6,7 +6,6 @@ import { MediaPlayer, MediaProvider, Track } from '@vidstack/react';
 import { DefaultVideoLayout, defaultLayoutIcons } from '@vidstack/react/player/layouts/default';
 
 import type { SubtitleTrackDto } from '@/lib/contracts/subtitle-track-form';
-import { savePlaybackProgressAction } from '@/workflows/playback/actions';
 
 import { PlaybackFailureReport } from './playback-failure-report';
 
@@ -43,6 +42,13 @@ export type VidstackPlayerProps = {
   title: string;
   /** The administrator-supplied, direct HTTPS MP4 URL. */
   source: string;
+  /**
+   * The version of the stored source.
+   *
+   * The player reports it with every position, so the server can ignore a
+   * report that belongs to a source an administrator has replaced.
+   */
+  sourceVersion: number;
   /** The subtitle tracks the administrator attached to the episode. */
   subtitleTracks: PlayerSubtitleTrack[];
   /** Whether the viewer is signed in; only a signed-in viewer has progress. */
@@ -80,6 +86,7 @@ export function VidstackPlayer({
   episodeId,
   title,
   source,
+  sourceVersion,
   subtitleTracks,
   signedIn,
   completionThresholdPercent,
@@ -129,15 +136,23 @@ export function VidstackPlayer({
 
     reportedPositionRef.current = position;
 
-    void savePlaybackProgressAction({
-      episodeId,
-      positionSeconds: Math.floor(position),
-      durationSeconds: Math.floor(duration),
-      watchedAt: new Date().toISOString(),
+    // The heartbeat is a REST beacon with a keepalive fetch: the report has to
+    // survive the page being closed, which a Server Action cannot promise.
+    void fetch('/api/playback/progress', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        episodeId,
+        positionSeconds: Math.floor(position),
+        durationSeconds: Math.floor(duration),
+        watchedAt: new Date().toISOString(),
+        sourceVersion,
+      }),
+      keepalive: true,
     }).catch(() => {
       // A failed progress write must never interrupt playback.
     });
-  }, [episodeId, signedIn]);
+  }, [episodeId, signedIn, sourceVersion]);
 
   /** Schedule the next periodic report; the interval is not extended. */
   const scheduleProgressReport = useCallback(() => {

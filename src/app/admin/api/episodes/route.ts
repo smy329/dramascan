@@ -120,8 +120,11 @@ export async function PATCH(request: Request): Promise<Response> {
     const actor = await resolveActor();
     authorizeEpisodeAdmin(actor);
 
-    const { episodeId, videoSource } = await request.json();
-    const result = await replaceEpisodeVideoSource(actor, episodeId, videoSource);
+    const { episodeId, videoSource, previewConfirmed } = await request.json();
+    const result = await replaceEpisodeVideoSource(actor, episodeId, {
+      videoSource,
+      previewConfirmed,
+    });
 
     if (result.ok) {
       return jsonResponse(

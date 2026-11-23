@@ -164,9 +164,25 @@ Beacons are small, idempotent/deduplicated, and bounded. They never write on eve
 
 | Method | Path                     | Auth          | Permission                              | Purpose                                               | Status  |
 | ------ | ------------------------ | ------------- | --------------------------------------- | ----------------------------------------------------- | ------- |
-| `POST` | `/api/playback/progress` | Authenticated | Own progress | Persist debounced playback progress and watched state | Planned |
+| `POST` | `/api/playback/progress` | Authenticated | Own progress | Persist debounced playback progress and watched state | Implemented |
 
-Progress updates carry a client timestamp; the server rejects older updates that would overwrite newer progress.
+The endpoint is a **beacon**: the player sends it with
+`fetch(..., { keepalive: true })`, so the report survives the page being
+closed. It is a REST endpoint rather than a Server Action for that reason
+alone — a Server Action cannot promise that its request outlives the document.
+
+The body carries `episodeId`, `position`, `duration`, `observedAt`, and
+`sourceVersion`. `sourceVersion` is **required**: it is the
+`episodes.video_source_version` counter the episode carried when the player
+loaded it. A write whose version is no longer the episode's current version is
+ignored and reported as not applied, so a heartbeat that was in flight when an
+administrator replaced the source cannot restore the progress the replacement
+reset (D-041). The comparison is on a counter, not on a timestamp, so it does
+not depend on the server clock or the client clock.
+
+The request is checked for a same-origin `Origin` header before it is parsed.
+Progress updates also carry a client timestamp; the server rejects older
+updates that would overwrite newer progress.
 
 ### 3.5 Notifications
 

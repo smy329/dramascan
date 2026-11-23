@@ -43,6 +43,7 @@ import {
   purgeContentReferences as purgeUserReferences,
   purgeEpisodeReferences,
 } from '@/modules/users/content-ownership';
+import { purgeEpisodePlaybackReferences } from '@/modules/playback';
 
 import {
   TRASH_CONTENT_TYPES,
@@ -369,6 +370,15 @@ export async function permanentDelete(
 
     // 4. Content-owned join rows are removed.
     await purgeContentRelations(tx, contentType, scope);
+
+    // 4b. The playback rows of the deleted episodes are removed by the
+    //     playback module, which owns them. The foreign keys from
+    //     `subtitle_tracks` and `playback_failure_reports` to the episode are
+    //     restrictive, so they have to be gone before the episode itself is
+    //     deleted — otherwise the deletion would be refused.
+    if (scope.episodeIds.length > 0) {
+      await purgeEpisodePlaybackReferences(actor, scope.episodeIds, tx);
+    }
 
     // 5. The hierarchy is removed from the leaves up, so no foreign key is
     //    left pointing at a row that no longer exists. The `deleted_at` guard

@@ -90,6 +90,9 @@ function VideoSourceReplacement({
       const result = await replaceEpisodeVideoSourceAction({
         episodeId,
         videoSource: source,
+        // The browser preview verified this URL and the administrator
+        // confirmed the replacement; the declaration travels with the payload.
+        previewConfirmed: true,
       });
 
       if (!result.ok) {
@@ -194,6 +197,10 @@ export function EpisodeManager({
   const [deleting, setDeleting] = useState<EpisodeDto | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [createPreview, setCreatePreview] = useState<VideoSourcePreviewState>({
+    status: 'idle',
+    error: null,
+  });
 
   const state: TableQueryState = {
     page: 1,
@@ -255,21 +262,11 @@ export function EpisodeManager({
       <div className="space-y-4">
         <AdminForm
           schema={updateEpisodeFormSchema}
-          serverAction={values => {
-            const v = values as Record<string, unknown>;
-            const payload: Record<string, unknown> = {
-              id: row.id,
-              drama_id: dramaId,
-              title: v.title,
-              description: v.description,
-              episode_number: v.episode_number,
-            };
-            if (!isFlat) {
-              payload.season_id = v.season_id === '' ? undefined : v.season_id;
-            }
-            return updateEpisodeAction(payload);
-          }}
+          serverAction={values => updateEpisodeAction(values)}
           defaultValues={{
+            // The ids are part of the payload, not of the editable fields.
+            id: row.id,
+            drama_id: dramaId,
             title: row.title,
             description: row.description ?? '',
             episode_number: row.episodeNumber ?? '',
@@ -405,22 +402,12 @@ export function EpisodeManager({
         </h2>
         <AdminForm
           schema={episodeFormSchema}
-          serverAction={values => {
-            const v = values as Record<string, unknown>;
-            const payload: Record<string, unknown> = {
-              dramaId,
-              title: v.title,
-              description: v.description,
-              episode_number: v.episode_number,
-              video_source: v.video_source,
-            };
-            if (!isFlat) {
-              payload.season_id = v.season_id === '' ? undefined : v.season_id;
-            }
-            return createEpisodeAction(payload);
-          }}
+          serverAction={values => createEpisodeAction(values)}
           defaultValues={{ dramaId, title: '', description: '', episode_number: '', season_id: '', video_source: '' }}
           submitLabel="Add episode"
+          // A source is only stored after the browser proved that it plays, so
+          // the episode cannot be saved while the preview is unverified.
+          submitDisabled={createPreview.status === 'loading' || createPreview.status === 'failed'}
           onSuccess={() => router.refresh()}
         >
           <AdminFormField name="title" label="Title" required />
@@ -434,7 +421,7 @@ export function EpisodeManager({
             label="Video Source (HTTPS MP4)"
             hint="Direct absolute HTTPS URL ending in .mp4"
           />
-          <VideoSourcePreview />
+          <VideoSourcePreview onStateChange={setCreatePreview} />
         </AdminForm>
       </section>
 

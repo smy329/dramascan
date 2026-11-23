@@ -20,6 +20,30 @@ export type PublicEpisodePlayback = {
   description: string | null;
   episodeNumber: number | null;
   videoSource: string;
+  /**
+   * The version of the stored source.
+   *
+   * The player reports it with every playback position, so the server can
+   * recognise a report that belongs to a source that has been replaced.
+   */
+  sourceVersion: number;
+};
+
+/**
+ * The episode data a listing needs.
+ *
+ * A listing is not a playback view: the source URL is deliberately not part of
+ * this projection. Only the watch query hands out a media URL.
+ */
+export type PublicEpisodeSummary = {
+  id: string;
+  dramaId: string;
+  dramaSlug: string;
+  dramaTitle: string;
+  seasonId: string | null;
+  title: string;
+  description: string | null;
+  episodeNumber: number | null;
 };
 
 /** The row shape the availability rule is evaluated against. */

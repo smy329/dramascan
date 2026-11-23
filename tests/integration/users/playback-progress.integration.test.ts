@@ -160,6 +160,7 @@ describe('savePlaybackProgress', () => {
         episodeId: seeded.episodeId,
         positionSeconds: 120,
         durationSeconds: 1000,
+        sourceVersion: 1,
         watchedAt: '2026-01-02T10:00:00.000Z',
       },
       { now: new Date('2026-01-02T10:00:05.000Z') }
@@ -189,6 +190,7 @@ describe('savePlaybackProgress', () => {
         episodeId: seeded.episodeId,
         positionSeconds: 120,
         durationSeconds: 1000,
+        sourceVersion: 1,
         watchedAt: '2026-01-02T10:00:00.000Z',
       },
       { now: new Date('2026-01-02T10:00:05.000Z') }
@@ -200,6 +202,7 @@ describe('savePlaybackProgress', () => {
         episodeId: seeded.episodeId,
         positionSeconds: 240,
         durationSeconds: 1000,
+        sourceVersion: 1,
         watchedAt: '2026-01-02T10:01:00.000Z',
       },
       { now: new Date('2026-01-02T10:01:05.000Z') }
@@ -224,6 +227,7 @@ describe('savePlaybackProgress', () => {
         episodeId: seeded.episodeId,
         positionSeconds: 600,
         durationSeconds: 1000,
+        sourceVersion: 1,
         watchedAt: '2026-01-02T10:05:00.000Z',
       },
       { now: new Date('2026-01-02T10:05:05.000Z') }
@@ -235,6 +239,7 @@ describe('savePlaybackProgress', () => {
         episodeId: seeded.episodeId,
         positionSeconds: 60,
         durationSeconds: 1000,
+        sourceVersion: 1,
         watchedAt: '2026-01-02T10:01:00.000Z',
       },
       { now: new Date('2026-01-02T10:06:00.000Z') }
@@ -251,6 +256,79 @@ describe('savePlaybackProgress', () => {
     expect(rows[0]?.position).toBe(600);
   });
 
+  it('ignores a position that belongs to a source that was replaced', async () => {
+    const seeded = await seed();
+    const actor = userActor(seeded.userId);
+
+    // The viewer watched the old source.
+    await savePlaybackProgress(
+      actor,
+      {
+        episodeId: seeded.episodeId,
+        positionSeconds: 600,
+        durationSeconds: 1000,
+        sourceVersion: 1,
+        watchedAt: '2026-01-02T10:05:00.000Z',
+      },
+      { now: new Date('2026-01-02T10:05:05.000Z') }
+    );
+
+    // An administrator replaced the source: the episode's source version moved
+    // on, and every stored position was reset.
+    await db
+      .update(episodes)
+      .set({ video_source_version: 2 })
+      .where(eq(episodes.id, seeded.episodeId));
+
+    // A report that was already in flight when the replacement happened still
+    // carries the old version. It describes a position in a file that is no
+    // longer served, so it must not be applied.
+    const stale = await savePlaybackProgress(
+      actor,
+      {
+        episodeId: seeded.episodeId,
+        positionSeconds: 900,
+        durationSeconds: 1000,
+        sourceVersion: 1,
+        watchedAt: '2026-01-02T10:06:00.000Z',
+      },
+      { now: new Date('2026-01-02T10:06:05.000Z') }
+    );
+
+    expect(stale.applied).toBe(false);
+
+    const rows = await db
+      .select()
+      .from(playback_progress)
+      .where(eq(playback_progress.episode_id, seeded.episodeId));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.position).toBe(600);
+  });
+
+  it('applies a position that belongs to the current source', async () => {
+    const seeded = await seed();
+
+    await db
+      .update(episodes)
+      .set({ video_source_version: 3 })
+      .where(eq(episodes.id, seeded.episodeId));
+
+    const result = await savePlaybackProgress(
+      userActor(seeded.userId),
+      {
+        episodeId: seeded.episodeId,
+        positionSeconds: 300,
+        durationSeconds: 1000,
+        sourceVersion: 3,
+        watchedAt: '2026-01-02T10:00:00.000Z',
+      },
+      { now: new Date('2026-01-02T10:00:05.000Z') }
+    );
+
+    expect(result.applied).toBe(true);
+  });
+
   it('marks the episode watched once the completion threshold is met', async () => {
     const seeded = await seed();
 
@@ -262,6 +340,7 @@ describe('savePlaybackProgress', () => {
         episodeId: seeded.episodeId,
         positionSeconds: position,
         durationSeconds: 1000,
+        sourceVersion: 1,
         watchedAt: '2026-01-02T10:05:00.000Z',
       },
       { now: new Date('2026-01-02T10:05:05.000Z') }
@@ -295,6 +374,7 @@ describe('savePlaybackProgress', () => {
         episodeId: seeded.episodeId,
         positionSeconds: 100,
         durationSeconds: 1000,
+        sourceVersion: 1,
         watchedAt: '2026-01-02T10:00:00.000Z',
       },
       { now: new Date('2026-01-02T10:00:05.000Z') }
@@ -322,6 +402,7 @@ describe('savePlaybackProgress', () => {
         episodeId: seeded.episodeId,
         positionSeconds: 950,
         durationSeconds: 1000,
+        sourceVersion: 1,
         watchedAt: '2026-01-02T10:05:00.000Z',
       },
       { now: new Date('2026-01-02T10:05:05.000Z') }
@@ -342,6 +423,7 @@ describe('savePlaybackProgress', () => {
         episodeId: seeded.episodeId,
         positionSeconds: 980,
         durationSeconds: 1000,
+        sourceVersion: 1,
         watchedAt: '2026-01-02T11:05:00.000Z',
       },
       { now: new Date('2026-01-02T11:05:05.000Z') }
@@ -364,6 +446,7 @@ describe('savePlaybackProgress', () => {
         episodeId: seeded.episodeId,
         positionSeconds: 120,
         durationSeconds: 1000,
+        sourceVersion: 1,
         watchedAt: '2026-01-02T10:00:00.000Z',
       },
       { now: new Date('2026-01-02T10:00:05.000Z') }
@@ -386,6 +469,7 @@ describe('savePlaybackProgress', () => {
         episodeId: seeded.otherEpisodeId,
         positionSeconds: 300,
         durationSeconds: 1000,
+        sourceVersion: 1,
         watchedAt: '2026-01-02T10:00:00.000Z',
       },
       { now: new Date('2026-01-02T10:00:05.000Z') }
@@ -409,6 +493,7 @@ describe('savePlaybackProgress', () => {
           episodeId: randomUUID(),
           positionSeconds: 120,
           durationSeconds: 1000,
+        sourceVersion: 1,
           watchedAt: '2026-01-02T10:00:00.000Z',
         },
         { now: new Date('2026-01-02T10:00:05.000Z') }
@@ -426,6 +511,7 @@ describe('savePlaybackProgress', () => {
           episodeId: seeded.episodeId,
           positionSeconds: 120,
           durationSeconds: 1000,
+        sourceVersion: 1,
           watchedAt: '2026-01-02T10:00:00.000Z',
         },
         { now: new Date('2026-01-02T10:00:05.000Z') }
@@ -443,6 +529,7 @@ describe('savePlaybackProgress', () => {
           episodeId: seeded.episodeId,
           positionSeconds: 'not-a-number',
           durationSeconds: 1000,
+        sourceVersion: 1,
           watchedAt: '2026-01-02T10:00:00.000Z',
         },
         { now: new Date('2026-01-02T10:00:05.000Z') }

@@ -13,6 +13,9 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
  * Failure reports let an administrator see which episodes are not playing
  * without the module copying the source URL into a second table.
  *
+ * Every administrative service takes the actor as its first argument and
+ * re-checks `episode.manage` itself: the client is never the authority.
+ *
  * These tests run against the real PostgreSQL test database.
  */
 
@@ -33,6 +36,7 @@ import { eq, inArray, like } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { users } from '@/modules/auth/schema';
+import { anonymousActor, userActor } from '@/modules/authorization';
 import { dramas, episodes, seasons } from '@/modules/content/schema';
 import {
   deleteSubtitleTrack,
@@ -40,6 +44,7 @@ import {
   listPublicSubtitleTracks,
   listSubtitleTracks,
   listSubtitleTracksByEpisodeIds,
+  purgeEpisodePlaybackReferences,
   recordPlaybackFailure,
   upsertSubtitleTrack,
 } from '@/modules/playback';
@@ -111,6 +116,16 @@ async function seed(): Promise<Seed> {
   return { reporterId, dramaId, episodeId, secondEpisodeId };
 }
 
+/** An administrator who may manage episodes and their subtitle tracks. */
+function adminActor(seeded: Seed): ReturnType<typeof userActor> {
+  return userActor(seeded.reporterId, { isSuperAdmin: true });
+}
+
+/** A signed-in viewer without any administrative permission. */
+function viewerActor(seeded: Seed): ReturnType<typeof userActor> {
+  return userActor(seeded.reporterId);
+}
+
 async function cleanup(): Promise<void> {
   const rows = await db
     .select({ id: dramas.id })
@@ -159,7 +174,7 @@ describe('subtitle tracks', () => {
   it('creates a track', async () => {
     const seeded = await seed();
 
-    const track = await upsertSubtitleTrack({
+    const track = await upsertSubtitleTrack(adminActor(seeded), {
       episodeId: seeded.episodeId,
       language: 'en',
       label: 'English',
@@ -177,14 +192,46 @@ describe('subtitle tracks', () => {
       isDefault: false,
     });
 
-    const stored = await listSubtitleTracks(seeded.episodeId);
+    const stored = await listSubtitleTracks(adminActor(seeded), seeded.episodeId);
     expect(stored).toHaveLength(1);
+  });
+
+  it('refuses a track write without the episode.manage permission', async () => {
+    const seeded = await seed();
+
+    await expect(
+      upsertSubtitleTrack(viewerActor(seeded), {
+        episodeId: seeded.episodeId,
+        language: 'en',
+        label: 'English',
+        sourceUrl: 'https://cdn.example.com/subs/ep1.vtt',
+        format: 'vtt',
+        isDefault: false,
+      })
+    ).rejects.toThrow();
+
+    expect(await listSubtitleTracks(adminActor(seeded), seeded.episodeId)).toHaveLength(0);
+  });
+
+  it('refuses a track for an episode that is not there', async () => {
+    const seeded = await seed();
+
+    await expect(
+      upsertSubtitleTrack(adminActor(seeded), {
+        episodeId: randomUUID(),
+        language: 'en',
+        label: 'English',
+        sourceUrl: 'https://cdn.example.com/subs/ep1.vtt',
+        format: 'vtt',
+        isDefault: false,
+      })
+    ).rejects.toThrow();
   });
 
   it('replaces the track for a language that already has one', async () => {
     const seeded = await seed();
 
-    await upsertSubtitleTrack({
+    await upsertSubtitleTrack(adminActor(seeded), {
       episodeId: seeded.episodeId,
       language: 'en',
       label: 'English',
@@ -193,7 +240,7 @@ describe('subtitle tracks', () => {
       isDefault: false,
     });
 
-    const replaced = await upsertSubtitleTrack({
+    const replaced = await upsertSubtitleTrack(adminActor(seeded), {
       episodeId: seeded.episodeId,
       language: 'en',
       label: 'English (revised)',
@@ -202,7 +249,7 @@ describe('subtitle tracks', () => {
       isDefault: false,
     });
 
-    const stored = await listSubtitleTracks(seeded.episodeId);
+    const stored = await listSubtitleTracks(adminActor(seeded), seeded.episodeId);
 
     expect(stored).toHaveLength(1);
     expect(stored[0]?.label).toBe('English (revised)');
@@ -213,7 +260,7 @@ describe('subtitle tracks', () => {
   it('demotes the previous default when another track becomes the default', async () => {
     const seeded = await seed();
 
-    await upsertSubtitleTrack({
+    await upsertSubtitleTrack(adminActor(seeded), {
       episodeId: seeded.episodeId,
       language: 'en',
       label: 'English',
@@ -222,7 +269,7 @@ describe('subtitle tracks', () => {
       isDefault: true,
     });
 
-    await upsertSubtitleTrack({
+    await upsertSubtitleTrack(adminActor(seeded), {
       episodeId: seeded.episodeId,
       language: 'ko',
       label: 'Korean',
@@ -231,7 +278,7 @@ describe('subtitle tracks', () => {
       isDefault: true,
     });
 
-    const stored = await listSubtitleTracks(seeded.episodeId);
+    const stored = await listSubtitleTracks(adminActor(seeded), seeded.episodeId);
     const defaults = stored.filter(track => track.isDefault);
 
     expect(defaults).toHaveLength(1);
@@ -242,7 +289,7 @@ describe('subtitle tracks', () => {
   it('deletes a track', async () => {
     const seeded = await seed();
 
-    const track = await upsertSubtitleTrack({
+    const track = await upsertSubtitleTrack(adminActor(seeded), {
       episodeId: seeded.episodeId,
       language: 'en',
       label: 'English',
@@ -251,15 +298,15 @@ describe('subtitle tracks', () => {
       isDefault: false,
     });
 
-    await deleteSubtitleTrack(seeded.episodeId, track.id);
+    await deleteSubtitleTrack(adminActor(seeded), seeded.episodeId, track.id);
 
-    expect(await listSubtitleTracks(seeded.episodeId)).toHaveLength(0);
+    expect(await listSubtitleTracks(adminActor(seeded), seeded.episodeId)).toHaveLength(0);
   });
 
   it('lists the tracks a viewer may select', async () => {
     const seeded = await seed();
 
-    await upsertSubtitleTrack({
+    await upsertSubtitleTrack(adminActor(seeded), {
       episodeId: seeded.episodeId,
       language: 'en',
       label: 'English',
@@ -285,14 +332,11 @@ describe('playback failure reports', () => {
   it('stores a report with its reporter and reason', async () => {
     const seeded = await seed();
 
-    const report = await recordPlaybackFailure(
-      {
-        episodeId: seeded.episodeId,
-        reason: 'network',
-        detail: 'The media request failed.',
-      },
-      seeded.reporterId
-    );
+    const report = await recordPlaybackFailure(viewerActor(seeded), {
+      episodeId: seeded.episodeId,
+      reason: 'network',
+      detail: 'The media request failed.',
+    });
 
     expect(report.id).toBeTruthy();
 
@@ -312,13 +356,10 @@ describe('playback failure reports', () => {
   it('accepts an anonymous report', async () => {
     const seeded = await seed();
 
-    await recordPlaybackFailure(
-      {
-        episodeId: seeded.episodeId,
-        reason: 'unknown',
-      },
-      null
-    );
+    await recordPlaybackFailure(anonymousActor(), {
+      episodeId: seeded.episodeId,
+      reason: 'unknown',
+    });
 
     const [row] = await db
       .select()
@@ -331,14 +372,11 @@ describe('playback failure reports', () => {
   it('never stores the source URL', async () => {
     const seeded = await seed();
 
-    await recordPlaybackFailure(
-      {
-        episodeId: seeded.episodeId,
-        reason: 'media',
-        detail: 'The player could not decode the media.',
-      },
-      seeded.reporterId
-    );
+    await recordPlaybackFailure(viewerActor(seeded), {
+      episodeId: seeded.episodeId,
+      reason: 'media',
+      detail: 'The player could not decode the media.',
+    });
 
     const [row] = await db
       .select()
@@ -351,28 +389,35 @@ describe('playback failure reports', () => {
   it('lists the reports of an episode, newest first', async () => {
     const seeded = await seed();
 
-    await recordPlaybackFailure(
-      {
-        episodeId: seeded.episodeId,
-        reason: 'network',
-        detail: 'First report.',
-      },
-      seeded.reporterId
-    );
+    await recordPlaybackFailure(viewerActor(seeded), {
+      episodeId: seeded.episodeId,
+      reason: 'network',
+      detail: 'First report.',
+    });
 
-    await recordPlaybackFailure(
-      {
-        episodeId: seeded.episodeId,
-        reason: 'cors',
-        detail: 'Second report.',
-      },
-      seeded.reporterId
-    );
+    await recordPlaybackFailure(viewerActor(seeded), {
+      episodeId: seeded.episodeId,
+      reason: 'cors',
+      detail: 'Second report.',
+    });
 
-    const reports = await listPlaybackFailures({ episodeId: seeded.episodeId });
+    const reports = await listPlaybackFailures(adminActor(seeded), {
+      episodeId: seeded.episodeId,
+    });
 
     expect(reports).toHaveLength(2);
     expect(reports[0]?.detail).toBe('Second report.');
+  });
+
+  it('refuses the administrative list without the episode.manage permission', async () => {
+    const seeded = await seed();
+
+    await recordPlaybackFailure(viewerActor(seeded), {
+      episodeId: seeded.episodeId,
+      reason: 'network',
+    });
+
+    await expect(listPlaybackFailures(viewerActor(seeded))).rejects.toThrow();
   });
 });
 
@@ -385,7 +430,7 @@ describe('batch read models', () => {
   it('lists the subtitle tracks of several episodes at once', async () => {
     const seeded = await seed();
 
-    await upsertSubtitleTrack({
+    await upsertSubtitleTrack(adminActor(seeded), {
       episodeId: seeded.episodeId,
       language: 'en',
       label: 'English',
@@ -394,7 +439,7 @@ describe('batch read models', () => {
       isDefault: true,
     });
 
-    await upsertSubtitleTrack({
+    await upsertSubtitleTrack(adminActor(seeded), {
       episodeId: seeded.secondEpisodeId,
       language: 'ko',
       label: 'Korean',
@@ -403,7 +448,7 @@ describe('batch read models', () => {
       isDefault: false,
     });
 
-    const tracks = await listSubtitleTracksByEpisodeIds([
+    const tracks = await listSubtitleTracksByEpisodeIds(adminActor(seeded), [
       seeded.episodeId,
       seeded.secondEpisodeId,
     ]);
@@ -415,23 +460,27 @@ describe('batch read models', () => {
   });
 
   it('returns no subtitle tracks for an empty episode list', async () => {
-    expect(await listSubtitleTracksByEpisodeIds([])).toEqual([]);
+    const seeded = await seed();
+
+    expect(await listSubtitleTracksByEpisodeIds(adminActor(seeded), [])).toEqual([]);
   });
 
   it('lists the failure reports of several episodes at once', async () => {
     const seeded = await seed();
 
-    await recordPlaybackFailure(
-      { episodeId: seeded.episodeId, reason: 'network', detail: 'First episode failed.' },
-      seeded.reporterId
-    );
+    await recordPlaybackFailure(viewerActor(seeded), {
+      episodeId: seeded.episodeId,
+      reason: 'network',
+      detail: 'First episode failed.',
+    });
 
-    await recordPlaybackFailure(
-      { episodeId: seeded.secondEpisodeId, reason: 'media', detail: 'Second episode failed.' },
-      seeded.reporterId
-    );
+    await recordPlaybackFailure(viewerActor(seeded), {
+      episodeId: seeded.secondEpisodeId,
+      reason: 'media',
+      detail: 'Second episode failed.',
+    });
 
-    const reports = await listPlaybackFailures({
+    const reports = await listPlaybackFailures(adminActor(seeded), {
       episodeIds: [seeded.episodeId, seeded.secondEpisodeId],
     });
 
@@ -444,13 +493,66 @@ describe('batch read models', () => {
   it('does not report failures of episodes outside the requested list', async () => {
     const seeded = await seed();
 
-    await recordPlaybackFailure(
-      { episodeId: seeded.secondEpisodeId, reason: 'network' },
-      seeded.reporterId
-    );
+    await recordPlaybackFailure(viewerActor(seeded), {
+      episodeId: seeded.secondEpisodeId,
+      reason: 'network',
+    });
 
-    const reports = await listPlaybackFailures({ episodeIds: [seeded.episodeId] });
+    const reports = await listPlaybackFailures(adminActor(seeded), {
+      episodeIds: [seeded.episodeId],
+    });
 
     expect(reports).toEqual([]);
+  });
+});
+
+/**
+ * The permanent deletion of an episode removes the playback rows of that
+ * episode. The rows belong to the playback module, so the module removes them:
+ * a content deletion never reaches into another module's tables.
+ */
+describe('permanent-delete cleanup', () => {
+  it('removes the subtitle tracks and the failure reports of the episodes', async () => {
+    const seeded = await seed();
+
+    await upsertSubtitleTrack(adminActor(seeded), {
+      episodeId: seeded.episodeId,
+      language: 'en',
+      label: 'English',
+      sourceUrl: 'https://cdn.example.com/subs/ep1.vtt',
+      format: 'vtt',
+      isDefault: true,
+    });
+
+    await recordPlaybackFailure(viewerActor(seeded), {
+      episodeId: seeded.episodeId,
+      reason: 'network',
+    });
+
+    const purged = await purgeEpisodePlaybackReferences(adminActor(seeded), [seeded.episodeId]);
+
+    expect(purged).toEqual({ subtitleTracks: 1, failureReports: 1 });
+
+    expect(await listSubtitleTracks(adminActor(seeded), seeded.episodeId)).toHaveLength(0);
+    expect(await listPlaybackFailures(adminActor(seeded), { episodeId: seeded.episodeId })).toEqual(
+      []
+    );
+  });
+
+  it('leaves the rows of other episodes alone', async () => {
+    const seeded = await seed();
+
+    await upsertSubtitleTrack(adminActor(seeded), {
+      episodeId: seeded.secondEpisodeId,
+      language: 'ko',
+      label: 'Korean',
+      sourceUrl: 'https://cdn.example.com/subs/ep2.vtt',
+      format: 'vtt',
+      isDefault: false,
+    });
+
+    await purgeEpisodePlaybackReferences(adminActor(seeded), [seeded.episodeId]);
+
+    expect(await listSubtitleTracks(adminActor(seeded), seeded.secondEpisodeId)).toHaveLength(1);
   });
 });

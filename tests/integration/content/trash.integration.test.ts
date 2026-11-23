@@ -15,6 +15,7 @@ import { db } from '@/db/client';
 import { users } from '@/modules/auth/schema';
 import { dramas, episodes, movies, seasons } from '@/modules/content/schema';
 import { ratings, reviews } from '@/modules/reviews/schema';
+import { playback_failure_reports, subtitle_tracks } from '@/modules/playback/schema';
 import {
   bookmarks,
   playback_progress,
@@ -108,6 +109,22 @@ async function cleanup(): Promise<void> {
     await db.delete(playback_progress).where(eq(playback_progress.drama_id, dramaId));
     await db.delete(watched_state).where(eq(watched_state.drama_id, dramaId));
     await db.delete(watch_history).where(eq(watch_history.drama_id, dramaId));
+    // The playback rows have a restrictive foreign key to the episode, so
+    // they have to go before the episode itself.
+    const episodeRows = await db
+      .select({ id: episodes.id })
+      .from(episodes)
+      .where(eq(episodes.drama_id, dramaId));
+
+    if (episodeRows.length > 0) {
+      const episodeIds = episodeRows.map(row => row.id);
+
+      await db.delete(subtitle_tracks).where(inArray(subtitle_tracks.episode_id, episodeIds));
+      await db
+        .delete(playback_failure_reports)
+        .where(inArray(playback_failure_reports.episode_id, episodeIds));
+    }
+
     await db.delete(episodes).where(eq(episodes.drama_id, dramaId));
     await db.delete(seasons).where(eq(seasons.drama_id, dramaId));
     await db.delete(dramas).where(eq(dramas.id, dramaId));
@@ -243,6 +260,53 @@ describe('permanent deletion', () => {
     await expect(permanentDelete(superAdminActor, 'drama', dramaId)).rejects.toBeInstanceOf(
       ValidationError
     );
+  });
+
+  it('removes the playback rows of the deleted episode', async () => {
+    const dramaId = await seedDrama('playback-rows');
+    const userId = await seedUser();
+
+    const episode = await createEpisode(managerActor, dramaId, { title: 'Episode 1' });
+    const episodeId = episode.ok ? episode.episode.id : '';
+
+    await db.insert(subtitle_tracks).values({
+      episode_id: episodeId,
+      language: 'en',
+      label: 'English',
+      source_url: 'https://cdn.example.com/subs/ep1.vtt',
+      format: 'vtt',
+      is_default: true,
+    });
+    await db.insert(playback_failure_reports).values({
+      episode_id: episodeId,
+      reported_by: userId,
+      reason: 'network',
+      detail: 'The media request failed.',
+    });
+
+    expect((await deleteEpisode(managerActor, episodeId)).ok).toBe(true);
+
+    // The foreign keys from the playback rows to the episode are restrictive:
+    // the deletion only works because the playback module removed its own rows
+    // first, inside the same transaction.
+    await permanentDelete(superAdminActor, 'episode', episodeId);
+
+    const [episodeRow] = await db
+      .select({ id: episodes.id })
+      .from(episodes)
+      .where(eq(episodes.id, episodeId));
+    const trackRows = await db
+      .select({ id: subtitle_tracks.id })
+      .from(subtitle_tracks)
+      .where(eq(subtitle_tracks.episode_id, episodeId));
+    const reportRows = await db
+      .select({ id: playback_failure_reports.id })
+      .from(playback_failure_reports)
+      .where(eq(playback_failure_reports.episode_id, episodeId));
+
+    expect(episodeRow).toBeUndefined();
+    expect(trackRows).toHaveLength(0);
+    expect(reportRows).toHaveLength(0);
   });
 
   it('removes the hierarchy and the personal records, and anonymizes the ratings and reviews', async () => {

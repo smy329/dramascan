@@ -96,6 +96,94 @@ fetches, proxies, relays, rehosts, transcodes, or uploads video.
 - Verified: typecheck PASS; lint PASS; unit 973/973 PASS; integration 576/576
   PASS; Playwright E2E 49/49 PASS; production build PASS.
 
+### fix: address the review findings of the video source workflow (Prompts 080–090)
+
+A two-axis review of the video source workflow found eleven issues across the
+two axes — specification conformance and repository standards. This change
+fixes them without changing the approved scope: the source is still a direct
+HTTPS MP4 URL, the server still never fetches it, and there is still no
+upload, proxy, or transcode path.
+
+Fixed:
+
+- `src/platform/config/schema.ts` (modified): an empty or whitespace-only
+  `MEDIA_ALLOWED_HOSTS` is treated as "not configured" instead of being parsed
+  as a host named `""`. The empty value used to start the application with an
+  unusable media policy.
+- `src/modules/playback/validation.ts` (modified): a viewer-reported failure
+  detail is sanitized before it is stored. Control characters are removed,
+  absolute URLs are redacted, credential-shaped text is redacted, and the
+  result is whitespace-collapsed and trimmed. The failure table can therefore
+  never become a second copy of the source URL or a place to store a token.
+- `src/modules/content/validation.ts` and `src/lib/contracts/episode-form.ts`
+  (modified): the preview confirmation is a domain rule of the `content`
+  module (`requireVideoSourcePreviewConfirmation`), composed into the form
+  contract and validated again on the server. A source is stored only when the
+  payload carries the confirmation — on the initial store **and** on a
+  replacement.
+- `src/workflows/admin/episode-actions.ts` (modified): the create action
+  forwards `video_source_preview_confirmed` to the workflow. The flag was
+  dropped on the way in, which made it impossible to create an episode with a
+  source.
+- `src/components/admin/dramas/episode-manager.tsx` (modified): the episode
+  edit form carries the episode id and the drama id in its default values.
+  The resolver required them and the form never supplied them, so the episode
+  edit form could not submit at all.
+- `src/workflows/playback/actions.ts` (modified) and
+  `src/app/api/playback/progress/route.ts` (new): the playback heartbeat is a
+  REST beacon (`POST /api/playback/progress`, `keepalive: true`), not a Server
+  Action. A Server Action cannot promise that the request survives the page
+  being closed; the beacon does. The workflow behind it is
+  `src/workflows/playback/save-playback-progress.ts`.
+- `src/modules/content/schema.ts` and `drizzle/0014_video_source_version.sql`
+  (new): `episodes.video_source_version` counts the source generations of an
+  episode. A progress write carries the version it belongs to, and a write for
+  a version that is no longer current is ignored. The comparison is on a
+  counter, not on a timestamp, so it does not depend on any clock (D-041).
+- `src/modules/playback/{repository,queries,service}.ts` (new/rewritten) and
+  `src/modules/playback/index.ts` (rewritten): the module is layered
+  repository → queries → services → public API. Every administrative service
+  takes the trusted actor as its first argument and re-checks `episode.manage`
+  itself. A workflow can pass its transaction handle to a service, so the
+  workflow owns the transaction and the module owns the rows.
+- `src/workflows/admin/playback.ts` (new) and
+  `src/workflows/admin/playback-actions.ts` (rewritten): the subtitle default
+  switch runs in one transaction owned by the workflow. The Server Action next
+  to it is a thin adapter: it resolves the actor, reads no table, and writes
+  no SQL. The workflow does not import another module's internals.
+- `src/workflows/admin/permanent-delete.ts` (modified): the permanent
+  deletion calls the `playback` module's own purge service before deleting the
+  episodes. The two cross-module foreign keys are `ON DELETE RESTRICT` now, so
+  a content deletion can no longer remove another module's rows behind its
+  back (D-042).
+- `src/modules/content/public-episodes.ts` (modified): the catalogue list no
+  longer exposes `videoSource`. Only the playback lookup returns the URL, and
+  only for an episode that is publicly playable.
+- `src/components/admin/dramas/{episode-manager,subtitle-track-manager}.tsx`
+  (modified): the unsafe `as Record<string, unknown>` assertions are gone. The
+  resolver-validated values are handed to the Server Actions as they are.
+
+Guards:
+
+- `tests/unit/architecture/playback-workflow-boundary.test.ts` (new): the
+  heartbeat has to be the REST beacon, the workflow has to own the
+  transaction, and neither the workflow nor its Server Action may import a
+  module's internals or write SQL.
+- `tests/unit/architecture/direct-video-source.test.ts` (modified): the
+  migrations are scanned as well, so a video pipeline that exists only as a
+  table is caught too.
+- `tests/unit/e2e/stale-fixtures.test.ts` (modified): the end-to-end fixture
+  sweep has to remove the playback rows before the episodes they point at.
+  Without it the sweep rolls back on the restrictive foreign key.
+- `tests/e2e/support/drama-fixture.mjs` and
+  `tests/e2e/support/stale-fixtures.mjs` (modified): the end-to-end cleanups
+  remove the playback rows before the episodes, for the same reason the
+  permanent-delete workflow does.
+- `tests/e2e/support/playable-media.mjs` (new): the shared browser fixture
+  serves a playable file with CORS and range support, so the preview is
+  exercised against a media host that behaves like a real one.
+
+
 ### test: warm the development server before the end-to-end suite
 
 The end-to-end launcher runs `next dev`, and a development server compiles a

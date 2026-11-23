@@ -112,6 +112,16 @@ export const STALE_FIXTURE_STATEMENTS = Object.freeze([
     sql: `DELETE FROM structure_conversion_snapshots WHERE drama_id IN ${FIXTURE_DRAMA_IDS}`,
   },
   {
+    key: 'subtitleTracks',
+    sql: `DELETE FROM subtitle_tracks
+          WHERE episode_id IN ${FIXTURE_EPISODE_IDS}`,
+  },
+  {
+    key: 'playbackFailureReports',
+    sql: `DELETE FROM playback_failure_reports
+          WHERE episode_id IN ${FIXTURE_EPISODE_IDS}`,
+  },
+  {
     key: 'episodes',
     sql: `DELETE FROM episodes WHERE drama_id IN ${FIXTURE_DRAMA_IDS}`,
   },

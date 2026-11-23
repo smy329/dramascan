@@ -26,6 +26,7 @@ import { episodes, dramas, seasons } from '@/modules/content/schema';
 import {
   parseOrThrow,
   parseCreateEpisodeInput,
+  parseReplaceEpisodeVideoSourceInput,
   publicationReadyVideoSourceSchema,
 } from '@/modules/content/validation';
 import { evaluatePublicAvailability } from '@/modules/content/publication';
@@ -813,7 +814,8 @@ export async function deleteEpisode(
  *
  * The administrator has already verified the new URL in the browser preview
  * (`VideoSourcePreview`), which is the only thing that can actually prove that
- * a remote URL plays. This workflow performs the replacement.
+ * a remote URL plays. The payload carries that confirmation, and this workflow
+ * refuses a replacement without it.
  *
  * The replacement is one unit of work:
  *
@@ -838,12 +840,13 @@ export async function deleteEpisode(
 export async function replaceEpisodeVideoSource(
   actor: ActorContext,
   episodeId: string,
-  newVideoSource: string
+  input: unknown
 ): Promise<{ ok: true; episode: ReturnType<typeof toEpisode> } | { ok: false; error: unknown }> {
   requirePermission(actor, MANAGE_PERMISSION);
 
-  // Validate URL syntax, HTTPS scheme, credentials, and the .mp4 path format.
-  const parsedUrl = parseOrThrow(publicationReadyVideoSourceSchema, newVideoSource);
+  // Validate the replacement payload: URL syntax, HTTPS scheme, credentials,
+  // the .mp4 path format, and the administrator's preview confirmation.
+  const parsed = parseReplaceEpisodeVideoSourceInput(input);
   const parsedEpisodeId = parseOrThrow(z.uuid(), episodeId);
 
   return db.transaction(async tx => {
@@ -864,10 +867,16 @@ export async function replaceEpisodeVideoSource(
     // no transcoding, no staging. The URL is stored as-is for direct
     // browser playback via Vidstack. All other episode data (title, description,
     // hierarchy, reviews, ratings, etc.) is preserved.
+    //
+    // The source version moves on with the URL: a playback position that
+    // belongs to the previous file is then recognisable and ignored, so a
+    // report that was already in flight cannot move a viewer into the middle
+    // of the new video.
     const [row] = await tx
       .update(episodes)
       .set({
-        video_source: parsedUrl,
+        video_source: parsed.videoSource,
+        video_source_version: sql`${episodes.video_source_version} + 1`,
         updated_at: new Date(),
       })
       .where(eq(episodes.id, parsedEpisodeId))

@@ -5,6 +5,9 @@
  * subtitle-track and failure-report services they are allowed to use, not the
  * module's schema or inner helpers.
  *
+ * Every administrative service takes the trusted actor as its first argument
+ * and re-checks `episode.manage` itself: the client is never the authority.
+ *
  * Scope note: the browser fetches subtitle files directly from the external
  * host. The server stores and validates the metadata; it never downloads,
  * converts, or rehosts a subtitle file.
@@ -34,17 +37,19 @@ export type {
 export {
   deleteSubtitleTrack,
   listPlaybackFailures,
-  listPublicSubtitleTracks,
   listSubtitleTracks,
   listSubtitleTracksByEpisodeIds,
+  purgeEpisodePlaybackReferences,
   recordPlaybackFailure,
   upsertSubtitleTrack,
-} from './queries';
+} from './service';
+
+export { listPublicSubtitleTracks } from './queries';
 
 export type {
   PlaybackFailureListItem,
   PlaybackFailureQuery,
   PublicSubtitleTrack,
-  PlaybackFailureReport,
-  SubtitleTrack,
 } from './queries';
+
+export type { SubtitleTrack } from './repository';

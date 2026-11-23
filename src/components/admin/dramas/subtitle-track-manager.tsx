@@ -163,17 +163,7 @@ export function SubtitleTrackManager({
 
       <AdminForm
         schema={subtitleTrackFormSchema}
-        serverAction={values => {
-          const v = values as Record<string, unknown>;
-          return upsertSubtitleTrackAction({
-            episodeId,
-            language: v.language,
-            label: v.label,
-            sourceUrl: v.sourceUrl,
-            format: v.format,
-            isDefault: v.isDefault === true,
-          });
-        }}
+        serverAction={values => upsertSubtitleTrackAction(values)}
         defaultValues={{
           episodeId,
           language: '',

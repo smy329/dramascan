@@ -16,16 +16,20 @@ import { findVideoPipelineViolations } from './support/video-pipeline-detector';
  * record the exclusion. This guard therefore checks the *code* and the
  * *dependency manifest*, where a provider-specific client, SDK, credential, or
  * upload workflow would actually live.
+ *
+ * The migrations are part of the guard: a video pipeline that only exists as a
+ * table would still be a video pipeline, so the SQL in `drizzle/` is scanned
+ * with the same detector as the application code.
  */
 
 const PROJECT_ROOT = process.cwd();
 
-const SOURCE_DIRECTORIES = ['src', 'scripts'];
+const SOURCE_DIRECTORIES = ['src', 'scripts', 'drizzle'];
 
 const FILE_EXTENSIONS = ['.ts', '.tsx', '.mjs', '.js', '.json', '.sql'];
 
 /** The extensions that can carry a video pipeline. */
-const CODE_EXTENSIONS = ['.ts', '.tsx', '.mjs', '.js'];
+const CODE_EXTENSIONS = ['.ts', '.tsx', '.mjs', '.js', '.sql'];
 
 const FORBIDDEN_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
   { label: 'Odysee', pattern: /\bodysee\b/i },
@@ -106,5 +110,13 @@ describe('direct MP4 source architecture', () => {
       );
 
     expect(offenders).toEqual([]);
+  });
+
+  it('scans the migrations as well', () => {
+    // A video pipeline that exists only as a table is still a video pipeline,
+    // so the SQL migrations have to be part of the scan.
+    const migrations = readSources().filter(({ file }) => file.startsWith('drizzle/'));
+
+    expect(migrations.length).toBeGreaterThan(0);
   });
 });

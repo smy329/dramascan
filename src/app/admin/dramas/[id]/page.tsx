@@ -75,8 +75,8 @@ export default async function AdminDramaDetailPage({
   // The subtitle tracks and the reported failures of the whole drama are read
   // in two queries, not one query per episode.
   const [subtitleTracks, playbackFailures] = await Promise.all([
-    episodeIds.length > 0 ? listSubtitleTracksByEpisodeIds(episodeIds) : [],
-    episodeIds.length > 0 ? listPlaybackFailures({ episodeIds }) : [],
+    episodeIds.length > 0 ? listSubtitleTracksByEpisodeIds(actor, episodeIds) : [],
+    episodeIds.length > 0 ? listPlaybackFailures(actor, { episodeIds }) : [],
   ]);
 
   const subtitleTracksByEpisode: Record<string, SubtitleTrackDto[]> = {};

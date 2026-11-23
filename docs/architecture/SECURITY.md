@@ -207,6 +207,17 @@ The platform plays administrator-supplied, public, direct HTTPS MP4 URLs. This h
   failure produces a viewer-visible message with a manual retry and, at the
   viewer's option, a failure report. There is no automatic retry, URL search,
   repair, provider switching, or background retry.
+- **A failure report is sanitized before it is stored.** The detail is free
+  text from the viewer's browser. It is stripped of control characters, its
+  absolute URLs and credential-shaped text are redacted, and the result is
+  whitespace-collapsed and trimmed. The failure table can therefore never
+  become a second copy of the source URL or a place to store a token.
+- **A progress write cannot outlive the source it belongs to.** Every
+  progress write carries the `video_source_version` counter the episode had
+  when the player loaded it. A write whose version is no longer the episode's
+  current version is ignored. A heartbeat that was in flight when an
+  administrator replaced the source therefore cannot restore the progress the
+  replacement reset (D-041).
 
 ### 7.2 Source replacement
 
@@ -214,9 +225,16 @@ Replacing an episode or movie source is a consequential operation:
 
 1. The administrator supplies the new HTTPS URL.
 2. The browser preview must play successfully.
-3. The administrator explicitly confirms the replacement.
+3. The administrator explicitly confirms the replacement. The confirmation
+   travels with the payload as a flag, and the server refuses a source
+   without it — for the initial store as well as for a replacement. The
+   server cannot observe browser playback, so it validates the flag rather
+   than the playback itself; the browser is what produces the flag.
 4. The replacement is applied transactionally; progress for the affected episode is reset while watch-history records and their historical dates are preserved.
 5. The old URL is not treated as secret and is not retained as a fallback unless the approved schema stores replacement history.
+6. The episode's `video_source_version` is incremented in the same
+   transaction, so every progress write that belongs to the old source is
+   recognisable as stale.
 
 ### 7.3 Image asset uploads (implemented, Prompts 075–078)
 

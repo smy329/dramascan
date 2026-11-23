@@ -81,23 +81,49 @@ function describeMediaError(error: MediaError | null): string {
  * The source is read from the React Hook Form field the parent registered, so
  * the preview follows whatever the administrator types.
  *
- * @param name          Form field holding the source URL.
- * @param onStateChange Called whenever the verification state changes, so the
- *                      parent can require a verified preview before it lets
- *                      the administrator confirm a replacement.
+ * The preview also writes the administrator's confirmation into the form: the
+ * server stores a source only when the payload says that the browser verified
+ * it, and the browser is the only component that can make that check. The
+ * confirmation follows the preview state exactly — it is set when the browser
+ * played the source and withdrawn as soon as it stops being true.
+ *
+ * @param name             Form field holding the source URL.
+ * @param confirmationField Form field that carries the preview confirmation;
+ *                          `null` disables the confirmation entirely.
+ * @param onStateChange    Called whenever the verification state changes, so the
+ *                         parent can require a verified preview before it lets
+ *                         the administrator confirm a replacement.
  */
 export function VideoSourcePreview({
   name = 'video_source',
+  confirmationField = 'video_source_preview_confirmed',
   onStateChange,
 }: Readonly<{
   name?: string;
+  confirmationField?: string | null;
   onStateChange?: (_state: VideoSourcePreviewState) => void;
 }>): JSX.Element {
-  const { watch } = useFormContext<Record<string, unknown>>();
+  const { watch, setValue, register } = useFormContext<Record<string, unknown>>();
   const watched = watch(name);
   const source = typeof watched === 'string' ? watched.trim() : '';
 
-  return <VideoSourcePlaybackPreview source={source} onStateChange={onStateChange} />;
+  const handleStateChange = useCallback(
+    (state: VideoSourcePreviewState) => {
+      if (confirmationField) {
+        setValue(confirmationField, state.status === 'verified');
+      }
+
+      onStateChange?.(state);
+    },
+    [confirmationField, onStateChange, setValue]
+  );
+
+  return (
+    <>
+      {confirmationField ? <input type="hidden" {...register(confirmationField)} /> : null}
+      <VideoSourcePlaybackPreview source={source} onStateChange={handleStateChange} />
+    </>
+  );
 }
 
 /**

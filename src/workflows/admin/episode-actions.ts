@@ -48,6 +48,9 @@ export async function createEpisodeAction(
       season_id: values.season_id,
       episode_number: values.episode_number,
       video_source: values.video_source,
+      // The administrator's preview confirmation travels with the payload: the
+      // content module refuses a source that was not verified in the browser.
+      video_source_preview_confirmed: values.video_source_preview_confirmed,
     });
 
     if (!result.ok) {
@@ -104,7 +107,10 @@ export async function replaceEpisodeVideoSourceAction(
 
     const values = parseOrThrow(replaceVideoSourceFormSchema, input);
 
-    const result = await replaceEpisodeVideoSource(actor, values.episodeId, values.videoSource);
+    const result = await replaceEpisodeVideoSource(actor, values.episodeId, {
+      videoSource: values.videoSource,
+      previewConfirmed: values.previewConfirmed,
+    });
 
     if (!result.ok) {
       return { ok: false, error: toActionError(result.error) };
