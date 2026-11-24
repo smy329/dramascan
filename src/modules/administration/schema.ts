@@ -13,9 +13,14 @@
  * value is a URL supplied by an administrator.
  */
 import { sql } from 'drizzle-orm';
-import { index, jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, jsonb, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
-import { createdAt, indexOn, uuidPrimaryKey } from '@/platform/db/schema-helpers';
+import {
+  createdAt,
+  indexOn,
+  updatedAt,
+  uuidPrimaryKey,
+} from '@/platform/db/schema-helpers';
 
 // ----- admin_audit_log -----
 export const admin_audit_log = pgTable(
@@ -31,8 +36,11 @@ export const admin_audit_log = pgTable(
     action: text('action').notNull(),
     // The type of the entity the action was performed on.
     entity_type: text('entity_type').notNull(),
-    // The entity the action was performed on.
-    entity_id: uuid('entity_id').notNull(),
+    // The entity the action was performed on. Nullable: a global setting —
+    // the featured item, the hero rotation, the Trending pins — is not a
+    // content row and has no identifier to point at. Such an event is
+    // recorded as `entity_type = 'homepage_setting'` with no entity id.
+    entity_id: uuid('entity_id'),
     // Short human-readable description of what happened.
     summary: text('summary').notNull(),
     // Structured detail about the event. URL-bearing values are stripped
@@ -50,6 +58,33 @@ export const admin_audit_log = pgTable(
   ]
 );
 
-export type AdministrationTables = typeof admin_audit_log;
+// ----- system_settings -----
+// A small key/value store for the settings that change what a viewer sees.
+// The value is stored in the column that matches its type, so a setting is
+// read as the type it was written as: `boolean_value` for a switch,
+// `string_value` for a text setting, and `value` for a structured value.
+export const system_settings = pgTable(
+  'system_settings',
+  {
+    id: uuidPrimaryKey(),
+    // The canonical setting key, for example `hero_rotation_enabled`.
+    key: text('key').notNull(),
+    description: text('description'),
+    boolean_value: boolean('boolean_value'),
+    string_value: text('string_value'),
+    value: jsonb('value'),
+    // The administrator who last changed the setting.
+    updated_by: uuid('updated_by'),
+    created_at: createdAt(),
+    updated_at: updatedAt(),
+  },
+  table => [
+    // One row per key: a setting has exactly one value.
+    uniqueIndex('uq_system_settings_key').on(table.key),
+    indexOn('system_settings', table.updated_by),
+  ]
+);
 
-export type AdministrationSchema = typeof admin_audit_log;
+export type AdministrationTables = typeof admin_audit_log | typeof system_settings;
+
+export type AdministrationSchema = typeof admin_audit_log | typeof system_settings;

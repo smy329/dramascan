@@ -1,0 +1,16 @@
+-- Migration 0017 — a homepage setting is not a content entity.
+--
+-- The homepage reads three settings: the featured item, the hero rotation, and
+-- the Trending pins. An administrative action on one of them changes global
+-- configuration; there is no content row to point at. The audit trail
+-- therefore records the setting itself: `entity_type = 'homepage_setting'`
+-- and a null `entity_id`.
+--
+-- `actor_id` was already nullable for the same kind of reason — a record must
+-- always say who acted and what happened, even when there is no entity to
+-- name. This migration gives `entity_id` the same freedom.
+--
+-- The column stays a uuid: every event that *does* name an entity still names
+-- a real one, and `idx_admin_audit_log_entity_type_entity_id` keeps working.
+-- No data is rewritten; the column simply accepts a null.
+ALTER TABLE "admin_audit_log" ALTER COLUMN "entity_id" DROP NOT NULL;

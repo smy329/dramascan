@@ -1,56 +1,94 @@
 import 'server-only';
 
-import { eq, sql, ilike } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
+import type { DbExecutor } from '@/platform/db/executor';
 
 import { review_reports, reviews } from './schema';
+import { reviewReportReasonSchema, type ReviewReportReason } from './validation';
 
 /**
- * Valid report reasons for review reports.
+ * Reports about a review.
+ *
+ * - One *active* report per viewer per review. The partial unique index
+ *   `uq_review_reports_user_id_review_id_active` enforces it.
+ * - A viewer may report again after the earlier report was resolved, because
+ *   the uniqueness only applies to `status = 'active'` rows.
+ * - Several viewers may report the same review; each report is its own row.
+ * - A reported review stays visible while the case is pending. A report opens
+ *   a moderation case, it does not hide the review.
+ *
+ * The reporter is always the caller. The writer never accepts a reporter from
+ * the request, so a client cannot file a report on somebody else's behalf.
  */
-export type ReportReason =
-  | 'spam_advertising'
-  | 'harassment_bullying'
-  | 'inappropriate_language'
-  | 'misleading_false_information'
-  | 'other';
+
+/** A report as the moderation queue shows it. */
+export type ReviewReport = {
+  id: string;
+  reporterId: string;
+  reviewId: string | null;
+  /** The id of the review that was reported, even after the review is gone. */
+  reviewIdSnapshot: string | null;
+  reason: ReviewReportReason;
+  description: string | null;
+  status: 'active' | 'resolved';
+  resolvedAt: Date | null;
+  resolvedBy: string | null;
+  resolutionOutcome: string | null;
+  reportedAt: Date | null;
+  createdAt: Date;
+};
+
+/** A report together with the review it refers to, for the moderation queue. */
+export type ReviewReportWithReview = ReviewReport & {
+  reviewTitle: string | null;
+  reviewContent: string | null;
+  reviewAuthorId: string | null;
+  reviewRemoved: boolean;
+};
 
 /**
- * Submit a review report.
+ * Submit a report about a review.
  *
- * - One active report per user per review is enforced by the unique index
-   `uq_review_reports_user_id_review_id_active`.
- * - If the user already has an active report, the existing report is updated
-   (reason, description) rather than creating a duplicate.
- * - A resolved report can be re-reported (the partial uniqueness only applies
-   to `status = 'active'` rows).
- *
- * @param reviewId The review ID being reported.
+ * @param reporterUserId The reporter. It is the authenticated viewer.
+ * @param reviewId The review being reported.
  * @param reason The report reason code.
  * @param description Optional free-text description.
  * @returns The created or updated report.
  */
 export async function submitReviewReport(
+  reporterUserId: string,
   reviewId: string,
-  reason: ReportReason,
-  description?: string,
-  actorUserId?: string
-) {
-  const [row] = await db
+  reason: ReviewReportReason,
+  description?: string | null,
+  executor: DbExecutor = db
+): Promise<ReviewReport | null> {
+  const parsedReason = reviewReportReasonSchema.safeParse(reason);
+
+  if (!parsedReason.success) {
+    throw new Error('Choose a valid report reason.');
+  }
+
+  const [row] = await executor
     .insert(review_reports)
     .values({
-      user_id: actorUserId,
+      user_id: reporterUserId,
       review_id: reviewId,
-      reason,
-      description,
+      review_id_snapshot: reviewId,
+      reason: parsedReason.data,
+      description: description ?? null,
       status: 'active',
     })
     .onConflictDoUpdate({
-      target: 'uq_review_reports_user_id_review_id_active',
+      // The conflict target is a *partial* unique index. PostgreSQL only infers
+      // a partial index when the statement repeats the index predicate, so the
+      // `targetWhere` clause is required.
+      target: [review_reports.user_id, review_reports.review_id],
+      targetWhere: sql`${review_reports.status} = 'active' and ${review_reports.review_id} is not null`,
       set: {
-        reason,
-        description,
+        reason: parsedReason.data,
+        description: description ?? null,
         status: 'active',
         resolved_at: null,
         resolved_by: null,
@@ -60,37 +98,46 @@ export async function submitReviewReport(
     })
     .returning({
       id: review_reports.id,
-      user_id: review_reports.user_id,
-      review_id: review_reports.review_id,
+      reporterId: review_reports.user_id,
+      reviewId: review_reports.review_id,
+      reviewIdSnapshot: review_reports.review_id_snapshot,
       reason: review_reports.reason,
       description: review_reports.description,
       status: review_reports.status,
-      resolved_at: review_reports.resolved_at,
-      resolved_by: review_reports.resolved_by,
-      resolution_outcome: review_reports.resolution_outcome,
-      reported_at: review_reports.reported_at,
-      created_at: review_reports.created_at,
+      resolvedAt: review_reports.resolved_at,
+      resolvedBy: review_reports.resolved_by,
+      resolutionOutcome: review_reports.resolution_outcome,
+      reportedAt: review_reports.reported_at,
+      createdAt: review_reports.created_at,
     });
 
-  return row;
+  return row
+    ? {
+        ...row,
+        reason: row.reason as ReviewReportReason,
+        status: row.status as 'active' | 'resolved',
+      }
+    : null;
 }
 
 /**
  * Resolve a review report (moderator action).
  *
- * Only callable by moderators or super admins. Sets the report to `resolved`
- * with the given outcome and resolver identity.
+ * A resolved report carries the complete resolution record: the moment, the
+ * moderator who resolved it, and the outcome. The database lifecycle CHECK
+ * rejects a half-recorded resolution.
  *
- * @param reportId The report ID to resolve.
- * @param resolutionOutcome Description of the resolution.
- * @param resolverUserId The moderator/super admin user ID.
+ * @param reportId The report to resolve.
+ * @param resolutionOutcome What was decided.
+ * @param resolverUserId The moderator who resolved it.
  */
 export async function resolveReviewReport(
   reportId: string,
   resolutionOutcome: string,
-  resolverUserId: string
-) {
-  const [row] = await db
+  resolverUserId: string,
+  executor: DbExecutor = db
+): Promise<ReviewReport | null> {
+  const [row] = await executor
     .update(review_reports)
     .set({
       status: 'resolved',
@@ -101,33 +148,51 @@ export async function resolveReviewReport(
     .where(eq(review_reports.id, reportId))
     .returning({
       id: review_reports.id,
-      user_id: review_reports.user_id,
-      review_id: review_reports.review_id,
+      reporterId: review_reports.user_id,
+      reviewId: review_reports.review_id,
+      reviewIdSnapshot: review_reports.review_id_snapshot,
       reason: review_reports.reason,
+      description: review_reports.description,
       status: review_reports.status,
-      resolved_at: review_reports.resolved_at,
-      resolved_by: review_reports.resolved_by,
-      resolution_outcome: review_reports.resolution_outcome,
+      resolvedAt: review_reports.resolved_at,
+      resolvedBy: review_reports.resolved_by,
+      resolutionOutcome: review_reports.resolution_outcome,
+      reportedAt: review_reports.reported_at,
+      createdAt: review_reports.created_at,
     });
 
-  return row;
+  return row
+    ? {
+        ...row,
+        reason: row.reason as ReviewReportReason,
+        status: row.status as 'active' | 'resolved',
+      }
+    : null;
 }
 
 /**
- * Get all active reports for a review (for moderation inspection).
+ * The open reports about a review.
+ *
+ * This is a moderation read: the caller must hold `review.read`.
  */
-export async function getActiveReportsForReview(reviewId: string) {
-  const rows = await db
+export async function getActiveReportsForReview(
+  reviewId: string,
+  executor: DbExecutor = db
+): Promise<ReviewReport[]> {
+  const rows = await executor
     .select({
       id: review_reports.id,
-      user_id: review_reports.user_id,
+      reporterId: review_reports.user_id,
+      reviewId: review_reports.review_id,
+      reviewIdSnapshot: review_reports.review_id_snapshot,
       reason: review_reports.reason,
       description: review_reports.description,
-      reported_at: review_reports.reported_at,
-      resolved_at: review_reports.resolved_at,
-      resolved_by: review_reports.resolved_by,
-      resolution_outcome: review_reports.resolution_outcome,
-      created_at: review_reports.created_at,
+      status: review_reports.status,
+      resolvedAt: review_reports.resolved_at,
+      resolvedBy: review_reports.resolved_by,
+      resolutionOutcome: review_reports.resolution_outcome,
+      reportedAt: review_reports.reported_at,
+      createdAt: review_reports.created_at,
     })
     .from(review_reports)
     .where(
@@ -135,26 +200,37 @@ export async function getActiveReportsForReview(reviewId: string) {
         eq(review_reports.review_id, reviewId),
         eq(review_reports.status, 'active')
       )
-    );
+    )
+    .orderBy(desc(review_reports.reported_at));
 
-  return rows;
+  return rows.map(row => ({
+    ...row,
+    reason: row.reason as ReviewReportReason,
+    status: row.status as 'active' | 'resolved',
+  }));
 }
 
 /**
- * Get resolved reports for a review (moderation history).
+ * The resolved reports about a review (moderation history).
  */
-export async function getResolvedReportsForReview(reviewId: string) {
-  const rows = await db
+export async function getResolvedReportsForReview(
+  reviewId: string,
+  executor: DbExecutor = db
+): Promise<ReviewReport[]> {
+  const rows = await executor
     .select({
       id: review_reports.id,
-      user_id: review_reports.user_id,
+      reporterId: review_reports.user_id,
+      reviewId: review_reports.review_id,
+      reviewIdSnapshot: review_reports.review_id_snapshot,
       reason: review_reports.reason,
       description: review_reports.description,
-      reported_at: review_reports.reported_at,
-      resolved_at: review_reports.resolved_at,
-      resolved_by: review_reports.resolved_by,
-      resolution_outcome: review_reports.resolution_outcome,
-      created_at: review_reports.created_at,
+      status: review_reports.status,
+      resolvedAt: review_reports.resolved_at,
+      resolvedBy: review_reports.resolved_by,
+      resolutionOutcome: review_reports.resolution_outcome,
+      reportedAt: review_reports.reported_at,
+      createdAt: review_reports.created_at,
     })
     .from(review_reports)
     .where(
@@ -162,105 +238,62 @@ export async function getResolvedReportsForReview(reviewId: string) {
         eq(review_reports.review_id, reviewId),
         eq(review_reports.status, 'resolved')
       )
-    );
+    )
+    .orderBy(desc(review_reports.resolved_at));
 
-  return rows;
+  return rows.map(row => ({
+    ...row,
+    reason: row.reason as ReviewReportReason,
+    status: row.status as 'active' | 'resolved',
+  }));
 }
 
 /**
- * Sort reviews by the specified sort option.
+ * The moderation queue of review reports.
  *
- * @param sortBy One of 'most-enjoying', 'newest', 'highest-rated'.
- * @param dramaIdOrMovieId The content ID to filter reviews by.
- * @returns A list of reviews with enjoyment counts and rating info.
+ * The queue is bounded: it never loads the whole table into memory. The review
+ * is joined so a moderator can read the reported text without a second query.
+ * A report whose review has been permanently removed keeps its snapshot id and
+ * is marked as removed.
  */
-export async function sortReviews(
-  sortBy: 'most-enjoying' | 'newest' | 'highest-rated',
-  dramaIdOrMovieId: string,
-  contentType: 'drama' | 'movie'
-) {
-  const ratingTable = contentType === 'drama' ? ratings.drama_id : ratings.movie_id;
-  const reviewTable = contentType === 'drama' ? reviews.drama_id : reviews.movie_id;
+export async function listReviewReports(
+  options: { status?: 'active' | 'resolved' | 'all'; limit?: number } = {},
+  executor: DbExecutor = db
+): Promise<ReviewReportWithReview[]> {
+  const status = options.status ?? 'active';
+  const limit = Math.max(1, Math.min(options.limit ?? 100, 500));
 
-  switch (sortBy) {
-    case 'most-enjoying': {
-      // Join with review_reactions to count enjoying reactions
-      const rows = await db
-        .select({
-          id: reviews.id,
-          title: reviews.title,
-          content: reviews.content,
-          created_at: reviews.created_at,
-          updated_at: reviews.updated_at,
-          enjoyingCount: sql`count(${review_reactions.review_id})`,
-        })
-        .from(reviews)
-        .leftJoin(review_reactions, eq(review_reactions.review_id, reviews.id))
-        .where(
-          and(
-            isNull(reviews.deleted_at),
-            contentType === 'drama' ? eq(reviews.drama_id, dramaIdOrMovieId) : eq(reviews.movie_id, dramaIdOrMovieId)
-          )
-        )
-        .groupBy(reviews.id)
-        .orderBy(sql`enjoyingCount desc, reviews.created_at desc`);
-      return rows;
-    }
+  const statusFilter =
+    status === 'all' ? undefined : eq(review_reports.status, status);
 
-    case 'newest': {
-      const rows = await db
-        .select({
-          id: reviews.id,
-          title: reviews.title,
-          content: reviews.content,
-          created_at: reviews.created_at,
-          updated_at: reviews.updated_at,
-        })
-        .from(reviews)
-        .where(
-          and(
-            isNull(reviews.deleted_at),
-            contentType === 'drama' ? eq(reviews.drama_id, dramaIdOrMovieId) : eq(reviews.movie_id, dramaIdOrMovieId)
-          )
-        )
-        .orderBy(reviews.created_at.desc);
-      return rows;
-    }
+  const rows = await executor
+    .select({
+      id: review_reports.id,
+      reporterId: review_reports.user_id,
+      reviewId: review_reports.review_id,
+      reviewIdSnapshot: review_reports.review_id_snapshot,
+      reason: review_reports.reason,
+      description: review_reports.description,
+      status: review_reports.status,
+      resolvedAt: review_reports.resolved_at,
+      resolvedBy: review_reports.resolved_by,
+      resolutionOutcome: review_reports.resolution_outcome,
+      reportedAt: review_reports.reported_at,
+      createdAt: review_reports.created_at,
+      reviewTitle: reviews.title,
+      reviewContent: reviews.content,
+      reviewAuthorId: reviews.user_id,
+    })
+    .from(review_reports)
+    .leftJoin(reviews, eq(reviews.id, review_reports.review_id))
+    .where(statusFilter)
+    .orderBy(desc(review_reports.created_at))
+    .limit(limit);
 
-    case 'highest-rated': {
-      // Join with ratings to calculate average rating
-      const rows = await db
-        .select({
-          id: reviews.id,
-          title: reviews.title,
-          content: reviews.content,
-          created_at: reviews.created_at,
-          updated_at: reviews.updated_at,
-          averageRating: sql`avg(${ratings.value})`,
-          ratingCount: count(),
-        })
-        .from(reviews)
-        .leftJoin(ratings, and(
-          isNull(ratings.deleted_at),
-          contentType === 'drama' ? eq(ratings.drama_id, dramaIdOrMovieId) : eq(ratings.movie_id, dramaIdOrMovieId)
-        ))
-        .groupBy(reviews.id)
-        .orderBy(sql`avg(${ratings.value}) desc, reviews.created_at desc`);
-      return rows;
-    }
-
-    default: {
-      const rows = await db
-        .select({
-          id: reviews.id,
-          title: reviews.title,
-          content: reviews.content,
-          created_at: reviews.created_at,
-        })
-        .from(reviews)
-        .where(isNull(reviews.deleted_at))
-        .orderBy(reviews.created_at.desc);
-      return rows;
-    }
-  }
+  return rows.map(row => ({
+    ...row,
+    reason: row.reason as ReviewReportReason,
+    status: row.status as 'active' | 'resolved',
+    reviewRemoved: row.reviewId === null,
+  }));
 }

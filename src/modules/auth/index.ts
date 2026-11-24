@@ -16,6 +16,8 @@ export {
   setUserAccountActive,
 } from './repository';
 
+export { getUserDisplayName, getUserDisplayNames } from './display-names';
+
 export type {
   ListUserAccountsQuery,
   UserAccountPage,

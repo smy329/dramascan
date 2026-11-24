@@ -147,7 +147,13 @@ Status values: **Planned**, **Implemented**, **Deprecated**.
 
 | Method | Path                      | Auth   | Permission | Purpose                                                              | Status  |
 | ------ | ------------------------- | ------ | ---------- | -------------------------------------------------------------------- | ------- |
-| `GET`  | `/api/search/suggestions` | Public | —          | Live autocomplete with poster thumbnails, recent/popular suggestions | Planned |
+| `GET`  | `/api/search/suggestions` | Public | —          | Live autocomplete with poster thumbnails, recent/popular suggestions | Implemented |
+
+The suggestion endpoint answers the search box only; the results page is a
+Server Component route. It matches content titles, category names, and
+platform names with PostgreSQL full-text search and trigram similarity, and it
+never returns an item that the public may not open. The endpoint is a `GET`,
+so it needs no same-origin check and no CSRF token.
 
 Public page data is rendered by Server Components through module query services, not REST. Do not add REST endpoints for ordinary page reads.
 

@@ -97,7 +97,7 @@ export type {
   PublicDramaSummary,
 } from './public-dramas.shared';
 
-export { listPublicDramas } from './public-dramas';
+export { listPublicDramas, playableEpisodeExists } from './public-dramas';
 
 export {
   getPublicEpisodePlayback,
@@ -121,13 +121,21 @@ export type { PublicMoviePlayback } from './public-movies.shared';
 
 export {
   getBookmarkableContentTarget,
+  getPublicContentTarget,
+  getReportableContentTarget,
   getPublicDramaDetail,
   getPublicMovieDetail,
+  listPublicContentTargets,
+  listPublicEpisodeTargets,
   listPublicSimilarDramas,
 } from './public-details';
 
 export type {
   BookmarkableContentTarget,
+  PublicContentCard,
+  PublicContentTarget,
+  PublicEpisodeTarget,
+  ReportableContentTarget,
   PublicDramaDetail,
   PublicMovieDetail,
   PublicSeasonGroup,
@@ -152,3 +160,34 @@ export type {
 export { resolvePublicContentSlug } from './public-slugs';
 
 export type { PublicSluggedType } from './public-slugs';
+
+export {
+  countPublicContent,
+  dramaStatus,
+  escapeLikeTerm,
+  getPublicFeaturedContent,
+  listCategorySections,
+  listContentByCategorySlug,
+  listContentByCategorySlugs,
+  listContentByPlatformSlug,
+  listPublicCategories,
+  listPublicHeroCandidates,
+  listPublicPlatforms,
+  listPublishedDramaIds,
+  listPublishedMovieIds,
+  listRecentlyAddedContent,
+  listSearchSuggestions,
+  listSearchTaxonomyMatches,
+  publicDramaAvailability,
+  publicMovieAvailability,
+} from './public-discovery';
+
+export type {
+  CategorySection,
+  DiscoveryCard,
+  DiscoveryContentType,
+  PublicTaxonomy,
+  SearchSuggestion,
+  SearchSuggestionType,
+  SearchTaxonomyMatch,
+} from './public-discovery';

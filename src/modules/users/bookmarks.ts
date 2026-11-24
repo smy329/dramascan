@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { requireUser, type ActorContext } from '@/modules/authorization';
@@ -27,6 +27,44 @@ export type BookmarkTarget = {
   type: 'drama' | 'movie';
   id: string;
 };
+
+/** One row of a viewer's personal list. */
+export type UserBookmark = {
+  id: string;
+  type: 'drama' | 'movie';
+  contentId: string;
+};
+
+/**
+ * The viewer's personal list, most recently added first.
+ *
+ * The rows carry only the target. Whether the target is still publicly
+ * available is decided by the content module, so the list cannot drift away
+ * from what the public pages actually expose.
+ */
+export async function listUserBookmarks(actor: ActorContext): Promise<UserBookmark[]> {
+  if (actor.userId === null) {
+    return [];
+  }
+
+  const rows = await db
+    .select({
+      id: bookmarks.id,
+      contentType: bookmarks.content_type,
+      contentId: bookmarks.content_id,
+      dramaId: bookmarks.drama_id,
+      movieId: bookmarks.movie_id,
+    })
+    .from(bookmarks)
+    .where(eq(bookmarks.user_id, actor.userId))
+    .orderBy(desc(bookmarks.id));
+
+  return rows.map(row => ({
+    id: row.id,
+    type: row.dramaId ? 'drama' : 'movie',
+    contentId: row.dramaId ?? row.movieId ?? row.contentId,
+  }));
+}
 
 /** The partial unique index that protects one bookmark per user and target. */
 function bookmarkTargetWhere(userId: string, target: BookmarkTarget) {

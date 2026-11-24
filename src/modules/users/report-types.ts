@@ -44,9 +44,11 @@ export function parseReportInput(input: unknown): {
 
   if (!validated.success) {
     const errors = validated.error.flatten();
+    const details = Object.entries(errors.fieldErrors ?? {})
+      .map(([field, messages]) => `${field}: ${messages?.join(', ')}`)
+      .join('. ');
     throw new Error(
-      'Invalid report submission. ' +
-        Object.keys(errors.fieldErrors ?? {}).map((k) => `${k}: ${errors.fieldErrors?.[k]?.join(', ')}`).join('. ')
+      `Invalid report submission. ${details || errors.formErrors.join(', ')}`
     );
   }
 
@@ -54,8 +56,20 @@ export function parseReportInput(input: unknown): {
 }
 
 const parseReportInputSchema = z.object({
-  reason: z.string(),
+  reason: z.enum([
+    'video_not_playing',
+    'wrong_missing_episode',
+    'incorrect_information',
+    'copyright_complaint',
+    'inappropriate_content',
+    'other',
+  ]),
   contentType: z.enum(['drama', 'movie']),
-  contentId: z.string(),
-  description: z.string().max(1000),
+  contentId: z.string().min(1),
+  description: z
+    .string()
+    .max(1000)
+    .optional()
+    .nullable()
+    .transform(value => value ?? null),
 });

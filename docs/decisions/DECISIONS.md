@@ -2,7 +2,8 @@
 
 **Project:** DramaScan — International Drama & Movie Streaming Platform
 **Status:** Active decision log
-**Last updated:** 2026-11-10
+**Last updated:** 2026-11-24
+
 
 This file records finalized product and architecture decisions. Requirements live in
 `REQUIREMENTS.md`; implementation progress lives in `PROJECT_STATUS.md`.
@@ -2111,3 +2112,389 @@ existed; only the read was missing.
   the history table.
 - The availability rule stays in one place: a redirect can never be a way
   around the public availability decision.
+
+---
+
+## D-047 — The permission catalog has `review.manage`, not `review.moderate`
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 9 and Phase 10 audit)
+**Extends:** D-042 (cross-module foreign keys), and the `resource.action`
+permission convention in `REQUIREMENTS.md` §7.
+
+**Context:** The moderation surfaces of Phase 9 need two distinct rights: reading
+the queue and acting on it. The canonical catalog already carried
+`review.read`, `review.manage`, and `review.delete`; the Phase 9
+implementation introduced a fourth name, `review.moderate`, for the acting
+right. Two names for one right make the catalog ambiguous, and the database
+CHECK on the permission resource makes an invented name a schema change.
+
+**Decision:**
+
+1. **There is no `review.moderate`.** The catalog stays as it is.
+2. **`review.read` reads the moderation queue.** The queue pages and their
+   navigation entries require it.
+3. **`review.manage` acts on the queue.** Resolving a report and permanently
+   removing a review require it, and the navigation entry names exactly this
+   permission — not `review.read` — so an operator sees only what they may
+   open.
+4. **Navigation visibility is never authorization.** The page guard and the
+   workflow each re-check the permission on the server.
+
+**Consequences:**
+
+- The permission catalog needs no migration and no new CHECK.
+- A reader of the queue who may not act on it sees an empty action set rather
+  than a control that refuses.
+- The navigation, the page guard, and the workflow all name the same
+  permission, so the three cannot drift apart.
+
+---
+
+## D-054 — A success message is captured in client state, never derived from refreshed props
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 9 and Phase 10 audit)
+**Extends:** D-052 (the client reads the browser origin after the first render).
+
+**Context:** Two independent defects had the same shape. The review form
+decided whether it had *published* or *updated* a review from the
+`existingReview` prop, which the page had already refreshed — so publishing a
+first review announced "Your review was updated." The moderation queues
+returned early when the report list was empty, *before* rendering the
+confirmation — so resolving the only report in the queue emptied the list and
+the moderator saw the empty state and no confirmation at all.
+
+**Decision:**
+
+1. **What happened is captured before the action runs.** A component that
+   knows whether it created or changed something records that *before* the
+   Server Action, and the message is state.
+2. **The confirmation and the error are rendered above every branch of the
+   component.** A component must not return early from a state that the
+   action itself can produce. The empty state and the list are branches of
+   the body; the message and the error are not.
+3. **The refreshed server data never decides the wording.** A revalidation
+   may change the props at any moment — including before the action's own
+   `setState` lands — so the wording must not depend on the new props.
+
+**Consequences:**
+
+- The moderator always sees what happened, even when the queue empties.
+- The review form reports the right outcome the first time.
+- The two defects are covered by a regression test
+  (`tests/unit/components/review-report-queue.test.tsx`) that fails when the
+  early return is restored.
+
+---
+
+## D-048 — An upsert on a partial unique index repeats the whole index predicate
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 9 and Phase 10 audit)
+**Extends:** the "one active row per viewer per target" rule in D-042.
+
+**Context:** A rating, a review, and a report are all "one *active* row per
+viewer per target", which the database enforces with a partial unique index
+(`WHERE status = 'active'`). The write is an upsert, so a viewer's second
+rating updates the first. The first implementation named only the conflict
+target and left `targetWhere` empty. PostgreSQL infers a partial index only
+when the statement's predicate *implies* the index predicate, so the write
+failed on the second rating with a unique violation instead of updating the
+existing row.
+
+**Decision:**
+
+1. **`targetWhere` repeats the index predicate exactly.** The upsert's
+   `targetWhere` is the same condition as the partial index's `WHERE` clause —
+   no more, no less. A predicate that is broader does not match the index and
+   does not infer it.
+2. **The rule applies to every partial-index upsert**, not only to ratings.
+3. **The regression test writes the same viewer twice.** A test that only
+   writes once proves nothing about the upsert path.
+
+**Consequences:**
+
+- A second rating, review, or report updates the viewer's own row instead of
+  failing.
+- The database remains the authority for "one active row": the service never
+  has to read-then-write to decide whether a row exists.
+
+---
+
+## D-049 — A pure helper may live in a `*.shared.ts` file beside its server module
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 9 and Phase 10 audit)
+**Extends:** D-044 (the public pages compose module read models), and the
+"modules own their logic" rule in `ARCHITECTURE.md`.
+
+**Context:** Several catalogs and parsers are pure — they have no database
+access and no server-only dependency — but they belong to a module whose
+`index.ts` is `server-only`. A client island that needs one of those values
+had to re-declare it, which duplicated a rule and let the two copies drift.
+The alternatives were to drop `server-only` from the module (too broad) or to
+let the client import the module index (impossible: the barrel pulls in the
+database client).
+
+**Decision:**
+
+1. **A pure, testable helper may live in a `*.shared.ts` file next to its
+   module.** The file carries no `server-only` marker and no database import.
+2. **A client component imports the `*.shared.ts` file directly**, never the
+   module index.
+3. **The shared file may only hold pure logic.** A shared file that needs the
+   database is a server file and belongs behind the module index.
+
+**Consequences:**
+
+- The report reasons and the report types have one definition, used by the
+  server, the browser, and the tests.
+- The module index keeps its `server-only` boundary, so the database client
+  still cannot reach the browser bundle.
+- The convention is visible in the file name, so the boundary is obvious in a
+  diff.
+
+---
+
+## D-050 — Raw SQL in the read models follows four fixed rules
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 9 and Phase 10 audit)
+**Extends:** D-044 and `ARCHITECTURE.md` §6.9 (the `analytics/read-models/`
+directory owns the cross-module join read models).
+
+**Context:** The ranked discovery grid joins three modules in one query, so it
+is written as raw SQL inside a Drizzle `sql` template. Four mistakes in that
+template produced wrong answers rather than errors, which is the worst kind of
+failure for a public page.
+
+**Decision:**
+
+1. **A parameter in a date or interval expression is cast explicitly.**
+   `current_date - $n` resolves `$n` as a *date*, not as an integer, so the
+   expression is written `current_date - $n::int`. The same applies to every
+   interval expression: `interval::float8` yields **days**, so a decay formula
+   divides the age by seven.
+2. **A JavaScript array is bound with `sql.join`, never with `any(...)`.** A
+   Drizzle `sql` template does not encode a JavaScript array as a PostgreSQL
+   array: `any(${arr}::text[])` renders `any()` for an empty list (a syntax
+   error) and binds a plain string for a non-empty one ("malformed array
+   literal"). The list is bound with `sql.join(values.map(value => sql`${value}`), sql`, `)`
+   inside `in (...)`, and the expression is omitted entirely when the list is
+   empty.
+3. **An aliased column is quoted.** PostgreSQL folds an unquoted alias to lower
+   case, so `content_type as contentType` answers `content_type`. The mapper
+   reads camel-case names, and the mismatch produced `undefined` values rather
+   than an error — an item with no rating average read as `NaN` and a title
+   lost its type. Every alias is quoted: `content_type as "contentType"`.
+4. **A ranking reads stored aggregates, never live event tables.** The Trending,
+   Popular, and Most viewed rankings read the daily aggregate rows, so a page
+   refresh cannot inflate a score.
+
+**Consequences:**
+
+- The rankings answer the same numbers on every request.
+- A partial-index, array-binding, or aliasing mistake fails visibly in the
+  integration tests rather than silently on the public page.
+- The three rules are recorded so the next raw query follows them.
+
+---
+
+## D-051 — A search with a term is ordered by relevance, and relevance is a ladder
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 9 and Phase 10 audit)
+**Extends:** the search requirement in `REQUIREMENTS.md` §6.4 and the ranking
+decisions in this log.
+
+**Context:** Search matches titles with PostgreSQL full-text search and
+trigram similarity. The trigram index is deliberately generous: it matches
+anything that shares enough characters. With a single similarity score, a
+search for a popular title put that title below dozens of titles that merely
+resembled it — the exact title the viewer typed was not the first result.
+
+**Decision:**
+
+1. **A search with a term defaults to `sort=relevance`.** Without a term,
+   `relevance` falls back to `newest`, because there is nothing to be
+   relevant to.
+2. **The relevance score is a ladder, not one number.** An exact title match
+   scores 1000, a title that starts with the term 700, a title that contains
+   it 400, a full-text match 200, and anything else scores
+   `similarity(title, term) × 100`. The trigram score is scaled to 0–100 so it
+   can never outrank a full-text match.
+3. **The search page offers the sort choices**, with *Relevance* first. The
+   other discovery pages keep their own orders and do not offer *Relevance*.
+4. **The relevance score is the score the page reports**, so the order and the
+   displayed score cannot disagree.
+
+**Consequences:**
+
+- The title the viewer typed is the first result.
+- A typo still finds the title, because the trigram match is the last step of
+  the ladder rather than the only one.
+- The relevance order is a property of the read model, so every caller gets
+  it; the page only chooses the default.
+
+---
+
+## D-052 — A client component reads the browser origin after the first render
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 9 and Phase 10 audit)
+**Extends:** D-046 (the canonical public URL).
+
+**Context:** The share control needs the absolute address of the page to build
+a share link. The first implementation read `window.location.origin` during
+render. A client component is also rendered on the server, where `window` does
+not exist, so every public details page answered HTTP 500 with
+`ReferenceError: window is not defined`. The control also built its own path
+from the content type and the id, which produced a drama address for a film
+and dropped the slug the public route needs.
+
+**Decision:**
+
+1. **The origin is read after the first render, never during it.** The state
+   starts empty and is filled in an effect, so the server-rendered markup and
+   the first client render agree.
+2. **The canonical path comes from the server page.** The control receives
+   `href` and `title`; the page passes `content.publicDramaHref` or
+   `content.publicMovieHref`, so a film never shares a drama address and the
+   shared link carries the slug.
+3. **A relative path is the fallback.** Before the browser has reported the
+   origin, the control uses the relative canonical path, which is still a
+   valid share target.
+
+**Consequences:**
+
+- The public details pages render again, and the share links are correct.
+- The control imports no module: it receives plain data, which keeps the
+  client bundle free of the database client.
+
+---
+
+## D-053 — The admin navigation names the permission the page checks
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 9 and Phase 10 audit)
+**Extends:** D-047 (the review permissions), and the "navigation visibility is
+never authorization" rule.
+
+**Context:** The admin navigation listed several entries with a *set* of
+permissions — for example `settings.read` or `settings.manage` — while the
+pages themselves checked a single permission. An operator holding only the
+read permission saw an entry that led to a page that answered 404, and
+`settings.read` — a Super-Admin-only permission — ended up in the
+`ADMIN_AREA_PERMISSIONS` list, which decides whether an actor may enter the
+administration area at all.
+
+**Decision:**
+
+1. **A navigation entry names exactly the permission its page checks.** The
+   Homepage entries require `settings.manage`; the Reports entry requires
+   `review.manage`.
+2. **A permission that belongs only to a Super-Admin-only surface is not
+   listed in `ADMIN_AREA_PERMISSIONS`.** That list answers "may this actor
+   enter the administration area", not "may this actor open the settings
+   page".
+3. **The page guard and the workflow remain the authority.** The navigation is
+   visibility only; a stale entry never grants access.
+
+**Consequences:**
+
+- An operator sees only the entries they may actually open.
+- The permission catalog and the navigation stay consistent, and a new entry
+  cannot widen the administration area by accident.
+
+---
+
+## D-055 — One browse catalogue, and two independent card indicators
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 9 and Phase 10 audit)
+**Extends:** D-051 (the search relevance order), and the rule that `content`
+owns the public availability decision.
+
+**Context:** `/drama` and `/movie` were not part of the discovery surface. The
+drama page was a bespoke card list with a tab pair whose "Complete series"
+count reported the number of *all* dramas, and the movie page was a hardcoded
+pair of empty tabs that announced "No films published yet" regardless of the
+catalogue. Both pages therefore presented a fact the database did not support.
+
+Separately, the card had one indicator for two different facts: the lifecycle
+status of a title (ongoing / completed) and whether the title can be watched
+yet. A drama that is listed but has no playable episode is *coming soon*, and
+the card said "Ongoing" — which is true and useless.
+
+**Decision:**
+
+1. **`/drama` and `/movie` are discovery pages over the shared ranked grid.**
+   They use `analytics.listRankedContent` and the same
+   `RankedDiscoveryView` as Trending, Popular, Recently Added, Highest Rated,
+   Categories, Platforms, and Search. One grid means one availability rule and
+   one ranking implementation across the whole public browse surface.
+2. **`/drama` filters by lifecycle status; `/movie` does not.** The drama
+   filter (all / ongoing / completed) narrows the grid itself, and the count
+   is the count of the filtered dramas. A film is a finished work, so the
+   movie page offers the sort order and the pager only.
+3. **The card carries two independent indicators.** `comingSoon` (availability)
+   and `status` (lifecycle) are separate fields on `RankedContent` and
+   `DiscoveryCard`, and the badge prefers "Coming Soon" over the lifecycle
+   label. The availability line ("Coming soon" / "Available now") is shown for
+   a drama; a movie is always available, because a public movie carries a
+   source.
+4. **The flag is computed by the same predicate the availability rule uses.**
+   `playableEpisodeExists()` decides both whether a drama is listed and
+   whether it can be watched, so the two can never disagree.
+
+**Consequences:**
+
+- The public browse surface has one implementation, not three.
+- A viewer can tell "this series is complete" from "this series has nothing
+  to watch yet".
+- The old "Complete series" count is gone; the status filter reports the
+  number of the dramas it actually shows.
+
+---
+
+## D-056 — A global setting is audited without an entity id
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 9 and Phase 10 audit)
+**Extends:** The audit-trail rule in `administration/audit-log.ts` — the trail
+records *that* something happened, never a copy of the data it describes.
+
+**Context:** `admin_audit_log.entity_id` is a `uuid`. The homepage settings —
+the featured item, the hero rotation, and the Trending pins — are global
+configuration and have no identifier. The workflow wrote the literal strings
+`featured`, `hero_rotation`, and `trending_pins` into the column; PostgreSQL
+rejected the insert with "invalid input syntax for type uuid", the transaction
+rolled back, and the administrator saw "An unexpected error occurred." Two of
+the three homepage settings could not be saved at all, and the failure was
+silent.
+
+**Decision:**
+
+1. **`admin_audit_log.entity_id` is nullable** (migration `0017`). An event
+   that names an entity still names a real one; an event about global
+   configuration names the setting instead.
+2. **A setting event uses `entity_type = 'homepage_setting'` and no entity
+   id.** The action token and the summary say what happened.
+3. **An event about a content item still names the content.** Featuring a
+   drama is recorded against that drama, so the administrative trail for a
+   content item stays complete.
+4. **A fabricated identifier is not an option.** Putting a made-up uuid in the
+   column would make an operational trail lie about what was acted on.
+
+**Consequences:**
+
+- The hero rotation, the Trending pins, and clearing the featured item work,
+  and the browser test proves it.
+- `actor_id` and `entity_id` now have the same freedom: a record always says
+  who acted and what happened, even when there is no row to point at.
+- The index `idx_admin_audit_log_entity_type_entity_id` is unchanged; an
+  entity lookup simply does not match a setting event.
+
+---
+

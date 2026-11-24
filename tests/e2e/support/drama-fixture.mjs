@@ -34,6 +34,8 @@ loadLocalEnv();
  * @property {'flat' | 'season_based'} [structureType]
  * @property {'draft' | 'published' | 'unpublished'} [publicationStatus]
  * @property {'coming_soon' | 'hidden'} [visibility]
+ * @property {'ongoing' | 'completed' | null} [status]
+ * @property {Date | null} [publishedAt]
  * @property {'draft' | 'published' | 'unpublished'} [seasonPublicationStatus]
  * @property {'draft' | 'published' | 'unpublished'} [episodePublicationStatus]
  * @property {number} [seasonCount]
@@ -87,6 +89,8 @@ export async function seedDrama(options = {}) {
     structureType = 'season_based',
     publicationStatus = 'draft',
     visibility = 'coming_soon',
+    status = 'ongoing',
+    publishedAt = null,
     seasonPublicationStatus = 'draft',
     episodePublicationStatus = 'draft',
     seasonCount = 1,
@@ -115,9 +119,9 @@ export async function seedDrama(options = {}) {
         client,
         'insert the seeded drama',
         target,
-        `INSERT INTO dramas (id, title, slug, structure_type, status, publication_status, visibility, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, 'ongoing', $5, $6, now(), now())`,
-        [id, title, slug, structureType, publicationStatus, visibility]
+        `INSERT INTO dramas (id, title, slug, structure_type, status, publication_status, visibility, published_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now())`,
+        [id, title, slug, structureType, status, publicationStatus, visibility, publishedAt]
       );
 
       for (let seasonIndex = 0; seasonIndex < seasonCount; seasonIndex += 1) {

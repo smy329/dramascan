@@ -1,61 +1,37 @@
-import { redirect } from 'next/navigation';
-import { getActiveSession } from '@/platform/auth/session';
 import 'server-only';
 
-import { db } from '@/db/client';
-import { bookmarks } from '@/modules/users/schema';
-import { eq, sql } from 'drizzle-orm';
-import { dramas } from '@/modules/content/schema';
-import { movies } from '@/modules/content/schema';
+import { redirect } from 'next/navigation';
+
+import { resolveActor } from '@/modules/authorization';
+import { listPublicContentTargets, type PublicContentCard } from '@/modules/content';
+import { listUserBookmarks, type UserBookmark } from '@/modules/users';
 
 export const dynamic = 'force-dynamic';
 
 export default async function BookmarksPage() {
-  const session = await getActiveSession();
+  const actor = await resolveActor();
 
-  if (!session) {
+  if (actor.userId === null) {
     redirect('/auth/signin');
   }
 
-  // Fetch the user's bookmarks, ordered by most recent first
-  const allBookmarks = await db
-    .select({
-      id: bookmarks.id,
-      content_type: bookmarks.content_type,
-      content_id: bookmarks.content_id,
-      drama_id: bookmarks.drama_id,
-      movie_id: bookmarks.movie_id,
-    })
-    .from(bookmarks)
-    .where(eq(bookmarks.user_id, session.userId));
+  // The users module owns the personal list; the content module owns the
+  // public availability rule. The page only composes the two answers.
+  const bookmarkRows = await listUserBookmarks(actor);
 
-  // Filter out bookmarks for content that is no longer publicly available
-  const validBookmarks = [];
+  const targets = await listPublicContentTargets(
+    bookmarkRows.map(bookmark => ({ type: bookmark.type, id: bookmark.contentId }))
+  );
 
-  for (const bm of allBookmarks) {
-    let contentRef;
-    if (bm.content_type === 'drama') {
-      contentRef = await db
-        .select({ isActive: dramas.isActive, title: dramas.title, poster: dramas.poster })
-        .from(dramas)
-        .where(eq(dramas.id, bm.drama_id!))
-        .limit(1);
-    } else {
-      contentRef = await db
-        .select({ isActive: movies.isActive, title: movies.title, poster: movies.poster })
-        .from(movies)
-        .where(eq(movies.id, bm.movie_id!))
-        .limit(1);
-    }
+  const targetByKey = new Map(targets.map(target => [`${target.type}:${target.id}`, target]));
 
-    if (contentRef.length > 0 && contentRef[0].isActive) {
-      validBookmarks.push({
-        id: bm.id,
-        ...bm,
-        title: contentRef[0].title,
-        poster: contentRef[0].poster,
-        type: bm.content_type === 'drama' ? 'drama' : 'movie',
-      });
+  const visibleBookmarks: Array<{ bookmark: UserBookmark; target: PublicContentCard }> = [];
+
+  for (const bookmark of bookmarkRows) {
+    const target = targetByKey.get(`${bookmark.type}:${bookmark.contentId}`);
+
+    if (target) {
+      visibleBookmarks.push({ bookmark, target });
     }
   }
 
@@ -70,7 +46,7 @@ export default async function BookmarksPage() {
           </p>
         </header>
 
-        {validBookmarks.length === 0 ? (
+        {visibleBookmarks.length === 0 ? (
           <div className="empty-state text-center py-12">
             <svg
               className="w-12 h-12 mx-auto mb-4 text-gray-400 dark:text-gray-600"
@@ -78,10 +54,11 @@ export default async function BookmarksPage() {
               fill="none"
               stroke="currentColor"
               strokeWidth={2}
+              aria-hidden="true"
             >
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="17 3 21 3 21 7" />
-              <polyline points>7 22 3 22 3 17</polyline>
+              <polyline points="7 22 3 22 3 17" />
               <line x1="3" y1="7" x2="21" y2="7" />
               <line x1="21" y1="3" x2="21" y2="7" />
               <line x1="3" y1="22" x2="3" y2="17" />
@@ -97,36 +74,35 @@ export default async function BookmarksPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {validBookmarks.map((bm) => (
-              <div
-                key={bm.id}
+            {visibleBookmarks.map(({ bookmark, target }) => (
+              <a
+                key={bookmark.id}
+                href={target.href}
                 className="group rounded-lg border overflow-hidden hover:shadow-lg transition-shadow"
               >
-                {bm.poster ? (
+                {target.poster ? (
                   <img
-                    src={bm.poster}
-                    alt={bm.title}
+                    src={target.poster}
+                    alt={target.title}
                     loading="lazy"
                     className="w-full h-48 object-cover group-hover:opacity-90"
                   />
                 ) : (
-                  <div
-                    className="w-full h-48 bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400"
-                  >
+                  <div className="w-full h-48 bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
                     No poster
                   </div>
                 )}
 
                 <div className="p-4">
                   <h3 className="font-medium text-gray-900 dark:text-gray-100 line-clamp-2">
-                    {bm.title}
+                    {target.title}
                   </h3>
 
                   <div className="mt-2 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                    <span>{bm.type}</span>
+                    <span>{target.type}</span>
                   </div>
                 </div>
-              </div>
+              </a>
             ))}
           </div>
         )}

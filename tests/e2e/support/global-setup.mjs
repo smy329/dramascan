@@ -41,9 +41,13 @@ loadLocalEnv();
 const { Client } = pg;
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
+// The markers identify the DramaScan application rather than some other
+// server that happens to occupy the port. The home page always carries the
+// browse section heading, whatever the catalogue contains, and the document
+// title comes from the root layout metadata.
 const IDENTITY_MARKERS = [
   '<title>DramaScan</title>',
-  'International drama and movies, in one place.',
+  'Find your next story',
 ];
 
 export default async function globalSetup() {

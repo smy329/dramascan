@@ -90,7 +90,7 @@ Modules are assigned to fixed layers. See `ARCHITECTURE.md` §3 for the layer ma
 
 - **Purpose:** content-level ratings and reviews for dramas and movies, Enjoying reactions, review sorting and aggregates, review reporting, review removal.
 - **Owns:** `ratings`, `reviews`, `review_reactions`, `review_reports`.
-- **Public API:** `submitRating`, `getRatingSummary`, `submitReview`, `editReview`, `listReviews`, `addReaction`, `removeReaction`, `reportReview`, `listReportedReviews`, `removeReview` (requires `review.moderate`).
+- **Public API:** `submitRating`, `getRatingSummary`, `submitReview`, `editReview`, `listReviews`, `addReaction`, `removeReaction`, `reportReview`, `listReportedReviews`, `removeReview` (requires `review.manage`).
 - **Depends on:** `content`, `authorization`, `auth`, platform.
 - **Not responsible for:** episode ratings/reviews (excluded), content reports, moderation audit, reporter notifications.
 - **Boundary notes:** one active rating and one active review per user per content item. Public averages use each user's latest active rating. Removal is permanent and only through an authorized service.
@@ -323,7 +323,7 @@ Query services additionally filter by visibility and ownership. A caller cannot 
 ### 9.4 Resource-level rules
 
 - Users may mutate only their own ratings, reviews, reactions, reports, bookmarks, and progress.
-- Moderators act only through `review.moderate` and the moderation permissions. Review removal is permanent and cannot be undone.
+- Moderators act only through `review.read` (read the queue) and `review.manage` (resolve a report, remove a review). Review removal is permanent and cannot be undone.
 - Only Super Admin may permanently delete content, export datasets, or change system configuration.
 - The last effective Super Admin cannot be removed.
 - Deactivated accounts cannot use authenticated features even if a stale session exists.

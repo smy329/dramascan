@@ -12,7 +12,15 @@ import {
   resolvePublicContentSlug,
   type PublicEpisodeSummary,
 } from '@/modules/content';
-import { getRatingSummary } from '@/modules/reviews';
+import {
+  getRatingSummary,
+  getUserRating,
+  getUserReview,
+  listReviews,
+  recalculateDramaReviewSummary,
+  reviewSortSchema,
+  type ReviewSort,
+} from '@/modules/reviews';
 import { getDramaResumePoint, isBookmarked } from '@/modules/users';
 
 import { BookmarkButton } from '@/components/public/bookmark-button';
@@ -20,11 +28,14 @@ import { ContentCard } from '@/components/public/ContentCard';
 import { ContentHero } from '@/components/public/content-hero';
 import { ContinueWatching } from '@/components/public/continue-watching';
 import { EpisodeNavigation } from '@/components/public/episode-navigation';
+import { RatingWidget } from '@/components/public/rating-widget';
+import { ReviewsSection } from '@/components/public/reviews-section';
 import { ShareButton } from '@/components/public/share-button';
 import { ReportForm } from '@/components/public/report-form';
 import { PublicPageLayout } from '@/components/public/Layout';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { readStringParam, type PublicSearchParams } from '@/lib/discovery-params';
 
 /**
  * The public drama details page.
@@ -43,6 +54,7 @@ export const dynamic = 'force-dynamic';
 
 type DramaDetailPageProps = {
   params: Promise<{ dramaId: string; slug: string }>;
+  searchParams: Promise<PublicSearchParams>;
 };
 
 export async function generateMetadata({ params }: DramaDetailPageProps): Promise<Metadata> {
@@ -61,7 +73,7 @@ export async function generateMetadata({ params }: DramaDetailPageProps): Promis
     // Use the canonical drama URL as the og:url
     openGraph: {
       title: drama.title,
-      description: drama.description,
+      description: drama.description ?? undefined,
       images: drama.poster ? [
         {
           url: drama.poster,
@@ -90,8 +102,24 @@ function episodeLabel(episode: PublicEpisodeSummary): string {
   return `Episode ${episode.episodeNumber ?? episode.position ?? 1}`;
 }
 
-export default async function DramaDetailPage({ params }: DramaDetailPageProps) {
+/**
+ * Read the requested review order.
+ *
+ * The parameter arrives from the URL, so it is untrusted: an unknown value
+ * falls back to the newest-first order instead of reaching the read model.
+ */
+function readReviewSort(params: PublicSearchParams): ReviewSort {
+  const parsed = reviewSortSchema.safeParse(readStringParam(params, 'reviewSort', 'newest'));
+
+  return parsed.success ? parsed.data : 'newest';
+}
+
+export default async function DramaDetailPage({
+  params,
+  searchParams,
+}: DramaDetailPageProps) {
   const { dramaId, slug } = await params;
+  const rawParams = await searchParams;
 
   const drama = await getPublicDramaDetail(dramaId, slug);
 
@@ -108,12 +136,20 @@ export default async function DramaDetailPage({ params }: DramaDetailPageProps) 
   }
 
   const actor = await resolveActor();
+  const reviewSort = readReviewSort(rawParams);
 
   const [rating, viewCount, bookmarked, resumePoint] = await Promise.all([
     getRatingSummary('drama', drama.id),
     getContentViewCount('drama', drama.id),
     isBookmarked(actor, { type: 'drama', id: drama.id }),
     getDramaResumePoint(actor.userId, drama.id),
+  ]);
+
+  const [reviews, userRating, userReview, reviewSummary] = await Promise.all([
+    listReviews('drama', drama.id, { sort: reviewSort, viewerId: actor.userId }),
+    getUserRating(actor.userId, 'drama', drama.id),
+    getUserReview(actor.userId, 'drama', drama.id),
+    recalculateDramaReviewSummary(drama.id),
   ]);
 
   // The resume point is only usable when the episode it names is still
@@ -157,11 +193,7 @@ export default async function DramaDetailPage({ params }: DramaDetailPageProps) 
           signedIn={actor.userId !== null}
         />
 
-        <ShareButton
-          type="drama"
-          id={drama.id}
-          title={drama.title}
-        />
+        <ShareButton href={publicDramaHref(drama.id, drama.slug)} title={drama.title} />
 
         {actor.userId !== null && (
           <ReportForm
@@ -244,6 +276,33 @@ export default async function DramaDetailPage({ params }: DramaDetailPageProps) 
             </div>
           </section>
         ) : null}
+
+        <section aria-labelledby="ratings-heading" className="space-y-4">
+          <h2 id="ratings-heading" className="text-xl font-semibold tracking-tight text-foreground">
+            Your rating
+          </h2>
+
+          <RatingWidget
+            type="drama"
+            contentId={drama.id}
+            initialRating={userRating}
+            average={rating?.average ?? null}
+            count={rating?.count ?? 0}
+            signedIn={actor.userId !== null}
+          />
+        </section>
+
+        <ReviewsSection
+          type="drama"
+          contentId={drama.id}
+          basePath={`/drama/${drama.id}/${drama.slug}`}
+          params={rawParams}
+          reviews={reviews}
+          total={reviewSummary?.count ?? 0}
+          sort={reviewSort}
+          viewerId={actor.userId}
+          userReview={userReview}
+        />
       </div>
     </PublicPageLayout>
   );

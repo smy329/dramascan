@@ -74,7 +74,12 @@ export default defineConfig({
     // to run against a server that this run did not launch unless the operator
     // explicitly opts in, so reuse is never silent. CI always starts its own.
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    // The readiness check requests the base URL, which compiles the home route
+    // on a cold development server. On a slow or networked filesystem that
+    // compile can take well over a minute, so the budget is generous: a
+    // timeout here would fail the run before any test executes, and it says
+    // nothing about the application.
+    timeout: 300_000,
     stdout: 'pipe',
     stderr: 'pipe',
     env: {

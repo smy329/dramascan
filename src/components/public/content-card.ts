@@ -16,6 +16,20 @@ export const CONTENT_STATUS_LABELS = {
   'coming-soon': 'Coming Soon',
 } as const;
 
+/**
+ * The availability text of a drama.
+ *
+ * A drama that is listed but has no playable episode is "Coming soon"; every
+ * other drama is "Available now". A movie carries its own source, so the
+ * indicator does not apply to it.
+ */
+export const CONTENT_AVAILABILITY_LABELS = {
+  'coming-soon': 'Coming soon',
+  available: 'Available now',
+} as const;
+
+export type ContentAvailability = keyof typeof CONTENT_AVAILABILITY_LABELS;
+
 export type ContentKind = keyof typeof CONTENT_KIND_LABELS;
 export type ContentLifecycleStatus = keyof typeof CONTENT_STATUS_LABELS;
 export type ContentRating = {

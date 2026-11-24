@@ -1,33 +1,50 @@
 'use server';
 
-import { requireSuperAdmin } from '@/modules/authorization/guards';
-import { db } from '@/db/client';
-import { report_submissions } from '@/modules/users/schema';
-import { eq } from 'drizzle-orm';
-import { revalidatePath } from 'next/navigation';
-import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 
-/** Mark a report as resolved with a status note. */
-export async function resolveReportAction(
-  reportId: string,
-  status: 'reviewed' | 'resolved',
-  note: string = ''
-) {
-  const actor = await requireSuperAdmin({ userId: '', isSuperAdmin: true });
+import type { ActionResult } from '@/lib/contracts/common';
 
-  await db
-    .update(report_submissions)
-    .set({
-      status,
-      updated_at: new Date(),
-      ...(note !== '' ? { description: note } : {}),
-    })
-    .where(eq(report_submissions.id, reportId));
+import { resolveActor } from '@/modules/authorization';
+import { resolveContentReport, type ContentReportStatus } from '@/modules/users';
 
-  // Revalidate the reports admin page
-  revalidatePath('/admin/reports');
+import { toActionError } from '../action-errors';
 
-  redirect('/admin/reports');
+/**
+ * Resolve a viewer-submitted content report.
+ *
+ * The actor is resolved from the session and the permission is re-checked
+ * inside the users-module service, so the entrypoint is not the authority.
+ */
+export async function resolveReportAction(input: unknown): Promise<
+  ActionResult<{ reportId: string; status: ContentReportStatus }>
+> {
+  try {
+    const actor = await resolveActor();
 
-  return { success: true };
+    if (typeof input !== 'object' || input === null) {
+      return { ok: false, error: { code: 'validation_error', message: 'Invalid report.' } };
+    }
+
+    const payload = input as { reportId?: unknown; status?: unknown; note?: unknown };
+
+    if (typeof payload.reportId !== 'string' || payload.reportId.length === 0) {
+      return { ok: false, error: { code: 'validation_error', message: 'Invalid report id.' } };
+    }
+
+    const status = payload.status;
+
+    if (status !== 'reviewed' && status !== 'resolved') {
+      return { ok: false, error: { code: 'validation_error', message: 'Invalid report status.' } };
+    }
+
+    const note = typeof payload.note === 'string' ? payload.note : null;
+
+    const report = await resolveContentReport(actor, payload.reportId, status, note);
+
+    revalidatePath('/admin/reports', 'page');
+
+    return { ok: true, data: { reportId: report.id, status: report.status } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
 }

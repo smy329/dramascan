@@ -58,6 +58,19 @@ function watchRuntime(page: Page): RuntimeFailures {
   return failures;
 }
 
+/**
+ * Assert that the home page rendered its hero.
+ *
+ * The homepage hero is the administrator's featured title, so its heading is
+ * the title of whatever is featured. When the catalogue is empty the page
+ * shows an honest empty state instead. Either way there is exactly one level
+ * one heading, and the browse section is always present.
+ */
+async function expectHomeHero(page: Page): Promise<void> {
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Find your next story' })).toBeVisible();
+}
+
 async function openHome(page: Page): Promise<RuntimeFailures> {
   const failures = watchRuntime(page);
 
@@ -65,12 +78,7 @@ async function openHome(page: Page): Promise<RuntimeFailures> {
 
   expect(response?.status(), 'GET / must return a document').toBe(200);
   await expect(page).toHaveTitle(/DramaScan/);
-  await expect(
-    page.getByRole('heading', {
-      level: 1,
-      name: 'International drama and movies, in one place.',
-    })
-  ).toBeVisible();
+  await expectHomeHero(page);
 
   // Let hydration and any deferred client work finish before asserting.
   await page.waitForLoadState('networkidle');
@@ -163,12 +171,7 @@ test.describe('public site shell', () => {
         .first()
         .click();
       await expect(page).toHaveURL(/\/$/);
-      await expect(
-        page.getByRole('heading', {
-          level: 1,
-          name: 'International drama and movies, in one place.',
-        })
-      ).toBeVisible();
+      await expectHomeHero(page);
     }
 
     expect(failures.pageErrors, 'uncaught browser exceptions').toEqual([]);

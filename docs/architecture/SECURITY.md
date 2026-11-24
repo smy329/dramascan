@@ -100,7 +100,7 @@ Bootstrap is implemented by `src/platform/auth/auth-hooks.ts` through the Better
 
 ## 4. Authorization (RBAC)
 
-- Permissions are canonical `resource.action` keys from the catalog in `src/modules/authorization/permissions.ts` (for example `drama.update`, `episode.read`, `review.moderate`, `admin.manage`). Nothing outside the authorization module defines permission identifiers.
+- Permissions are canonical `resource.action` keys from the catalog in `src/modules/authorization/permissions.ts` (for example `drama.update`, `episode.read`, `review.manage`, `admin.manage`). Nothing outside the authorization module defines permission identifiers.
 - An administrator may hold multiple roles; effective permissions are the union of granted permissions across assigned roles. Revoked rows (`granted = false`) do not grant access.
 - The database is the authority for actor state. `resolveActor` loads `is_super_admin`, `is_active`, and `deleted_at`; deactivated or soft-deleted accounts resolve to an anonymous actor even if a session cookie is still valid. Super Admin resolves to the complete catalog without any role-name comparison.
 - The database enforces the canonical pair: `permissions` stores `resource` + `action` with a CHECK constraint generated from the full catalog key list, a unique `(role_id, resource, action)` constraint, and a role foreign key. Duplicate grants and non-catalog pairs are impossible; `granted = false` records an explicit revocation without deleting history.

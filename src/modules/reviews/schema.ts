@@ -150,14 +150,21 @@ export const review_reactions = pgTable(
 // migration timestamp would be a fabrication. `created_at` remains the row
 // timestamp; for a legacy report it is the moment the row was migrated.
 //
-// The review reference is `restrict`, not `cascade`: a report is moderation
+// The review reference is `set null`, not `cascade`: a report is moderation
 // history, and permanently removing a review must never silently erase it.
+// `review_id_snapshot` keeps the id of the review that was reported, so the
+// history stays readable after the review is gone.
 export const review_reports = pgTable(
   'review_reports',
   {
     id: uuidPrimaryKey(),
     user_id: uuid('user_id').notNull(),
-    review_id: uuid('review_id').notNull(),
+    // Nullable: a report outlives the review it was filed against, because a
+    // moderator can permanently remove a reported review.
+    review_id: uuid('review_id'),
+    // Immutable snapshot of the reported review's id, written when the report
+    // is filed. It is never rewritten, so the history stays truthful.
+    review_id_snapshot: uuid('review_id_snapshot'),
     reason: text('reason').notNull(),
     description: text('description'),
     status: text('status').notNull().default('active'),
@@ -186,11 +193,19 @@ export const review_reports = pgTable(
         and ${table.resolution_outcome} is not null
       )`
     ),
-    foreignKeyConstraint('review_reports', table.review_id, reviews.id, { onDelete: 'restrict' }),
+    // A report always names the review it was filed against, either through the
+    // live reference or through the immutable snapshot.
+    checkConstraint(
+      'review_reports',
+      'review_reference',
+      sql`${table.review_id} is not null or ${table.review_id_snapshot} is not null`
+    ),
+    foreignKeyConstraint('review_reports', table.review_id, reviews.id, { onDelete: 'set null' }),
     uniqueIndex('uq_review_reports_user_id_review_id_active')
       .on(table.user_id, table.review_id)
-      .where(sql`${table.status} = 'active'`),
+      .where(sql`${table.status} = 'active' and ${table.review_id} is not null`),
     indexOn('review_reports', table.review_id),
+    indexOn('review_reports', table.review_id_snapshot),
     indexOn('review_reports', table.resolved_by),
   ]
 );

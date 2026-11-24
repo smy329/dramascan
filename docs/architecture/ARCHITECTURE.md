@@ -287,7 +287,7 @@ Rules for the tree:
 5. **Validate at the boundary.** Every service validates its input with Zod, even when the caller already validated it. Validation lives in `validation.ts`; client form schemas live in `lib/contracts` and are composed, not trusted.
 6. **No HTTP knowledge.** Services throw typed application errors. They never import `Request`, `Response`, `NextResponse`, status codes, or route helpers.
 7. **Return DTOs, not rows.** Public functions return explicit result types. Sensitive columns (video source URLs outside watch queries, internal flags, admin metadata) are never included by default.
-8. **Explicit permission keys.** Guards use keys from the central catalog (`drama.create`, `episode.read`, `drama.update`, `review.moderate`, `user.manage`). No role-name comparisons and no generic `isAdmin` checks.
+8. **Explicit permission keys.** Guards use keys from the central catalog (`drama.create`, `episode.read`, `drama.update`, `review.manage`, `user.manage`). No role-name comparisons and no generic `isAdmin` checks. The catalog is the only source of the key names: a permission that is not in `src/modules/authorization/permissions.ts` does not exist, and adding one is a recorded decision (D-047).
 9. **No cross-module side effects.** A module never imports another module to trigger a side effect. That is a workflow's job (§8).
 10. **Transactions are passed in.** Write services accept an optional `tx: DbExecutor` and use it for every statement. They never open a competing transaction or commit independently.
 11. **No hidden state.** Modules do not keep request-scoped mutable singletons. Any per-request context (actor, request ID, transaction) is passed explicitly.
@@ -305,8 +305,15 @@ Rules for the tree:
 | `service.ts` / `service/`       | Write services, domain rules, transaction participation                               | No (type-only `DbExecutor` allowed) |
 | `read-models/`                  | Approved cross-module read-only queries (`analytics`, `administration`, `users` only) | Yes (`@/db/client`)                 |
 | `providers/`                    | Isolated external-provider adapters (`notifications` only)                            | No                                  |
+| `*.shared.ts`                   | Pure, testable helpers a client island may import directly (D-049)                     | No (no database import at all)      |
 
 Large modules may split `service.ts` and `repository.ts` into folders, provided `index.ts` remains the only public surface.
+
+A `*.shared.ts` file is the one exception to "the module index is the only
+public surface": it exists so a client island can use a pure catalog or parser
+without reaching a `server-only` barrel. It carries no `server-only` marker,
+no database import, and no side effect. A client component imports the
+`*.shared.ts` file directly and never the module index.
 
 ### 5.2 Service categories
 
@@ -352,6 +359,8 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 - **Depends on:** `authorization`, `auth`, platform.
 - **Not responsible for:** playback progress, watch history, ratings/reviews, view counts, notifications, moderation records, image file I/O (files live on disk; this module stores metadata and paths).
 - **Boundary notes:** publication workflows are invoked through `workflows/publish-content`, not by other modules. Public queries never return unpublished or trashed content. Watch queries obtain the source URL through `playback`, not from a general details query. Drama structure conversion (season-based ↔ flat) is sequenced by `workflows/admin/conversion`, which owns the transaction, the `FOR UPDATE` lock, the preview fingerprint check, and the snapshot lifecycle; the `content` module supplies the pure ordering, plan, fingerprint, and snapshot-payload rules. Drama→movie conversion is sequenced by `workflows/admin/movie-conversion`; `content` supplies the plan, publication mapping, and fingerprint, while the `reviews`, `users`, `notifications`, and `analytics` modules move their own rows through transaction-scoped ownership services.
+- **Public discovery reads (Prompts 121–138):** `content/public-discovery.ts` owns the content-only public reads — the browse listings, the category and platform pages, the search suggestions, the hero candidates, and the public availability predicates `publicDramaAvailability` / `publicMovieAvailability`, which mirror `evaluatePublicAvailability` in SQL. `content/public-discovery.shared.ts` holds the pure parsers and DTO mappers that a client island may import directly (D-049). The *unified* ranked grid — which joins the rating rows and the daily aggregates — is owned by `analytics/read-models/discovery.ts` (§6.9); `content` does not import `reviews` or `analytics` to build it.
+- **Availability is the single authority:** a published item with no playable source is not publicly listed. The rule applies to the listings, the detail pages, the watch routes, the search results, and the bookmarks, so a viewer never reaches a page that leads nowhere.
 
 ### 6.4 `users` — User profile and bookmarks
 
@@ -379,10 +388,13 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 
 - **Purpose:** content-level ratings and reviews for dramas and movies, Enjoying reactions, review sorting and aggregates, review reporting, review removal.
 - **Owns:** `ratings`, `reviews`, `review_reactions`, `review_reports`.
-- **Public API:** `submitRating`, `getRatingSummary`, `submitReview`, `editReview`, `listReviews`, `addReaction`, `removeReaction`, `reportReview`, `listReportedReviews`, `removeReview` (requires `review.moderate`).
+- **Public API:** `submitRating`, `getRatingSummary`, `submitReview`, `editReview`, `listReviews`, `addReaction`, `removeReaction`, `reportReview`, `listReportedReviews`, `removeReview` (requires `review.manage`).
 - **Depends on:** `content`, `authorization`, `auth`, platform.
 - **Not responsible for:** episode ratings/reviews (excluded), content reports, moderation audit, reporter notifications.
 - **Boundary notes:** one active rating and one active review per user per content item. Public averages use each user's latest active rating. Removal is permanent and only through an authorized service.
+- **Partial-index upserts (D-048):** every upsert against a partial unique index repeats the *whole* index predicate in `targetWhere`. PostgreSQL infers a partial index only when the statement's predicate implies the index predicate, so a shorter predicate made the second rating for the same viewer fail instead of updating the existing row.
+- **Report history (Prompts 115–120):** `review_reports.review_id` is nullable with `ON DELETE SET NULL`, and the immutable `review_id_snapshot` keeps the id of the removed review. A permanently removed review therefore never deletes the moderation history that refers to it, and the CHECK `ck_review_reports_review_reference` keeps a report from losing its subject altogether. The review reasons are a pure catalog in `reviews/report-reasons.ts`, which a client island imports directly (D-049).
+- **The one allowed same-layer import:** `reviews` may read `content` for the public availability check. The direction is never inverted — `content` does not import `reviews` (D-044).
 
 ### 6.7 `moderation` — Content reports and moderation records
 
@@ -392,6 +404,7 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 - **Depends on:** `content`, `users`, `reviews`, `authorization`, `auth`, platform.
 - **Not responsible for:** review storage or review removal (delegated to `reviews`), user deactivation (delegated to `users`), reporter notifications (workflow).
 - **Boundary notes:** reported reviews remain visible while pending. `getModerationQueue` is an approved read model combining content reports and review reports; it is read-only.
+- **Audit rows (Prompts 115–120):** `moderation_actions.target_id` is an immutable snapshot of the target — a report id or a review id — and not a live foreign key, because the target may be permanently removed afterwards. `actor_user_id` is nullable with `ON DELETE SET NULL`: an audit row outlives the administrator who wrote it. `recordModerationAction` re-checks `review.manage` on the server, so the audit trail cannot be written by an actor who may only read the queue.
 
 ### 6.8 `notifications` — User and admin notifications
 
@@ -409,7 +422,7 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 - **Public API:** `recordContentView`, `recordPlaybackEvent`, `getContentViewCount`, `getAnalyticsOverview`, `getContentPerformance`, `getViewerActivity`, `getEngagementTrends`, `purgeExpiredGuestData`.
 - **Depends on:** `content`, `users`, `playback`, `reviews` (reporting reads only), `authorization`, `auth`, platform.
 - **Not responsible for:** personal watch history or progress (owned by `playback`), operational system metrics and errors (owned by `maintenance`), notifications.
-- **Boundary notes:** this is the reporting module. Cross-module joins are allowed only in `analytics/read-models/` and only for read-only reporting. It is **not** a mandatory intermediary for the watch page or admin operational summaries.
+- **Boundary notes:** this is the reporting module. Cross-module joins are allowed only in `analytics/read-models/` and only for read-only reporting. It is **not** a mandatory intermediary for the watch page or admin operational summaries. The unified public discovery grid — Trending, Popular, Highest Rated, Most viewed, and the search results — lives in `analytics/read-models/discovery.ts`: it is the only place where the `content`, `reviews`, and `analytics` domains are read together. The administrator's Trending pins are *not* read there; the app layer reads them from `administration` and hands them to the read model as `pinnedIds`, so `analytics` never imports `administration`. The four raw-SQL rules that the grid obeys are recorded in D-050.
 
 ### 6.10 `administration` — Admin operations and system configuration
 
@@ -419,6 +432,8 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 - **Depends on:** all modules (read-only for summaries), `authorization`, `auth`, platform.
 - **Not responsible for:** role definitions (owned by `authorization`), session storage (owned by `auth`), admin notifications (owned by `notifications`), backups and health (owned by `maintenance`).
 - **Boundary notes:** multi-module state changes (authorizing an admin, changing roles, terminating sessions) run through workflows. `getOperationalSummary` is an approved read-only cross-module query in `administration/read-models/`.
+- **System settings (Prompts 121–138):** `administration/settings.ts` owns `system_settings` and the typed helpers `getFeaturedContentSetting`, `getHeroRotationSetting`, `getTrendingPinsSetting`, and `parseSettingContentRefs`. The setting keys are `featured_content_id`, `featured_content_type`, `hero_rotation_enabled`, `hero_rotation_item_ids` (JSON), and `trending_pinned_item_ids` (JSON). The pure parsers live in `administration/settings.shared.ts` so a client island may import them directly (D-049). `administration` does not import `analytics`: the Trending pins are read here and handed to the read model by the app layer.
+- **Audit events without an entity (D-056):** `admin_audit_log.entity_id` is nullable. An action on a content item names that item; an action on a global homepage setting names the setting instead (`entity_type = 'homepage_setting'`, no entity id), because a setting is not a content row and has no identifier to point at.
 
 ### 6.11 `maintenance` — Operations and observability
 
@@ -671,7 +686,7 @@ Query services additionally filter by visibility and ownership. A caller cannot 
 ### 11.4 Resource-level rules
 
 - Users may mutate only their own ratings, reviews, reactions, reports, bookmarks, and progress.
-- Moderators act only through `review.moderate` and the moderation permissions. Review removal is permanent and cannot be undone.
+- Moderators act only through `review.read` (read the queue) and `review.manage` (resolve a report, remove a review). Review removal is permanent and cannot be undone.
 - Only Super Admin may permanently delete content, export datasets, or change system configuration.
 - The last effective Super Admin cannot be removed.
 - Deactivated accounts cannot use authenticated features even if a stale session exists.

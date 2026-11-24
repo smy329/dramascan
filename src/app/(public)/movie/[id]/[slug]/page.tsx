@@ -10,17 +10,28 @@ import {
   publicMovieHref,
   resolvePublicContentSlug,
 } from '@/modules/content';
-import { getRatingSummary } from '@/modules/reviews';
+import {
+  getRatingSummary,
+  getUserRating,
+  getUserReview,
+  listReviews,
+  recalculateMovieReviewSummary,
+  reviewSortSchema,
+  type ReviewSort,
+} from '@/modules/reviews';
 import { getMoviePlaybackState, isBookmarked } from '@/modules/users';
 
 import { BookmarkButton } from '@/components/public/bookmark-button';
 import { ContentHero } from '@/components/public/content-hero';
 import { ContinueWatching } from '@/components/public/continue-watching';
+import { RatingWidget } from '@/components/public/rating-widget';
+import { ReviewsSection } from '@/components/public/reviews-section';
 import { ShareButton } from '@/components/public/share-button';
 import { ReportForm } from '@/components/public/report-form';
 import { PublicPageLayout } from '@/components/public/Layout';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { readStringParam, type PublicSearchParams } from '@/lib/discovery-params';
 
 /**
  * The public standalone-movie details page.
@@ -39,6 +50,7 @@ export const dynamic = 'force-dynamic';
 
 type MovieDetailPageProps = {
   params: Promise<{ id: string; slug: string }>;
+  searchParams: Promise<PublicSearchParams>;
 };
 
 export async function generateMetadata({ params }: MovieDetailPageProps): Promise<Metadata> {
@@ -57,7 +69,7 @@ export async function generateMetadata({ params }: MovieDetailPageProps): Promis
     // Use the canonical movie URL as the og:url
     openGraph: {
       title: movie.title,
-      description: movie.description,
+      description: movie.description ?? undefined,
       images: movie.poster ? [
         {
           url: movie.poster,
@@ -77,8 +89,24 @@ export async function generateMetadata({ params }: MovieDetailPageProps): Promis
   };
 }
 
-export default async function MovieDetailPage({ params }: MovieDetailPageProps) {
+/**
+ * Read the requested review order.
+ *
+ * The parameter arrives from the URL, so it is untrusted: an unknown value
+ * falls back to the newest-first order instead of reaching the read model.
+ */
+function readReviewSort(params: PublicSearchParams): ReviewSort {
+  const parsed = reviewSortSchema.safeParse(readStringParam(params, 'reviewSort', 'newest'));
+
+  return parsed.success ? parsed.data : 'newest';
+}
+
+export default async function MovieDetailPage({
+  params,
+  searchParams,
+}: MovieDetailPageProps) {
   const { id, slug } = await params;
+  const rawParams = await searchParams;
 
   const movie = await getPublicMovieDetail(id, slug);
 
@@ -95,12 +123,20 @@ export default async function MovieDetailPage({ params }: MovieDetailPageProps) 
   }
 
   const actor = await resolveActor();
+  const reviewSort = readReviewSort(rawParams);
 
   const [rating, viewCount, bookmarked, playbackState] = await Promise.all([
     getRatingSummary('movie', movie.id),
     getContentViewCount('movie', movie.id),
     isBookmarked(actor, { type: 'movie', id: movie.id }),
     getMoviePlaybackState(actor.userId, movie.id),
+  ]);
+
+  const [reviews, userRating, userReview, reviewSummary] = await Promise.all([
+    listReviews('movie', movie.id, { sort: reviewSort, viewerId: actor.userId }),
+    getUserRating(actor.userId, 'movie', movie.id),
+    getUserReview(actor.userId, 'movie', movie.id),
+    recalculateMovieReviewSummary(movie.id),
   ]);
 
   const hasProgress =
@@ -137,11 +173,7 @@ export default async function MovieDetailPage({ params }: MovieDetailPageProps) 
         signedIn={actor.userId !== null}
       />
 
-      <ShareButton
-        type="movie"
-        id={movie.id}
-        title={movie.title}
-      />
+      <ShareButton href={publicMovieHref(movie.id, movie.slug)} title={movie.title} />
 
       {actor.userId !== null && (
         <ReportForm
@@ -168,6 +200,33 @@ export default async function MovieDetailPage({ params }: MovieDetailPageProps) 
           categories={movie.categories}
           platforms={movie.platforms}
           actions={actions}
+        />
+
+        <section aria-labelledby="ratings-heading" className="space-y-4">
+          <h2 id="ratings-heading" className="text-xl font-semibold tracking-tight text-foreground">
+            Your rating
+          </h2>
+
+          <RatingWidget
+            type="movie"
+            contentId={movie.id}
+            initialRating={userRating}
+            average={rating?.average ?? null}
+            count={rating?.count ?? 0}
+            signedIn={actor.userId !== null}
+          />
+        </section>
+
+        <ReviewsSection
+          type="movie"
+          contentId={movie.id}
+          basePath={`/movie/${movie.id}/${movie.slug}`}
+          params={rawParams}
+          reviews={reviews}
+          total={reviewSummary?.count ?? 0}
+          sort={reviewSort}
+          viewerId={actor.userId}
+          userReview={userReview}
         />
       </div>
     </PublicPageLayout>

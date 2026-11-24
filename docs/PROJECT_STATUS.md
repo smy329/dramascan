@@ -2,47 +2,71 @@
 
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
-**Date:** 2026-11-23  
+**Date:** 2026-11-24  
 ### Phase 9 — Ratings, Reviews, and Moderation (2026-11-24)
 
-Prompts 115-120 implement the rating submission, review submission/editing, rating aggregation, review enjoyment reactions, review sorting/reporting, and review moderation features.
+Prompts 115-120 implement the rating submission, review submission/editing, rating aggregation, review enjoyment reactions, review sorting/reporting, and review moderation features. The pass that produced this section audited the whole phase and fixed the defects listed under *Bugs found and fixed*.
 
 #### Implemented
 
-- **Drama rating submission (Prompt 115).** Authenticated users may submit one active rating (1–5) per drama. Duplicate active ratings are prevented by the database unique index; users may update their existing rating. Rating range is validated (1–5).
+- **Rating submission (Prompt 115).** `reviews.submitDramaRating` / `submitMovieRating` accept one active rating (1–5) per viewer per content item. The value is validated with Zod on the server, and the write is an upsert against the partial unique index `uq_ratings_drama_id_user_id_active`. The upsert's `targetWhere` repeats the *whole* index predicate: PostgreSQL only infers a partial index when the statement's predicate implies the index predicate, so a shorter predicate made the write fail on a second rating.
+- **Review submission and editing (Prompt 116).** `reviews.submitDramaReview` / `submitMovieReview` accept one active written review per viewer per content item and let the author edit it in place. The creation time is preserved; the last-edited timestamp moves forward. Viewers cannot delete their own review — removal is a moderation action.
+- **Rating aggregation and display (Prompt 117).** `reviews.getRatingSummary` returns the average and the count of *active* ratings. A deleted rating never counts. The rating block is hidden when there is no rating at all.
+- **Review enjoyment reactions (Prompt 118).** `reviews.toggleReviewEnjoying` adds or removes the viewer's one "Enjoying" reaction. The toggle deletes first and then inserts, so a double tap is idempotent instead of a unique-violation error, and the count on the page follows the database.
+- **Review sorting and reporting (Prompt 119).** Reviews sort by Most Enjoying, Newest, or Highest Rated. The report reasons are a client-safe catalog (`src/modules/reviews/report-reasons.ts`): spam/advertising, harassment/bullying, inappropriate language, misleading/false information, and other with an optional description. One *active* report per viewer per review is enforced; a viewer may report again after an earlier report is resolved, and several viewers may report the same review.
+- **Review moderation (Prompt 120).** `reviews.removeReview` permanently removes a review and `moderation.recordModerationAction` writes the audit row. A removed review is gone for good — the `reviews` table has no `deleted_at`. The report itself survives as moderation history: `review_reports.review_id` is nullable with `ON DELETE SET NULL`, and the immutable `review_id_snapshot` keeps the id of the removed review. The reporter is notified through `notifications.notifyReporter`, and the notification is not preference-gated: a moderation outcome is always delivered.
 
-- **Review submission and editing (Prompt 116).** Authenticated users may submit one active written review per drama and edit their own review. Creation time is preserved; the last-edited timestamp updates on changes. Permanent deletion by users is not allowed.
+#### Permissions
 
-- **Rating aggregation and display (Prompt 117).** Average rating and total rating count are calculated from genuine active ratings. Rating information is hidden when no ratings exist. Compact display format `⭐ 4.5 (1.2K)` is used.
+The permission catalog has no `review.moderate`. Moderation uses the two existing review permissions:
 
-- **Review enjoyment reactions (Prompt 118).** Authenticated users may add or remove one "Enjoying" reaction per review. Duplicate reactions are prevented by the database unique index. The enjoyment count updates consistently after each toggle.
+- `review.read` — read the moderation queue.
+- `review.manage` — resolve a report and remove a review.
 
-- **Review sorting and reporting (Prompt 119).** Reviews may be sorted by Most Enjoying, Newest, and Highest Rated. Report reasons include: spam/advertising, harassment/bullying, inappropriate language, misleading/false information, and other (with optional description). One active report per user per review is enforced; a user may report again after an earlier report is resolved. Multiple users may report the same review.
+Both the page guard and the workflow re-check the permission on the server; the navigation entry is visibility only.
 
-- **Review moderation (Prompt 120).** Moderator tools inspect reported reviews, resolve reports, and permanently remove reviews. Reported reviews remain visible while pending moderation. Only Super Admin may permanently remove reviews. Removed reviews cannot be restored. The reporter is notified of the resolution outcome.
-
-#### Active
-
-- All Phase 9 prompts 115-120 have been addressed
-- Rating submission and review submission Server Actions are functional
-- Moderation actions require Super Admin authentication
-- Rating summaries display correctly when ratings exist, and hide when no ratings
-
-#### Work State
-
-- Typecheck: PASS
-- Lint: PASS
-- Core services and Server Actions verified
-
-### Module boundaries
+#### Module boundaries
 
 - `reviews` owns the ratings, reviews, review reactions, and review reports
-- `moderation` owns the moderation_actions audit log
+- `moderation` owns the `moderation_actions` audit log
+- `notifications` owns `notifyReporter`
 - `content` owns the content items that ratings and reviews target
+
+`reviews → content` is the one allowed same-layer exception; `content` never imports `reviews`.
+
+#### Bugs found and fixed
+
+- **`revalidatePath` was imported from the wrong module.** The Server Action imported it from `next/navigation`; in Next.js 16.4.5 it is exported by `next/cache`. The import and the two bogus module augmentations are gone.
+- **A partial-index upsert wrote through the wrong predicate.** `onConflictDoUpdate` named only the conflict target, so PostgreSQL could not infer the partial unique index and the second rating for the same viewer failed. `targetWhere` now repeats the index predicate exactly.
+- **The review form reported the wrong outcome.** The success message was derived from the *refreshed* `existingReview` prop, so publishing a first review announced "Your review was updated." The message is now captured in state before the action runs.
+- **The moderation queues dropped their confirmation.** Both queue components returned early when the list was empty, *before* rendering the message. Resolving the only report in the queue emptied the list, so the moderator saw the empty state and no confirmation at all and could not tell whether the click had worked. The message and the error are now rendered above the empty state, and a regression test proves they survive the re-render.
+- **The share control crashed every public details page.** `ShareButton` read `window.location.origin` during render. A client component is also rendered on the server, where `window` does not exist, so `/drama/{id}/{slug}` and `/movie/{id}/{slug}` answered HTTP 500 with `ReferenceError: window is not defined`. The origin is now read in an effect, and the control receives the canonical `href` from the server page, so a film no longer shares a drama address and the shared link carries the slug.
+
+#### Changed files
+
+- `src/modules/reviews/{service.ts,review-service.ts,reaction-service.ts,report-service.ts,removal-service.ts,validation.ts,report-reasons.ts,schema.ts,index.ts}`
+- `src/modules/moderation/{schema.ts,service.ts,index.ts}`
+- `src/modules/notifications/{notifications.ts,index.ts}`
+- `src/modules/auth/display-names.ts` (new)
+- `src/workflows/reviews/actions.ts` (new), `src/workflows/moderation/review-moderation.ts` (new)
+- `src/components/public/{rating-widget.tsx,review-form.tsx,review-reaction-button.tsx,review-report-button.tsx,reviews-section.tsx,share-button.tsx}`
+- `src/components/admin/moderation/{content-report-queue.tsx,review-report-queue.tsx}` (new)
+- `src/app/admin/{reviews,reports}/page.tsx`, `src/app/(public)/{drama,movie}/…/page.tsx`
+- `src/modules/users/{content-reports.ts,watch-history.ts}` (new)
+- `drizzle/0015_moderation_and_settings.sql` (new)
+
+#### Verification
+
+- Typecheck: **PASS** (`npm run typecheck`)
+- Lint: **PASS** (`npm run lint`)
+- Unit tests: **PASS** — 1119/1119, 107 files (`npm test`)
+- Integration tests: **PASS** — 693/693, 45 files (`npm run test:integration`)
+- Playwright E2E: **PASS** — 81/81 (`npx playwright test`), including the new `tests/e2e/reviews.spec.ts`
+- Production build: **PASS** (`npm run build`)
 
 ---
 
-**Current Prompt:** Phase 10 — Homepage, discovery, and search features (Prompts 121-138)
+**Current Prompt:** Phase 11 — Analytics and notifications (Prompts 139-154). Phase 9 (Prompts 115-120) and Phase 10 (Prompts 121-138) are complete and verified in the pass recorded below.
 
 ### Prompts 121-138 — Homepage, discovery, and search (2026-11-24)
 
@@ -50,73 +74,80 @@ Prompts 121-138 implement the homepage hero section, featured content administra
 
 #### Implemented
 
-- **Homepage hero section (Prompt 121).** Featured drama/movie with admin override capability. Uses first active/published content as featured, fallback to any active content.
-- **Featured content admin (Prompt 122).** Admin CRUD for featured content selection. Already exists at `src/app/admin/featured/page.tsx`.
-- **Hero auto-rotation setting (Prompt 123).** Config table with toggleable on/off setting. Already exists at `src/app/admin/hero-rotation/page.tsx`.
-- **Trending, Popular, Recently Added sections (Prompts 124-127).** Added to homepage at `src/app/home/page.tsx` with pagination and Vidstack playback preview.
-- **Category-based homepage sections (Prompt 128).** Category carousels on homepage with content association.
-- **System settings table (Prompt 129/130).** Administration module with system settings.
-- **Category management admin CRUD (Prompt 135).** Already exists at `src/app/admin/categories/page.tsx` with create, edit, soft delete, and reorder. Protects deletion when content is associated.
-- **Platform management admin CRUD (Prompt 136).** Already exists at `src/app/admin/platforms/page.tsx` with create, edit, soft delete, and reorder.
-- **Platform browse pages (Prompt 137).** Updated at `src/app/(public)/platforms/page.tsx` with dynamic content from database.
-- **Highest Rated page (Prompt 132).** Created at `src/app/(public)/highest-rated/page.tsx` with empty state and rating summary integration.
-- **Search and Autocomplete (Prompt 138).** Created at `src/app/(public)/search/page.tsx` with PostgreSQL ILIKE text matching, query parameter-based filters (Ongoing/Completed, sorting: newest/trending/popular/highest_rated/most_viewed), and autocomplete suggestions.
+- **Homepage (Prompt 121/128).** The real homepage is `src/app/(public)/page.tsx` at `/`. The untracked `src/app/home/page.tsx` — a broken, unregistered `/home` route — was deleted. The page shows the hero, the discovery rails, the viewer's continue-watching list, and the browse section.
+- **Featured hero administration (Prompt 122).** `/admin/featured` lets an administrator choose the item the hero shows. The candidate list comes from the content module's public hero read model, so only content the public can already open is offered; an automatic fallback keeps working when the selection is empty or the selected item later becomes unavailable.
+- **Hero auto-rotation (Prompt 123).** `/admin/hero-rotation` stores the rotation item list and the on/off switch in `system_settings`. The rotator is a client island; the server decides which items are eligible. There is no scheduler and no background work — a timer in the browser.
+- **Trending, Popular, Recently Added, Highest Rated, Most viewed (Prompts 124-127/132).** `/trending`, `/popular`, `/recently-added`, and `/highest-rated` are server-rendered pages over one shared ranked grid. The four rankings are genuinely different measures:
+  - **Trending** weights recent activity and decays it with age: a 14-day window, a 7-day half-life, and `unique_visitors × 1.0 + total_views × 0.5 + watch_minutes × 0.5`.
+  - **Popular** is the same activity measure over *all* history, without decay.
+  - **Most viewed** is the historical sum of `total_views`.
+  - **Highest Rated** is the average of the *active* ratings; an item without a rating is never ranked.
 
-#### Active
+  Every ranking reads the stored daily aggregates, so a page refresh cannot inflate a score.
+- **Recently Added order.** Recently Added sorts by `published_at`, the timestamp that the publication workflow stamps on the first publication and never overwrites.
+- **System settings (Prompt 129/130).** The `administration` module owns `system_settings` and the typed helpers `getFeaturedContentSetting`, `getHeroRotationSetting`, `getTrendingPinsSetting`, and `parseSettingContentRefs`. The setting keys are `featured_content_id`, `featured_content_type`, `hero_rotation_enabled`, `hero_rotation_item_ids`, and `trending_pinned_item_ids`.
+- **Trending pins.** `/admin/trending-pins` decides which eligible items are pinned to the top of the Trending ranking. A pin changes the order, never the underlying activity score.
+- **Category and platform management (Prompts 135/136).** `/admin/categories` and `/admin/platforms` keep their create, edit, soft delete, and reorder behaviour, and both protect deletion while content is associated.
+- **Browse pages (Prompt 137).** `/categories` and `/platforms` are server-rendered over the content module's public discovery read models, with link-based filters.
+- **The drama and film catalogues are real discovery pages.** `/drama` and `/movie` are server-rendered over the same shared ranked grid as the ranking pages, so the whole browse surface uses one availability rule and one ranking implementation. `/drama` offers the lifecycle-status filter (all, ongoing, completed) and the sort order; `/movie` offers the sort order, because a film is a finished work and has no lifecycle status.
+- **A card carries two independent facts.** The *availability* of an item ("Coming soon" / "Available now") and its *lifecycle* status (ongoing / completed) are different things, and the card shows both. A drama that is listed but has no playable episode is marked "Coming Soon" — the badge takes precedence over the lifecycle label, because "you cannot watch this yet" is the more actionable fact. A movie is always available, because a public movie carries a source. The flag travels with the item: `RankedContent.comingSoon` and `DiscoveryCard.comingSoon` are computed by the same playable-episode predicate the availability rule uses.
+- **Search and autocomplete (Prompt 138).** `/search` is a server-rendered results page; only the search box is a client island. The suggestions are served by `GET /api/search/suggestions`. Matching uses PostgreSQL full-text search (`to_tsvector` / `plainto_tsquery`) and trigram similarity (`pg_trgm`), installed by migration `0016` together with the GIN indexes on the drama title, movie title, category name, and platform name.
+- **Search relevance.** A search with a term is ordered by relevance by default, and the order is a ladder rather than one fuzzy number: an exact title match (1000), a title that starts with the term (700), a title that contains it (400), a full-text match (200), and finally a scaled trigram score. Without the ladder, a search for a popular title buries that title under dozens of loosely similar ones, because the trigram index matches anything that shares enough characters. Without a term, `relevance` falls back to `newest`.
 
-- Homepage hero section with all sub-features
-- Full homepage at `src/app/home/page.tsx` with hero, recently added, trending, popular, continue watching, and category sections
-- All admin features require super admin authentication via `requireSuperAdmin`
+#### Module boundaries
 
-#### Work State
+- `content` owns the content-only public discovery reads (`public-discovery.ts`) and the canonical hrefs
+- `reviews` owns the rating rows the Highest Rated ranking reads
+- `analytics` owns the daily aggregates and the unified ranked grid (`analytics/read-models/discovery.ts`) — `ARCHITECTURE.md` §6.9 designates that directory as the only place where a read-only join across modules is allowed
+- `users` owns the viewer's bookmarks, playback state, and watch history
+- `administration` owns `system_settings`
 
-##### Completed
-- All Phase 10 prompts 121-138 have been addressed
-- TypeScript build compiles with Turbopack
-- All admin features require super admin authentication
-- Search uses PostgreSQL ILIKE for text matching
+`analytics` never imports `administration`: the Trending pins are read by the app layer and handed to the read model as `pinnedIds`.
 
-##### Active
-- Search page type checking has some expected errors due to React hooks in server component context (Turbopack build compiles successfully)
+#### Bugs found and fixed
 
-##### Blocked
-- None
+- **The integration test left 861 dramas, 123 movies, 131 categories, and 131 platforms behind.** The cleanup deleted the dependents but not the seeded rows themselves, so the leftovers polluted every later search and ranking. The cleanup now removes the seeded rows as well, and the rows that were already in the test database were deleted.
+- **The search results were not ordered by relevance.** A title the viewer typed exactly could appear below titles that merely resembled it.
+- **A published movie without a source was listed publicly.** The availability rule (`content.evaluatePublicAvailability`, mirrored in SQL by `publicDramaAvailability` / `publicMovieAvailability`) is the authority, and the read models apply it.
+- **The admin navigation was wider than the page guards.** The Homepage entries asked for `settings.read` or `settings.manage` and the Reports entry asked for `review.read` or `review.manage`, while the pages themselves require `settings.manage` and `review.manage`. The navigation now names exactly the permission the page checks, so an operator sees only what they may open.
+- **The E2E identity marker referred to a removed headline.** The global setup looked for "International drama and movies, in one place.", which the rewritten homepage no longer renders; every E2E run failed its application check. The marker is now "Find your next story", the browse heading the page always carries.
+- **The Playwright web-server budget was too small for this filesystem.** The readiness check compiles the home route, which takes about 80 seconds on a cold development server on this network drive, and the 120-second budget expired before any test ran. The budget is now 300 seconds, with a comment that says why.
+- **The similar-drama administration test exceeded the suite's per-test budget.** The flow adds two recommendations, reorders them, reloads the page, and removes one again — every step a real REST call against the real database, with the admin routes compiled on their first request. The suite's global 30-second budget is smaller than the configured 45-second navigation timeout, so a cold compile plus the real work does not fit in it. The test now sets an explicit 120-second budget, following the precedent set by the admin content-management and footer flows. No assertion was weakened, and the other tests keep the 30-second budget.
+- **The film catalogue page was a hardcoded empty state.** `/movie` rendered two placeholder tabs — "Recent releases" and "Classic films" — with no query behind them, so it announced "No films published yet" no matter what the catalogue held. The page is now a server-rendered discovery grid over the shared ranked read model, the same surface as the drama catalogue.
+- **The "Complete series" count counted every drama.** The old drama catalogue tab pair showed the number of *all* dramas under "Complete series", and the tab was not a filter. The page now offers a lifecycle-status filter that actually narrows the grid, and the count is the count of the completed dramas.
+- **Two of the three homepage settings could not be saved at all.** The hero rotation, the Trending pins, and clearing the featured item wrote the literal strings `hero_rotation`, `trending_pins`, and `featured` into `admin_audit_log.entity_id`, which is a `uuid` column. PostgreSQL rejected the insert with "invalid input syntax for type uuid", the transaction rolled back, and the administrator saw "An unexpected error occurred." — every save failed, silently, with no explanation. A global setting is not a content row and has no identifier to point at, so the audit record now names the setting itself (`entity_type = 'homepage_setting'`, no entity id), and migration `0017` makes `entity_id` nullable for exactly that case.
+- **The homepage confirmations read "1 items".** The hero-rotation and Trending-pin messages used a fixed plural. The wording now lives in `src/components/admin/homepage/homepage-messages.ts` and is unit-tested.
 
-### Module boundaries
+#### Changed files
 
-- `content` owns the dramas, movies, categories, platforms, and taxonomy
-- `reviews` owns the rating summary and `getRatingSummary`
-- `analytics` owns the search_events and view counts
-- `users` owns the playback state and progress
+- `src/modules/analytics/read-models/discovery.ts` (new), `src/modules/analytics/index.ts`
+- `src/modules/content/{public-discovery.ts,public-discovery.shared.ts,public-details.ts,index.ts}`
+- `src/modules/administration/{settings.ts,settings.shared.ts,schema.ts,index.ts}`
+- `src/components/public/{content-rail.tsx,discovery-filters.tsx,discovery-grid.tsx,home-hero.tsx,home-hero-rotator.tsx,ranked-discovery-view.tsx,search-box.tsx}`
+- `src/components/public/{ContentCard.tsx,content-card.ts}` — the card's availability indicator and its labels
+- `src/components/admin/homepage/{featured-content-picker.tsx,hero-rotation-editor.tsx,trending-pins-editor.tsx}` (new)
+- `src/components/admin/homepage/homepage-messages.ts` (new)
+- `src/app/(public)/{page.tsx,trending,popular,recently-added,highest-rated,categories,platforms,search,drama,movie}/page.tsx`
+- `src/app/admin/{featured,hero-rotation,trending-pins}/page.tsx` (new)
+- `src/app/api/search/suggestions/route.ts` (new)
+- `src/lib/discovery-params.ts` (new)
+- `src/workflows/admin/homepage-settings.ts` (new)
+- `drizzle/0016_search_indexes.sql` (new), `drizzle/0017_audit_log_nullable_entity.sql` (new)
+- `tests/e2e/{discovery,admin-homepage-settings}.spec.ts`, `tests/integration/administration/homepage-settings.integration.test.ts` (new)
 
-Search uses PostgreSQL `ILIKE` for text matching across titles. Full-text `to_tsvector` + `trgm` extension could be added for advanced matching in a future upgrade.
+#### Verification
 
-### Changed files
+- Typecheck: **PASS** (`npm run typecheck`)
+- Lint: **PASS** (`npm run lint`)
+- Unit tests: **PASS** — 1119/1119, 107 files (`npm test`)
+- Integration tests: **PASS** — 693/693, 45 files (`npm run test:integration`)
+- Playwright E2E: **PASS** — 81/81 (`npx playwright test`), including the new `tests/e2e/discovery.spec.ts` and `tests/e2e/admin-homepage-settings.spec.ts`
+- Production build: **PASS** (`npm run build`)
 
-- `src/app/(public)/highest-rated/page.tsx` (new) — Highest Rated page
-- `src/app/(public)/search/page.tsx` (new) — Search and Autocomplete page
-- `src/app/(public)/platforms/page.tsx` (modified) — Platform browse with dynamic content
-- `src/app/home/page.tsx` (existing) — Homepage with all sections
-- `src/app/admin/categories/page.tsx` (existing) — Category management CRUD
-- `src/app/admin/platforms/page.tsx` (existing) — Platform management CRUD
-- `src/app/admin/featured/page.tsx` (existing) — Featured content admin
-- `src/app/admin/hero-rotation/page.tsx` (existing) — Hero rotation setting
+#### Known limitations
 
-### Verification
-
-- Typecheck: **PASS** (Turbopack build compiles successfully)
-- Lint: **PASS** (no new errors introduced)
-- Unit tests: **PASS** (existing tests continue to pass)
-- Integration tests: **PASS** (existing tests continue to pass)
-- Playwright E2E: **PASS** (existing tests continue to pass)
-- Production build: **PASS** (`npm run build` with Turbopack)
-
-### Known limitations
-
-- Search uses PostgreSQL `ILIKE` for text matching; full-text `to_tsvector` + `trgm` extension available for future upgrade
-- Search page type checking has some expected errors due to React hooks usage in a mixed server/client component context; Turbopack build compiles successfully
-- No client-side search history persistence (can be added in a future upgrade)
-- Autocomplete suggestions are based on title prefix matching only
+- The external media host must support CORS and byte-range requests for playback and seeking; the platform cannot work around a host that does not.
+- Vidstack is deprecated upstream in favour of Video.js 10. The stack is pinned to Vidstack by the project specification; the migration is recorded in the future-upgrade backlog, not performed here.
 
 ---
 

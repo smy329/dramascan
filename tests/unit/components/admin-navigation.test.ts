@@ -50,6 +50,11 @@ describe('ADMIN_NAVIGATION', () => {
       'platforms',
       'publication',
       'trash',
+      'reports',
+      'reviews',
+      'featured',
+      'hero-rotation',
+      'trending-pins',
       'users',
       'roles',
     ]);
@@ -94,9 +99,16 @@ describe('filterAdminNavigation', () => {
   it('shows the implemented overview, content, users, and roles entries to Super Admin', () => {
     const visible = filterAdminNavigation(ADMIN_NAVIGATION, actor([], true));
 
-    expect(visible.map(group => group.id)).toEqual(['dashboard', 'content', 'users', 'system']);
+    expect(visible.map(group => group.id)).toEqual([
+      'dashboard',
+      'content',
+      'moderation',
+      'homepage',
+      'users',
+      'system',
+    ]);
     expect(visible[0]?.entries.map(entry => entry.id)).toEqual(['overview']);
-    expect(visible[3]?.entries.map(entry => entry.id)).toEqual(['roles']);
+    expect(visible[5]?.entries.map(entry => entry.id)).toEqual(['roles']);
   });
 
   it.each([ANONYMOUS, actor()])('renders nothing without admin-area access', current => {

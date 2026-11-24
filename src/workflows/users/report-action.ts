@@ -5,15 +5,28 @@ import { ValidationError } from '@/platform/errors';
 
 import { db } from '@/db/client';
 import { report_submissions } from '@/modules/users/schema';
-import { eq } from 'drizzle-orm';
 
 import { parseReportInput } from '@/modules/users/report-types';
 import { isValidReportReason } from '@/modules/users/report-types';
+import { getReportableContentTarget } from '@/modules/content';
 
-/** Add a user report for a content item. */
+/** The state the report form keeps between submissions. */
+export type ReportFormState = {
+  ok: boolean;
+  submissionId?: string;
+  error?: string;
+};
+
+/**
+ * Add a user report for a content item.
+ *
+ * The signature is the React 19 `useActionState` contract: the previous state
+ * arrives first and the submitted payload second.
+ */
 export async function submitReport(
+  _previousState: ReportFormState,
   input: unknown
-): Promise<{ ok: boolean; submissionId?: string; error?: string }> {
+): Promise<ReportFormState> {
   try {
     const actor = await resolveActor();
 
@@ -29,23 +42,12 @@ export async function submitReport(
       return { ok: false, error: 'Invalid report reason.' };
     }
 
-    // Validate that the content item exists and is publicly accessible
-    let contentRef;
-    if (contentType === 'drama') {
-      contentRef = await db
-        .select({ isActive: content.dramas.isActive })
-        .from(content.dramas)
-        .where(eq(content.dramas.id, content_id))
-        .limit(1);
-    } else if (contentType === 'movie') {
-      contentRef = await db
-        .select({ isActive: content.movies.isActive })
-        .from(content.movies)
-        .where(eq(content.movies.id, content_id))
-        .limit(1);
-    }
+    // Validate that the content item exists and is publicly accessible.
+    // The content module owns the public availability rule, so the check is
+    // delegated instead of re-implemented here.
+    const contentRef = await getReportableContentTarget(contentType, content_id);
 
-    if (!contentRef.length || !contentRef[0].isActive) {
+    if (!contentRef) {
       return { ok: false, error: 'The content item is not available for reporting.' };
     }
 
@@ -63,6 +65,10 @@ export async function submitReport(
         updated_at: new Date(),
       })
       .returning({ id: report_submissions.id });
+
+    if (!submission) {
+      return { ok: false, error: 'The report could not be saved.' };
+    }
 
     return { ok: true, submissionId: submission.id };
   } catch (error) {

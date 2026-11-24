@@ -255,7 +255,7 @@ Query services additionally filter by visibility and ownership. A caller cannot 
 ### 9.4 Resource-level rules
 
 - Users may mutate only their own ratings, reviews, reactions, reports, bookmarks, and progress.
-- Moderators act only through `review.moderate` and the moderation permissions. Review removal is permanent and cannot be undone.
+- Moderators act only through `review.read` (read the queue) and `review.manage` (resolve a report, remove a review). Review removal is permanent and cannot be undone.
 - Only Super Admin may permanently delete content, export datasets, or change system configuration.
 - The last effective Super Admin cannot be removed.
 - Deactivated accounts cannot use authenticated features even if a stale session exists.

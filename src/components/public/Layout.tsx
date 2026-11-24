@@ -18,8 +18,6 @@ import { Clapperboard, Film, Play, Tv } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import { PublicNavbar } from '@/components/public/PublicNavbar';
-import { buttonVariants } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 import { listFooterInformationLinks, type FooterInformationLink } from '@/modules/content';
 import { createRequestLogger } from '@/platform/logging';
 
@@ -57,70 +55,6 @@ async function resolveNavUser(): Promise<{ signedIn: boolean; userName?: string 
   } catch {
     return { signedIn: false, userName: null };
   }
-}
-
-/** Home hero. */
-export function HeroSection(): JSX.Element {
-  return (
-    <section className="hero-texture relative overflow-hidden border-b border-border/60">
-      <div className="mx-auto grid w-full max-w-6xl gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:py-32">
-        <div>
-          <p className="mb-5 text-sm text-muted-foreground">
-            International drama and film, curated in one place.
-          </p>
-
-          <h1 className="max-w-2xl text-4xl font-semibold leading-[1.05] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-            International drama and movies, in one place.
-          </h1>
-
-          <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-            Stream standout series and films from Korea, Japan, China, Thailand, and beyond —
-            without the clutter.
-          </p>
-
-          <div className="mt-9 flex flex-wrap items-center gap-3">
-            <Link
-              href="/drama"
-              className={cn(buttonVariants({ variant: 'default', size: 'lg' }), 'gap-2')}
-            >
-              <Play className="size-4 fill-current" aria-hidden="true" />
-              Browse dramas
-            </Link>
-            <Link
-              href="/movie"
-              className={cn(buttonVariants({ variant: 'outline', size: 'lg' }), 'gap-2')}
-            >
-              Browse movies
-            </Link>
-          </div>
-        </div>
-
-        <div className="relative">
-          <div className="relative overflow-hidden rounded-xl border border-border bg-card p-6 shadow-[0_30px_80px_-40px_rgba(0,0,0,0.9)]">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">Now building</span>
-              <span className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground">
-                Preview
-              </span>
-            </div>
-
-            <div className="mt-8 flex aspect-[4/3] items-center justify-center rounded-lg border border-border bg-[radial-gradient(circle_at_30%_20%,rgba(226,61,92,0.22),transparent_55%),radial-gradient(circle_at_75%_80%,rgba(226,61,92,0.12),transparent_60%)]">
-              <span className="flex size-16 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-primary">
-                <Play className="size-6 fill-current" aria-hidden="true" />
-              </span>
-            </div>
-
-            <p className="mt-6 text-sm font-medium text-foreground">
-              The catalogue is being prepared.
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              New series and films will appear here first.
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
 }
 
 const BROWSE_LINKS = [
@@ -399,16 +333,15 @@ export async function PublicPageLayout({
       <PublicNavbar signedIn={signedIn} userName={userName} />
 
       <main id="main-content" className="flex-1 pb-24 md:pb-0">
+        {children &&
+          <div className="mx-auto w-full max-w-6xl px-6 py-12 sm:py-16">{children}</div>
+        }
+
         {isHome &&
           <>
-            <HeroSection />
             <BrowseSection />
             <HowItWorksSection />
           </>
-        }
-
-        {children &&
-          <div className="mx-auto w-full max-w-6xl px-6 py-12 sm:py-16">{children}</div>
         }
       </main>
 

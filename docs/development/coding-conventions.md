@@ -90,7 +90,7 @@ Do not create barrel `index.ts` files for convenience. The only `index.ts` files
 | Database row types                     | `<Entity>Row` (internal only)                       | `DramaRow`                                    |
 | Service inputs                         | `<Action>Input`                                     | `PublishEpisodeInput`                         |
 | Errors                                 | `<Domain><Condition>Error`                          | `ContentNotPlayableError`                     |
-| Permission keys                        | `resource.action`                                   | `drama.create`, `episode.read`, `review.moderate`          |
+| Permission keys                        | `resource.action`                                   | `drama.create`, `episode.read`, `review.manage`             |
 | Workflows                              | verb-first, kebab-case directory                    | `replace-video-source`                        |
 
 ### 3.2 Function Naming
@@ -255,7 +255,7 @@ No ignored type errors. `@ts-ignore` is forbidden. `@ts-expect-error` requires a
 - Every list query used in production has a supporting index, documented in `DATABASE.md`.
 - Unique slugs are enforced per content table, with a partial index for active rows.
 - Names that must be unique are compared case-insensitively using a `lower(name)` unique index.
-- Full-text and trigram indexes are added when the search implementation lands (Prompt 020+).
+- Full-text and trigram indexes are added when the search implementation lands (Prompt 020+). They landed with the public search: `drizzle/0016_search_indexes.sql` installs `pg_trgm` and adds the GIN indexes documented in `DATABASE.md` §6.2.
 
 ### 5.5 Ownership
 

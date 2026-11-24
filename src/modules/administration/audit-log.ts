@@ -27,8 +27,14 @@ export type AdminAuditEventInput = {
   action: string;
   /** The type of the entity the action was performed on. */
   entityType: string;
-  /** The entity the action was performed on. */
-  entityId: string;
+  /**
+   * The entity the action was performed on, or `null` when there is none.
+   *
+   * A global setting — the featured item, the hero rotation, the Trending
+   * pins — is not a content row and has no identifier. Such an event is
+   * recorded with `entityType = 'homepage_setting'` and no entity id.
+   */
+  entityId: string | null;
   /** Short human-readable description of what happened. */
   summary: string;
   /** Structured detail. URL-bearing values are stripped before writing. */

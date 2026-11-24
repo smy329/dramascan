@@ -112,6 +112,69 @@ export async function getMoviePlaybackState(
   return readPlaybackState(userId, 'movie_id', movieId, executor);
 }
 
+/** One unfinished item of the viewer's Continue Watching list. */
+export type ContinueWatchingItem = {
+  /** The progress row id. */
+  id: string;
+  /** The content item the progress belongs to. */
+  contentType: 'drama' | 'movie';
+  contentId: string;
+  /** Set when the item is an episode of a drama. */
+  episodeId: string | null;
+  /** The stored position, in seconds. */
+  positionSeconds: number;
+  /** The stored duration, in seconds. */
+  durationSeconds: number;
+  /** When the viewer last observed this position. */
+  lastWatchedAt: Date | null;
+};
+
+/**
+ * The viewer's unfinished items, most recently watched first.
+ *
+ * A completed item is not a Continue Watching item, so it is excluded here.
+ * Whether the target is still publicly available is decided by the content
+ * module; this query only reports what the viewer has not finished.
+ */
+export async function listContinueWatchingItems(
+  userId: string | null,
+  executor: DbExecutor = db
+): Promise<ContinueWatchingItem[]> {
+  if (userId === null) {
+    return [];
+  }
+
+  const rows = await executor
+    .select({
+      id: playback_progress.id,
+      contentType: playback_progress.content_type,
+      contentId: playback_progress.content_id,
+      episodeId: playback_progress.episode_id,
+      position: playback_progress.position,
+      duration: playback_progress.duration,
+      lastWatchedAt: playback_progress.last_watched_at,
+    })
+    .from(playback_progress)
+    .where(
+      and(
+        eq(playback_progress.user_id, userId),
+        eq(playback_progress.completed, false),
+        gt(playback_progress.position, 0)
+      )
+    )
+    .orderBy(desc(playback_progress.last_watched_at), asc(playback_progress.id));
+
+  return rows.map(row => ({
+    id: row.id,
+    contentType: row.contentType === 'movie' ? 'movie' : 'drama',
+    contentId: row.contentId,
+    episodeId: row.episodeId,
+    positionSeconds: row.position ?? 0,
+    durationSeconds: row.duration ?? 0,
+    lastWatchedAt: row.lastWatchedAt,
+  }));
+}
+
 /**
  * The episode a viewer should resume inside a drama.
  *

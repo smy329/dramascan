@@ -223,6 +223,32 @@ demonstrates that the index is chosen; the index is the documented supporting
 index for the demonstrated access path, as `CONVENTIONS.md` §5.4 requires, and
 production `pg_stat_statements` review is the trigger for any further index.
 
+### 6.2 Search indexes (Prompts 121–138)
+
+Migration `drizzle/0016_search_indexes.sql` installs the `pg_trgm` extension
+and adds the indexes the public search uses. Each index is tied to a
+documented query:
+
+| Index                                          | Table        | Serves                                                       |
+| ---------------------------------------------- | ------------ | ------------------------------------------------------------ |
+| `idx_dramas_title_trgm` (GIN, `gin_trgm_ops`)  | `dramas`     | Trigram title match and the autocomplete suggestions        |
+| `idx_movies_title_trgm` (GIN, `gin_trgm_ops`)  | `movies`     | Trigram title match and the autocomplete suggestions        |
+| `idx_categories_name_trgm` (GIN, `gin_trgm_ops`) | `categories` | Trigram name match in the search results and the suggestions |
+| `idx_platforms_name_trgm` (GIN, `gin_trgm_ops`) | `platforms`  | Trigram name match in the search results and the suggestions |
+| `idx_dramas_title_fts` (GIN, `to_tsvector`)    | `dramas`     | Full-text title match and the relevance order                |
+| `idx_movies_title_fts` (GIN, `to_tsvector`)    | `movies`     | Full-text title match and the relevance order                |
+
+The full-text indexes are on `to_tsvector('simple', title)` rather than on the
+default configuration, because the queries use the `simple` configuration; an
+index built on the default configuration would not match the query and
+PostgreSQL would fall back to a sequential scan.
+
+The relevance order is a ladder (D-051): an exact title match, a prefix, a
+contains, a full-text match, and finally the scaled trigram score. The
+trigram index is deliberately generous, so it is the *last* step of the ladder
+rather than the only one — otherwise the title the viewer typed is not the
+first result.
+
 ---
 
 ## 7. Migrations
@@ -242,6 +268,9 @@ Migration tooling and practices are defined in `CONVENTIONS.md` §10. Database-s
 - `drizzle/0012_anonymized_rows_have_no_author.sql` enforces the author half of the anonymization rule (Prompt 073). It adds `ck_ratings_anonymized_author` and `ck_reviews_anonymized_author`, each of which requires `anonymized_at IS NULL OR user_id IS NULL`. Migration `0011` made the author nullable and the target removable; this migration closes the gap where an anonymized row could still name its author. The constraints are additive: an existing row satisfies them, because a row with `anonymized_at IS NULL` is accepted by either branch. Reversible: `ALTER TABLE ratings DROP CONSTRAINT ck_ratings_anonymized_author; ALTER TABLE reviews DROP CONSTRAINT ck_reviews_anonymized_author;` — no row is dropped or rewritten, so the rollback restores `0011` exactly. No row is rewritten by the migration itself.
 - `drizzle/0013_video_source_workflow.sql` adds `subtitle_tracks`, `playback_failure_reports`, and `admin_audit_log` for the direct video source workflow (Prompts 080–090). The three cross-module foreign keys are added `NOT VALID`.
 - `drizzle/0014_video_source_version.sql` adds `episodes.video_source_version` and changes the two playback foreign keys to the episode from `ON DELETE CASCADE` to `ON DELETE RESTRICT` (Prompts 080–090 review fixes). See §8.8.
+- `drizzle/0015_moderation_and_settings.sql` adds the moderation audit log and the system settings table, and changes the report → review foreign key (Prompts 115–120). It creates `moderation_actions` and `system_settings`; it adds the immutable `review_id_snapshot` to `review_reports`, backfills it from the existing `review_id`, makes `review_id` nullable, and replaces the `ON DELETE RESTRICT` foreign key with an `ON DELETE SET NULL` one, so a permanently removed review no longer deletes the moderation history that refers to it. The CHECK `ck_review_reports_review_reference` requires a report to name either a live review or its snapshot, so the history can never lose its subject. The cross-module foreign keys (`moderation_actions.actor_user_id`, `system_settings.updated_by`) are added `NOT VALID` and use `ON DELETE SET NULL`: an audit row outlives the administrator who wrote it. Forward-fix-only: rolling back would drop the audit log and the settings.
+- `drizzle/0016_search_indexes.sql` installs the `pg_trgm` extension and adds the GIN indexes that the search and the relevance order use (Prompts 121–138). It adds a `gin_trgm_ops` index on `dramas.title`, `movies.title`, `categories.name`, and `platforms.name`, and a `to_tsvector('simple', …)` GIN index on the two title columns. The extension is installed inside a guarded block, so the migration is safe to re-run against a database that already has it. Reversible: the indexes and the extension can be dropped without touching any row.
+- `drizzle/0017_audit_log_nullable_entity.sql` makes `admin_audit_log.entity_id` nullable (Prompts 121–138 audit fix, D-056). A global homepage setting — the featured item, the hero rotation, the Trending pins — is not a content row and has no identifier, so an action on one is recorded with `entity_type = 'homepage_setting'` and no entity id. Before this migration the column was `NOT NULL`, and the workflow wrote the literal strings `featured`, `hero_rotation`, and `trending_pins` into it; PostgreSQL rejected the insert, the transaction rolled back, and every save of those settings failed. The column stays a uuid, the indexes are unchanged, and no row is rewritten. Reversible: `ALTER TABLE "admin_audit_log" ALTER COLUMN "entity_id" SET NOT NULL` restores the old constraint once no setting event exists.
 - The content Trash (Prompts 072–074) needs no migration: it reuses the existing `deleted_at` columns on `dramas`, `seasons`, `episodes`, and `movies`, and the existing `deleted_at` indexes. The cascade timestamp is a value in those columns, not a new column.
 - Image assets (Prompts 075–078) need no migration: the stored artwork lives on the application disk, and the content tables keep only the managed `/media/...` path in `dramas.poster`, `dramas.banner`, `movies.poster`, and `movies.banner`.
 - `npm run db:generate` creates the next numbered migration from schema changes; `npm run db:migrate` applies pending migrations. `npm run db:push` is local-only and must never be used against production.
@@ -315,7 +344,7 @@ This catalog is filled in as tables are implemented. Each entry records the tabl
 | admin_accounts                 | administration Admin user accounts                       | ⏳ Pending migration                                                     |
 | admin_login_attempts           | administration Admin login attempts                      | ⏳ Pending migration                                                     |
 | admin_session_events           | administration Admin session events                      | ⏳ Pending migration                                                     |
-| system_settings                | administration System configuration                      | ⏳ Pending migration                                                     |
+| system_settings                | administration System configuration                      | ✅ Implemented (`drizzle/0015_moderation_and_settings.sql`)              |
 | system_setting_versions        | administration System setting versions                   | ⏳ Pending migration                                                     |
 | admin_dashboard_layouts        | administration Admin dashboard layouts                   | ⏳ Pending migration                                                     |
 | maintenance_task_runs          | maintenance Scheduled maintenance runs                   | ⏳ Pending migration                                                     |
@@ -540,7 +569,7 @@ below carry metadata about it.
 | --------------------------- | -------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `subtitle_tracks`           | `playback`     | The subtitle files an episode offers: language, label, format, default selection, and the direct source URL the browser fetches | `episode_id` → `episodes.id` (`ON DELETE RESTRICT`)                         | `uq_subtitle_tracks_episode_id_language` (one track per language per episode), `uq_subtitle_tracks_episode_id_default` (at most one default per episode), `idx_subtitle_tracks_episode_id` |
 | `playback_failure_reports`  | `playback`     | Viewer-reported failures of an external source, so an administrator can see which episodes do not play. The report never stores the source URL | `episode_id` → `episodes.id` (`ON DELETE RESTRICT`), `reported_by` → `users.id` (`ON DELETE SET NULL`) | `idx_playback_failure_reports_episode_id_created_at`, `idx_playback_failure_reports_created_at`, `idx_playback_failure_reports_reported_by` |
-| `admin_audit_log`           | `administration` | The operational record of administrative actions that change what viewers receive. It records what happened, to which entity, by whom, and when — never the URL that was changed | `actor_id` → `users.id` (`ON DELETE SET NULL`)                              | `idx_admin_audit_log_entity_type_entity_id`, `idx_admin_audit_log_actor_id`, `idx_admin_audit_log_created_at` |
+| `admin_audit_log`           | `administration` | The operational record of administrative actions that change what viewers receive. It records what happened, to which entity, by whom, and when — never the URL that was changed. `entity_id` is nullable (D-056): an action on a global homepage setting names the setting (`entity_type = 'homepage_setting'`) and no entity | `actor_id` → `users.id` (`ON DELETE SET NULL`)                              | `idx_admin_audit_log_entity_type_entity_id`, `idx_admin_audit_log_actor_id`, `idx_admin_audit_log_created_at` |
 
 Notes:
 

@@ -4,42 +4,172 @@ All notable changes to the DramaScan project will be documented in this file.
 
 ## [Unreleased] - 2026-11-24
 
-### feat: implement Phase 9 - Ratings, Reviews, and Moderation (Prompts 115-120)
+### feat: complete Phase 9 (Prompts 115-120) and Phase 10 (Prompts 121-138)
 
-Prompts 115-120 implement the rating submission, review submission/editing, rating aggregation, review enjoyment reactions, review sorting/reporting, and review moderation features.
+This pass audited both phases end to end, fixed the defects listed below, and
+replaced the partial implementations with verified ones.
 
-- **Prompt 115** (drama rating submission): Authenticated users may submit one active rating (1–5) per drama. Duplicate active ratings are prevented by the database unique index; users may update their existing rating. Rating range is validated (1–5).
-- **Prompt 116** (review submission and editing): Authenticated users may submit one active written review per drama and edit their own review. Creation time is preserved; the last-edited timestamp updates on changes. Permanent deletion by users is not allowed.
-- **Prompt 117** (rating aggregation and display): Average rating and total rating count are calculated from genuine active ratings. Rating information is hidden when no ratings exist. Compact display format `⭐ 4.5 (1.2K)` is used.
-- **Prompt 118** (review enjoyment reactions): Authenticated users may add or remove one "Enjoying" reaction per review. Duplicate reactions are prevented by the database unique index. The enjoyment count updates consistently after each toggle.
-- **Prompt 119** (review sorting and reporting): Reviews may be sorted by Most Enjoying, Newest, and Highest Rated. Report reasons include: spam/advertising, harassment/bullying, inappropriate language, misleading/false information, and other (with optional description). One active report per user per review is enforced; a user may report again after an earlier report is resolved. Multiple users may report the same review.
-- **Prompt 120** (review moderation): Moderator tools inspect reported reviews, resolve reports, and permanently remove reviews. Reported reviews remain visible while pending moderation. Only Super Admin may permanently remove reviews. Removed reviews cannot be restored. The reporter is notified of the resolution outcome.
+#### Phase 9 — Ratings, Reviews, and Moderation
 
-Changed files:
+- **Ratings (115).** `reviews.submitDramaRating` / `submitMovieRating` accept
+  one active rating (1–5) per viewer per content item. The value is validated
+  with Zod on the server. The write is an upsert against the partial unique
+  index `uq_ratings_drama_id_user_id_active`.
+- **Reviews (116).** `reviews.submitDramaReview` / `submitMovieReview` accept
+  one active written review per viewer per content item, and the author may
+  edit it in place. The creation time is preserved; the last-edited timestamp
+  moves forward. A viewer cannot delete their own review.
+- **Aggregation (117).** `reviews.getRatingSummary` returns the average and the
+  count of the *active* ratings. A deleted rating never counts, and the rating
+  block is hidden when there is no rating at all.
+- **Reactions (118).** `reviews.toggleReviewEnjoying` adds or removes the
+  viewer's one "Enjoying" reaction. The toggle deletes first and then inserts,
+  so a double tap is idempotent instead of a unique-violation error.
+- **Sorting and reporting (119).** Reviews sort by Most Enjoying, Newest, or
+  Highest Rated. The reasons are a client-safe catalog
+  (`src/modules/reviews/report-reasons.ts`). One *active* report per viewer per
+  review is enforced; a viewer may report again after an earlier report is
+  resolved.
+- **Moderation (120).** `reviews.removeReview` permanently removes a review and
+  `moderation.recordModerationAction` writes the audit row. The report survives
+  as moderation history: `review_reports.review_id` is nullable with
+  `ON DELETE SET NULL`, and the immutable `review_id_snapshot` keeps the id of
+  the removed review. `notifications.notifyReporter` always delivers the
+  outcome — a moderation result is not preference-gated.
 
-- `src/modules/reviews/service.ts` (new): rating submission service with `submitDramaRating`, `submitMovieRating`, `recalculateDramaRatingSummary`, `recalculateMovieRatingSummary`
-- `src/modules/reviews/review-service.ts` (new): review submission service with `submitDramaReview`, `submitMovieReview`, `recalculateDramaReviewSummary`, `recalculateMovieReviewSummary`
-- `src/modules/reviews/reaction-service.ts` (new): review reaction toggle with `toggleReviewEnjoying`
-- `src/modules/reviews/report-service.ts` (new): review report submission, resolution, and sorting
-- `src/modules/moderation/schema.ts` (new): moderation_actions audit log table
-- `src/modules/moderation/service.ts` (new): moderation service with `moderateResolveReport`, `moderateRemoveReview`
-- `src/modules/reviews/index.ts`: updated public API exports
-- `src/actions/reviews-actions.ts` (new): Server Actions for all rating, review, reaction, and report operations
-- `src/actions/moderation-actions.ts` (new): Server Actions for moderation operations
-- `docs/PROJECT_STATUS.md` (updated): Phase 9 completion entry added
-- `docs/CHANGELOG.md` (updated): Phase 9 entry added
+#### Phase 10 — Homepage, discovery, and search
 
-### fix: typecheck issues in review and moderation services
+- **Homepage.** The real homepage is `src/app/(public)/page.tsx` at `/`; the
+  untracked, broken `/home` route was deleted.
+- **Ranked discovery.** `/trending`, `/popular`, `/recently-added`, and
+  `/highest-rated` render one shared ranked grid over
+  `analytics/read-models/discovery.ts`. Trending is a recency-decayed weighted
+  score over a 14-day window; Popular is the same measure over all history
+  without decay; Most viewed is the historical sum of views; Highest Rated is
+  the average of the active ratings. Every ranking reads the stored daily
+  aggregates, so a refresh cannot inflate a score.
+- **Homepage administration.** `/admin/featured`, `/admin/hero-rotation`, and
+  `/admin/trending-pins` store their state in `system_settings` and are
+  guarded by `settings.manage`.
+- **The browse catalogues.** `/drama` and `/movie` are server-rendered over the
+  same shared ranked grid as the ranking pages, so the whole browse surface
+  uses one availability rule and one ranking implementation. `/drama` offers
+  the lifecycle-status filter; `/movie` offers the sort order, because a film
+  is a finished work.
+- **Two independent facts on a card.** The availability of an item ("Coming
+  soon" / "Available now") and its lifecycle status (ongoing / completed) are
+  different things, and the card shows both. The badge prefers "Coming Soon"
+  over the lifecycle label, because "you cannot watch this yet" is the more
+  actionable fact.
+- **Search.** `/search` is server-rendered with a client-island search box.
+  Matching uses PostgreSQL full-text search and trigram similarity; migration
+  `0016` installs `pg_trgm` and the GIN indexes. A search with a term is
+  ordered by relevance — exact title, prefix, contains, full-text, then
+  trigram — because a plain trigram score buried the title the viewer typed.
+- **User pages.** `/bookmarks`, `/continue-watching`, and `/watch-history` are
+  server-rendered over the `users` module read models.
 
-- Fixed `and` import in `src/modules/reviews/review-service.ts`
-- Fixed `onConflictDoUpdate` target format in `src/modules/reviews/review-service.ts` (column array instead of index name string)
-- Fixed moderation schema imports to use `@/platform/db/schema-helpers` instead of `drizzle-orm/pg-core`
-- Fixed moderation service imports to reference correct schema modules
+#### Bugs fixed
 
-### fix: typecheck pre-existing issues
+- **`revalidatePath` was imported from `next/navigation`.** It is exported by
+  `next/cache` in Next.js 16.4.5. The import and two bogus module
+  augmentations are gone.
+- **A partial-index upsert wrote through the wrong predicate.**
+  `onConflictDoUpdate` named only the conflict target, so PostgreSQL could not
+  infer the partial unique index and a second rating failed. `targetWhere` now
+  repeats the whole index predicate.
+- **The review form reported the wrong outcome.** The success message was
+  derived from the refreshed `existingReview` prop, so publishing a first
+  review announced "Your review was updated."
+- **The moderation queues dropped their confirmation.** Both queue components
+  returned early when the list was empty, *before* rendering the message.
+  Resolving the only report in the queue emptied the list, so the moderator saw
+  the empty state and no confirmation at all and could not tell whether the
+  click had worked. The message and the error are now rendered above the empty
+  state, and a regression test proves they survive the re-render.
+- **The share control crashed every public details page.** `ShareButton` read
+  `window.location.origin` during render; a client component is also rendered
+  on the server, so `/drama/{id}/{slug}` and `/movie/{id}/{slug}` answered HTTP
+  500 with `ReferenceError: window is not defined`. The origin is now read in
+  an effect, and the control receives the canonical `href` from the server
+  page.
+- **The integration test left 861 dramas, 123 movies, 131 categories, and 131
+  platforms behind.** The cleanup deleted the dependents but not the seeded
+  rows, and the leftovers polluted every later search and ranking. The cleanup
+  now removes the seeded rows as well.
+- **The admin navigation was wider than the page guards.** The Homepage
+  entries and the Reports entry named permissions the pages do not check.
+  They now name exactly the permission the page checks.
+- **The E2E identity marker referred to a removed headline.** The global setup
+  looked for "International drama and movies, in one place.", which the
+  rewritten homepage no longer renders; every E2E run failed its application
+  check.
+- **The Playwright web-server budget was too small for this filesystem.** The
+  readiness check compiles the home route — about 80 seconds cold on this
+  network drive — and the 120-second budget expired before any test ran. The
+  budget is now 300 seconds, with a comment that says why.
+- **The similar-drama administration test exceeded the suite's per-test
+  budget.** The global 30-second budget is smaller than the configured
+  45-second navigation timeout, so a cold route compile plus the real
+  add/reorder/reload/remove work does not fit in it. The test now sets an
+  explicit 120-second budget, following the precedent set by the admin
+  content-management and footer flows. No assertion was weakened.
+- **`src/app/profile/page.tsx` had no final newline**, which failed the
+  repository-wide `eol-last` lint rule.
+- **The film catalogue page was a hardcoded empty state.** `/movie` rendered
+  two placeholder tabs — "Recent releases" and "Classic films" — with no query
+  behind them, so it announced "No films published yet" no matter what the
+  catalogue held. It is now a server-rendered discovery grid over the shared
+  ranked read model.
+- **The "Complete series" count counted every drama.** The old drama catalogue
+  showed the number of *all* dramas under "Complete series", and the tab was
+  not a filter. The page now offers a lifecycle-status filter that actually
+  narrows the grid.
+- **Two of the three homepage settings could not be saved at all.** The hero
+  rotation, the Trending pins, and clearing the featured item wrote the
+  literal strings `hero_rotation`, `trending_pins`, and `featured` into
+  `admin_audit_log.entity_id`, which is a `uuid` column. PostgreSQL rejected
+  the insert, the transaction rolled back, and the administrator saw "An
+  unexpected error occurred." — every save failed, with no explanation. A
+  global setting is not a content row and has no identifier to point at, so
+  the audit record now names the setting itself (`entity_type =
+  'homepage_setting'`, no entity id), and migration `0017` makes `entity_id`
+  nullable for exactly that case.
+- **The homepage confirmations read "1 items".** The hero-rotation and
+  Trending-pin messages used a fixed plural. The wording now lives in
+  `src/components/admin/homepage/homepage-messages.ts` and is unit-tested.
 
-- `src/actions/moderation-actions.ts` and `src/actions/reviews-actions.ts`: `revalidatePath` from `next/navigation` (pre-existing type definition mismatch across the codebase)
-- `src/app/(public)/highest-rated/page.tsx`: `getRatingSummary` declared but never read (unused export, not an error)
+#### Changed files
+
+- `src/modules/reviews/{service.ts,review-service.ts,reaction-service.ts,report-service.ts,removal-service.ts,validation.ts,report-reasons.ts,schema.ts,index.ts}`
+- `src/modules/moderation/{schema.ts,service.ts,index.ts}`
+- `src/modules/notifications/{notifications.ts,index.ts}`
+- `src/modules/analytics/read-models/discovery.ts` (new)
+- `src/modules/content/{public-discovery.ts,public-discovery.shared.ts,index.ts}`
+- `src/modules/administration/{settings.ts,settings.shared.ts,schema.ts,index.ts}`
+- `src/modules/users/{content-reports.ts,watch-history.ts,bookmarks.ts,playback-state.ts,index.ts}`
+- `src/workflows/reviews/actions.ts`, `src/workflows/moderation/review-moderation.ts`,
+  `src/workflows/admin/homepage-settings.ts`
+- `src/components/public/**`, `src/components/admin/homepage/**`,
+  `src/components/admin/moderation/**`
+- `src/app/(public)/**`, `src/app/admin/{featured,hero-rotation,trending-pins,reviews,reports}/**`,
+  `src/app/api/search/suggestions/route.ts`
+- `drizzle/0015_moderation_and_settings.sql`, `drizzle/0016_search_indexes.sql`,
+  `drizzle/0017_audit_log_nullable_entity.sql`
+- `src/actions/{moderation-actions.ts,reviews-actions.ts}` — removed; the
+  Server Action convention is `src/workflows/**`.
+- `tests/e2e/{reviews,discovery,admin-homepage-settings}.spec.ts`,
+  `tests/integration/administration/homepage-settings.integration.test.ts`,
+  `tests/unit/components/admin-homepage-messages.test.ts`
+
+#### Verification
+
+- Typecheck: **PASS** (`npm run typecheck`)
+- Lint: **PASS** (`npm run lint`)
+- Unit tests: **PASS** — 1119/1119, 107 files (`npm test`)
+- Integration tests: **PASS** — 693/693, 45 files (`npm run test:integration`)
+- Playwright E2E: **PASS** — 81/81 (`npx playwright test`)
+- Production build: **PASS** (`npm run build`)
 
 ---
 

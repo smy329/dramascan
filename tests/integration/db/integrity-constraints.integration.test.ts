@@ -895,23 +895,48 @@ describe('review report state (M-07)', () => {
     expect(error.code).toBe('23503');
   });
 
-  it('blocks the permanent removal of a review that has reports', async () => {
+  it('keeps a report as moderation history when its review is permanently removed', async () => {
     const userId = await seedUser('report-keep-history');
     const dramaId = await seedDrama('report-keep-history');
     const reviewId = await seedReview(userId, dramaId);
 
-    await db.insert(reviewReports).values({ user_id: userId, review_id: reviewId, reason: 'Spam' });
+    // The application always writes the immutable snapshot, so the report
+    // still names the review after the review itself is gone.
+    await db.insert(reviewReports).values({
+      user_id: userId,
+      review_id: reviewId,
+      review_id_snapshot: reviewId,
+      reason: 'Spam',
+    });
 
-    const error = await rejectionOf(db.delete(reviews).where(eq(reviews.id, reviewId)));
+    // The foreign key is `ON DELETE SET NULL`: the moderation history is
+    // never deleted with the review it refers to.
+    await db.delete(reviews).where(eq(reviews.id, reviewId));
 
-    // `ON DELETE RESTRICT` raises `restrict_violation` (23001); the delete is
-    // refused either way, which is the point of the constraint.
-    expect(error.code).toBe('23001');
+    const rows = await db
+      .select()
+      .from(reviewReports)
+      .where(eq(reviewReports.review_id_snapshot, reviewId));
 
-    // The report itself survives the blocked deletion.
-    expect(
-      await db.select().from(reviewReports).where(eq(reviewReports.review_id, reviewId))
-    ).toHaveLength(1);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.review_id).toBeNull();
+    expect(rows[0]?.review_id_snapshot).toBe(reviewId);
+  });
+
+  it('rejects a report that names neither a live review nor a snapshot', async () => {
+    const userId = await seedUser('report-no-reference');
+
+    const error = await rejectionOf(
+      db.insert(reviewReports).values({
+        user_id: userId,
+        review_id: null,
+        review_id_snapshot: null,
+        reason: 'Spam',
+      })
+    );
+
+    // `ck_review_reports_review_reference` raises `check_violation` (23514).
+    expect(error.code).toBe('23514');
   });
 });
 

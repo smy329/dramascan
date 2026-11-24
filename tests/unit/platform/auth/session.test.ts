@@ -93,6 +93,22 @@ describe('getActiveSession', () => {
       userId: 'user-1',
       userEmail: 'user@example.com',
       userName: 'Test User',
+      isSuperAdmin: false,
+    });
+  });
+
+  it('reports the Super Admin state read from the account row', async () => {
+    signedInAs();
+    selectMock
+      .mockReturnValueOnce(query([{ isActive: true, deletedAt: null }]))
+      .mockReturnValueOnce(query([{ isActive: true, deletedAt: null, isSuperAdmin: true }]))
+      .mockReturnValueOnce(query([sessionRow()]));
+
+    await expect(getActiveSession()).resolves.toEqual({
+      userId: 'user-1',
+      userEmail: 'user@example.com',
+      userName: 'Test User',
+      isSuperAdmin: true,
     });
   });
 
@@ -107,6 +123,7 @@ describe('getActiveSession', () => {
       userId: 'user-1',
       userEmail: 'user@example.com',
       userName: 'Test User',
+      isSuperAdmin: false,
     });
   });
 });

@@ -37,6 +37,15 @@ test.describe('admin similar dramas', () => {
     context,
     page,
   }) => {
+    // This flow adds two recommendations, reorders them, reloads the page, and
+    // removes one of them again. Every step is a real REST call against the
+    // real database, and the admin routes are compiled by the development
+    // server on their first request. The suite's global 30-second budget is
+    // smaller than the configured 45-second navigation timeout, so a cold
+    // route compile plus the real work does not fit in it. The budget is
+    // raised here; no assertion is weakened.
+    test.setTimeout(120_000);
+
     const session = await signIn(context, 'e2e-similar-manage@example.com');
     const parent = await seedDrama({ title: 'E2E Similar Parent', withEpisodes: false });
     const alpha = await seedDrama({ title: 'E2E Similar Alpha', withEpisodes: false });

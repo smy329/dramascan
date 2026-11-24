@@ -4,19 +4,21 @@ import { Star } from 'lucide-react';
 
 import { ContentPoster } from '@/components/public/ContentPoster';
 import {
+  CONTENT_AVAILABILITY_LABELS,
   CONTENT_KIND_LABELS,
   CONTENT_STATUS_LABELS,
   formatRatingAverage,
   formatRatingCount,
   normalizeRating,
   normalizeSafeUrl,
+  type ContentAvailability,
   type ContentKind,
   type ContentLifecycleStatus,
   type ContentRating,
 } from '@/components/public/content-card';
 import { cn } from '@/lib/utils';
 
-export type { ContentKind, ContentLifecycleStatus, ContentRating };
+export type { ContentAvailability, ContentKind, ContentLifecycleStatus, ContentRating };
 
 const STATUS_DOT_CLASSES: Record<ContentLifecycleStatus, string> = {
   ongoing: 'bg-primary',
@@ -30,6 +32,14 @@ export type ContentCardProps = Readonly<{
   poster?: string | null;
   rating?: ContentRating | null;
   status?: ContentLifecycleStatus | null;
+  /**
+   * Whether the item is listed before it can be played.
+   *
+   * The badge then reads "Coming Soon" instead of the lifecycle label, because
+   * "you cannot watch this yet" is the more actionable fact. `undefined` means
+   * the caller does not know, and the availability line is left out entirely.
+   */
+  comingSoon?: boolean;
   href?: string;
   className?: string;
 }>;
@@ -76,6 +86,7 @@ type CardBodyProps = {
   rating: ContentRating | null;
   status: ContentLifecycleStatus | null;
   statusLabel: string | null;
+  availability: ContentAvailability | null;
 };
 
 function renderCardBody({
@@ -85,6 +96,7 @@ function renderCardBody({
   rating,
   status,
   statusLabel,
+  availability,
 }: CardBodyProps): JSX.Element {
   return (
     <>
@@ -98,6 +110,12 @@ function renderCardBody({
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           <span>{CONTENT_KIND_LABELS[kind]}</span>
           {rating && <Rating rating={rating} />}
+          {availability ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>{CONTENT_AVAILABILITY_LABELS[availability]}</span>
+            </>
+          ) : null}
         </p>
       </div>
     </>
@@ -117,6 +135,7 @@ export function ContentCard({
   poster,
   rating,
   status,
+  comingSoon,
   href,
   className,
 }: ContentCardProps): JSX.Element {
@@ -124,8 +143,26 @@ export function ContentCard({
   const hrefUrl = normalizeSafeUrl(href);
   const visibleRating = normalizeRating(rating);
   const dramaStatus = status ?? null;
-  const visibleStatus = kind === 'drama' ? dramaStatus : null;
+
+  // A drama that is listed but not playable takes the badge over the lifecycle
+  // label: "you cannot watch this yet" is the more actionable fact. A movie is
+  // always playable, so it never carries the badge.
+  let visibleStatus: ContentLifecycleStatus | null = null;
+
+  if (kind === 'drama') {
+    visibleStatus = comingSoon === true ? 'coming-soon' : dramaStatus;
+  }
+
   const statusLabel = visibleStatus ? CONTENT_STATUS_LABELS[visibleStatus] : null;
+
+  // The availability line states the plain fact for a drama. It is left out
+  // when the caller does not know whether the item is playable yet.
+  const availability: ContentAvailability | null =
+    kind === 'drama' && typeof comingSoon === 'boolean'
+      ? comingSoon
+        ? 'coming-soon'
+        : 'available'
+      : null;
 
   const body = renderCardBody({
     kind,
@@ -134,6 +171,7 @@ export function ContentCard({
     rating: visibleRating,
     status: visibleStatus,
     statusLabel,
+    availability,
   });
 
   const baseClassName = cn('flex w-full min-w-0 flex-col gap-3', className);
