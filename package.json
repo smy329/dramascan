@@ -24,7 +24,8 @@
     "db:push": "npm run db:generate && drizzle-kit push",
     "db:seed:super-admin": "node scripts/seed-super-admin.mjs",
     "db:integrity": "node scripts/data-integrity.mjs",
-    "db:trash:cleanup": "node scripts/trash-cleanup.mjs"
+    "db:trash:cleanup": "node scripts/trash-cleanup.mjs",
+    "db:analytics:retention": "node scripts/analytics-retention.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

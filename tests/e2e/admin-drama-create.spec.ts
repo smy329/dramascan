@@ -18,6 +18,12 @@ test.describe('admin drama creation', () => {
     context,
     page,
   }) => {
+    // The admin routes are compiled by the development server on their first
+    // request, and a cold compile on a network drive can outlast the suite's
+    // 30-second budget. The routes are warmed before the flow and the budget
+    // is raised here; no assertion is weakened.
+    test.setTimeout(120_000);
+
     const session = await adminSession.seed({ email: 'e2e-drama-create@example.com' });
     const suffix = Date.now().toString(36);
     const title = `E2E Created Drama ${suffix}`;
@@ -33,6 +39,11 @@ test.describe('admin drama creation', () => {
           sameSite: 'Lax',
         },
       ]);
+
+      // Warm the two admin routes this flow visits, so a cold Turbopack
+      // compile cannot eat the test's budget.
+      await page.request.get('/admin/dramas', { timeout: 60_000 });
+      await page.request.get('/admin/dramas/new', { timeout: 60_000 });
 
       await page.goto('/admin/dramas');
       expect(await page.getByRole('link', { name: 'Add drama' }).getAttribute('href')).toBe(

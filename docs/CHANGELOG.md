@@ -173,6 +173,125 @@ replaced the partial implementations with verified ones.
 
 ---
 
+### feat: implement Phase 11 (Prompts 139–154) — analytics and notifications
+
+The platform now measures what its viewers do, and tells them when something
+they care about changes — without a worker, a queue, an email infrastructure,
+or a fingerprint.
+
+#### Analytics
+
+- **Anonymous guest sessions.** `guest_sessions` holds one row per visitor: an
+  anonymous `session_id`, a nullable `user_id`, a hashed IP, and the country
+  code. The event tables carry `guest_sessions.id` and nothing else that
+  identifies a person. The row is found by `user_id` for a signed-in viewer
+  and by the `session_id` cookie for a guest, and the same row gains the
+  `user_id` when the account signs in (D-057).
+- **Retention policy.** The raw events and the guest-session rows are kept for
+  400 days — longer than the 366-day range the dashboard may query — so every
+  number the dashboard can show can still be rebuilt. A session row linked to
+  an account is never removed. The removal is a bounded, short-lived command
+  (`npm run db:analytics:retention`), never a worker (D-065).
+- **View counting.** `POST /api/analytics/view` counts one view per visitor per
+  content item in a rolling six-hour window. The window is an application rule
+  with a per-hour-bucket partial unique index as the safety net (D-058). The
+  public count reads the raw events, so it is correct before the first
+  aggregation.
+- **Playback analytics.** The player reports `play_pause`, `seek`, `completion`,
+  and `exit`. Writes are bounded to one row per (visitor, content, event type,
+  hour bucket), and `watch_duration_seconds` is the per-event delta — the
+  browser only clears its accumulator when the server confirms the row was
+  stored (D-060).
+- **Daily aggregation.** A calendar day is a Dhaka day. The aggregation is a
+  bounded, on-demand command inside one transaction, so re-running it for the
+  same day produces the same result. There is no worker, no queue, and no
+  recurring job (D-059).
+- **Admin dashboard.** `/admin/analytics` shows the overview, the content
+  performance table, the engagement trend, the viewer activity, and the time
+  the numbers were last written. The range comes from the URL — seven
+  presets plus a custom pair of calendar days — and is always bounded.
+
+#### Notifications
+
+- **Preferences.** Five independent event preferences plus the global In-app
+  and Browser Push switches. The event preference decides whether the row is
+  written at all; `global_in_app` gates the centre and `global_push` gates
+  browser push. Account/security notifications are mandatory and have no
+  switch (D-061).
+- **Notification centre.** `/notifications` with mark-read and mark-unread
+  behaviour, and a bell with the unread count in the public navigation. The
+  count is resolved on the server, so it is right on the first render. Every
+  read is filtered by `user_id`.
+- **Browser push.** An FCM provider and a native Web Push provider behind one
+  interface, with FCM preferred. A deployment without a transport credential
+  reports an explicit failure and never claims a delivery it did not perform.
+  The permission is requested inside the click handler, never on the first page
+  load (D-063).
+- **Events.** A newly published drama, season, or episode notifies the
+  eligible viewers after the publication transaction has committed. Only
+  published *and* publicly available content is announced, the round is
+  idempotent, and the audience is read in three bulk queries (D-062). Account
+  deactivation, reactivation, role changes, and session termination produce
+  mandatory account/security notifications (D-064).
+- **Announcements.** `/admin/notifications` creates a draft announcement and
+  publishes it by hand; the published list is bounded to 50 rows.
+- **Delivery safety.** Every attempt is recorded, the attempt count is capped
+  at ten, and an expired subscription is soft-deleted instead of retried
+  forever.
+
+#### Schema
+
+- `drizzle/0018_analytics_and_notifications.sql`: the `deleted_at` column on
+  the three event tables, the `episode_id` column on the playback events, the
+  guest-session and episode foreign keys, the deduplication indexes, the
+  notification indexes, and the independent
+  `notification_preferences.new_drama` switch.
+- `drizzle/0019_analytics_retention_indexes.sql`: the three indexes the
+  retention command needs, so it never reads a whole table.
+
+#### Bugs fixed
+
+- **The shared analytics fixture cleanup deleted every guest session in the
+  test database**, including the ones the other test files were still using.
+  The playback-event insert then failed on the foreign key. The cleanup is now
+  scoped by each file's own prefix.
+- **The analytics fixtures left 97 dramas and 97 movies behind in the shared
+  test database**, and the leftovers broke the public list queries. The cleanup
+  now removes the seeded rows as well.
+- **The end-to-end fixtures could not delete the content they had seeded**,
+  because the new analytics rows point at it with a `RESTRICT` foreign key.
+  The fixtures remove the analytics and notification rows before the content,
+  and a late analytics beacon no longer breaks the cleanup: the shared
+  `tests/e2e/support/late-analytics.mjs` helper waits for the beacons that are
+  still on their way, removes the rows they wrote, and tries again.
+- **A late analytics beacon answered HTTP 500**, because the event was
+  inserted without checking whether the title had been deleted in the
+  meantime. The view and playback workflows now recognise the foreign-key
+  violation and drop the event: a view of a deleted title is not an error.
+- **The watch time was carried as a cumulative session total**, so several
+  events of the same hour bucket each carried the whole total and the reported
+  watch time was a multiple of the real watching time. The value is now the
+  per-event delta.
+- **The date-range resolver had no fallback branch**, so an unvalidated preset
+  could produce an unbounded range. It now falls back to `last_7_days`.
+- **The admin navigation was wider than the page guards**: the Notifications
+  entry named `admin.manage` as well, while the page requires
+  `settings.manage`.
+- **Two of the five event preferences shared one column**, so "new drama" and
+  "new season" could not be switched independently.
+
+#### Verification
+
+- Typecheck: **PASS** (`npm run typecheck`)
+- Lint: **PASS** (`npm run lint`)
+- Unit tests: **PASS** — 1174/1174, 111 files (`npm test`)
+- Integration tests: **PASS** — 756/756, 52 files (`npm run test:integration`)
+- Playwright E2E: **PASS** — 92/92 (`npx playwright test`)
+- Production build: **PASS** (`npm run build` with HTTPS `APP_URL` and
+  `TRUSTED_ORIGINS`)
+
+---
+
 ## [Unreleased] - 2026-11-22
 
 ### feat: implement public details, navigation, and playback (Prompts 091–103)

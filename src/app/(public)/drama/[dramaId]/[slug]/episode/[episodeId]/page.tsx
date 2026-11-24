@@ -161,6 +161,7 @@ export default async function EpisodePage({ params, searchParams }: EpisodePageP
 
           <VidstackPlayer
             episodeId={episode.id}
+            dramaId={episode.dramaId}
             title={episode.title}
             source={episode.videoSource}
             sourceVersion={episode.sourceVersion}

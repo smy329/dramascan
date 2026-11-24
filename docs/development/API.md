@@ -16,11 +16,11 @@
 
 | Item             | Status                       |
 | ---------------- | ---------------------------- |
-| REST endpoints   | None implemented             |
-| Server Actions   | None implemented             |
+| REST endpoints   | Implemented (see §3)         |
+| Server Actions   | Implemented (workflow-backed)|
 | OpenAPI document | Not generated                |
 | Swagger UI       | Not configured               |
-| Authentication   | Not integrated (Prompt 030+) |
+| Authentication   | Integrated (Better Auth)     |
 
 Do not describe planned endpoints as available.
 
@@ -174,10 +174,31 @@ an item that is not publicly available.
 
 | Method | Path                      | Auth                           | Permission | Purpose                                                                | Status  |
 | ------ | ------------------------- | ------------------------------ | ---------- | ---------------------------------------------------------------------- | ------- |
-| `POST` | `/api/analytics/view`     | Public (guest session or user) | —          | Record a deduplicated content view for a drama or movie                | Planned |
-| `POST` | `/api/analytics/playback` | Public (guest session or user) | —          | Record bounded playback events (start, progress milestone, completion) | Planned |
+| `POST` | `/api/analytics/view`     | Public (guest session or user) | —          | Record a deduplicated content view for a drama or movie                | Implemented |
+| `POST` | `/api/analytics/playback` | Public (guest session or user) | —          | Record bounded playback events (play/pause, seek, completion, exit)    | Implemented |
 
-Beacons are small, idempotent/deduplicated, and bounded. They never write on every playback second. The final split between progress persistence and analytics events is settled in the playback prompt.
+Beacons are small, idempotent/deduplicated, and bounded. They never write on every playback second.
+
+`POST /api/analytics/view` carries `{ type, contentId }`, where `type` is
+`drama` or `movie`. The title is checked against the public availability rules
+before the view is counted, so a caller cannot inflate the count of a draft by
+posting its id. The response is `{ data: { counted, alreadyCounted } }`. A
+view is counted once per visitor per content item in a rolling six-hour window
+(D-002, D-058).
+
+`POST /api/analytics/playback` carries exactly one target — `episodeId`
+together with `dramaId`, or `movieId` — plus `eventType` (`play_pause`,
+`seek`, `completion`, or `exit`), `positionSeconds`, `watchDurationSeconds`,
+and `completionThresholdMet`. At most one event of each type is stored per
+visitor, per content item, per hour, so the table never becomes a per-second
+log (D-060).
+
+Both endpoints are **route handlers** rather than Server Actions for the same
+reason the playback progress endpoint is: the browser sends them with
+`fetch(..., { keepalive: true })`, and only a route handler may write the
+anonymous session cookie (D-057). Both check for a same-origin `Origin` header
+before they parse the body, so a cross-site request cannot count views or
+playback events for another site.
 
 ### 3.4 Playback
 
@@ -222,9 +243,17 @@ not have watched it (D-043).
 
 | Method | Path                              | Auth          | Permission        | Purpose                                         | Status  |
 | ------ | --------------------------------- | ------------- | ----------------- | ----------------------------------------------- | ------- |
-| `GET`  | `/api/notifications/unread-count` | Authenticated | Own notifications | Poll the unread count for the notification bell | Planned |
+| —      | —                                 | Authenticated | Own notifications | The unread count for the notification bell       | Resolved server-side |
 
-Push subscription management is a Server Action, not REST.
+The unread count is **not** polled over REST. The public layout resolves the
+signed-in viewer on the server and reads the count there, so the bell shows the
+right number on the first render and no polling request is made. A REST
+unread-count route remains available in the catalog for a future client that
+needs it without a page render.
+
+Push subscription management is a Server Action, not REST. The push opt-in is a
+client island that requests the browser permission inside its click handler, so
+the permission is never asked for on the first page load (D-063).
 
 ### 3.6 Administration
 

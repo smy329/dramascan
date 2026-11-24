@@ -14,6 +14,7 @@ import { Client } from 'pg';
 
 import { loadLocalEnv } from './load-local-env.mjs';
 import { describeDatabaseTarget, resolveTestDatabase } from './database-target.mjs';
+import { deleteContentWithLateAnalyticsRetry } from './late-analytics.mjs';
 
 loadLocalEnv();
 
@@ -174,13 +175,51 @@ export async function removeMovie(fixture) {
         'DELETE FROM content_slug_history WHERE content_id = $1',
         [fixture.id]
       );
+      // The public pages record analytics, so the seeded movie owns view,
+      // playback, and aggregate rows. They point at the movie with a `RESTRICT`
+      // foreign key, so they have to go first.
       await run(
         client,
-        'delete the seeded movie',
+        'delete the seeded playback analytics events',
         target,
-        'DELETE FROM movies WHERE id = $1',
+        'DELETE FROM playback_analytics_events WHERE movie_id = $1',
         [fixture.id]
       );
+      await run(
+        client,
+        'delete the seeded content view events',
+        target,
+        'DELETE FROM content_view_events WHERE movie_id = $1',
+        [fixture.id]
+      );
+      await run(
+        client,
+        'delete the seeded analytics aggregates',
+        target,
+        'DELETE FROM analytics_daily_aggregates WHERE movie_id = $1',
+        [fixture.id]
+      );
+      await run(
+        client,
+        'delete the seeded notification deliveries',
+        target,
+        `DELETE FROM notification_deliveries
+          WHERE notification_id IN (
+            SELECT id FROM notifications WHERE content_id = $1
+          )`,
+        [fixture.id]
+      );
+      await run(
+        client,
+        'delete the seeded notifications',
+        target,
+        'DELETE FROM notifications WHERE content_id = $1',
+        [fixture.id]
+      );
+      // The public details page reports its view in the background, and that
+      // beacon can land while the cleanup is running. The shared helper waits
+      // for the beacon and removes the rows it wrote.
+      await deleteContentWithLateAnalyticsRetry(client, target, 'movie', fixture.id);
 
       await run(client, 'commit the transaction', target, 'COMMIT');
     } catch (error) {

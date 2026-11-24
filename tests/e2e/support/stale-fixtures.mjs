@@ -128,6 +128,42 @@ export const STALE_FIXTURE_STATEMENTS = Object.freeze([
              OR content_id IN ${FIXTURE_MOVIE_IDS}`,
   },
   {
+    key: 'playbackAnalyticsEvents',
+    sql: `DELETE FROM playback_analytics_events
+          WHERE drama_id IN ${FIXTURE_DRAMA_IDS}
+             OR movie_id IN ${FIXTURE_MOVIE_IDS}
+             OR episode_id IN ${FIXTURE_EPISODE_IDS}`,
+  },
+  {
+    key: 'contentViewEvents',
+    sql: `DELETE FROM content_view_events
+          WHERE drama_id IN ${FIXTURE_DRAMA_IDS}
+             OR movie_id IN ${FIXTURE_MOVIE_IDS}`,
+  },
+  {
+    key: 'analyticsDailyAggregates',
+    sql: `DELETE FROM analytics_daily_aggregates
+          WHERE drama_id IN ${FIXTURE_DRAMA_IDS}
+             OR movie_id IN ${FIXTURE_MOVIE_IDS}`,
+  },
+  {
+    key: 'notificationDeliveries',
+    sql: `DELETE FROM notification_deliveries
+          WHERE notification_id IN (
+            SELECT id FROM notifications
+             WHERE content_id IN ${FIXTURE_DRAMA_IDS}
+                OR content_id IN ${FIXTURE_MOVIE_IDS}
+                OR content_id IN ${FIXTURE_EPISODE_IDS}
+          )`,
+  },
+  {
+    key: 'notifications',
+    sql: `DELETE FROM notifications
+          WHERE content_id IN ${FIXTURE_DRAMA_IDS}
+             OR content_id IN ${FIXTURE_MOVIE_IDS}
+             OR content_id IN ${FIXTURE_EPISODE_IDS}`,
+  },
+  {
     key: 'episodes',
     sql: `DELETE FROM episodes WHERE drama_id IN ${FIXTURE_DRAMA_IDS}`,
   },

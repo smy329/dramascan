@@ -121,6 +121,7 @@ Modules are assigned to fixed layers. See `ARCHITECTURE.md` §3 for the layer ma
 - **Depends on:** `content`, `users`, `playback`, `reviews` (reporting reads only), `authorization`, `auth`, platform.
 - **Not responsible for:** personal watch history or progress (owned by `playback`), operational system metrics and errors (owned by `maintenance`), notifications.
 - **Boundary notes:** this is the reporting module. Cross-module joins are allowed only in `analytics/read-models/` and only for read-only reporting. It is **not** a mandatory intermediary for the watch page or admin operational summaries.
+- **Retention (D-065):** the raw events are kept for 400 days, and a guest-session row for the same window; a session row linked to an account is never removed. `purgeExpiredGuestData` is the application-side implementation, and `scripts/analytics-retention.mjs` is the short-lived maintenance command that mirrors it.
 
 ### 6.10 `administration` — Admin operations and system configuration
 

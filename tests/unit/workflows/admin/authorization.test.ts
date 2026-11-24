@@ -22,8 +22,10 @@ const {
   createRoleMock,
   deleteRoleMock,
   getUserAccountMock,
+  invalidateUserSessionsMock,
   listRolesMock,
   listUserRoleAssignmentsMock,
+  notifyAccountSecurityMock,
   revokeUserRoleMock,
   setRolePermissionsMock,
   setUserAccountActiveMock,
@@ -33,13 +35,19 @@ const {
   createRoleMock: vi.fn(),
   deleteRoleMock: vi.fn(),
   getUserAccountMock: vi.fn(),
+  invalidateUserSessionsMock: vi.fn(),
   listRolesMock: vi.fn(),
   listUserRoleAssignmentsMock: vi.fn(),
+  notifyAccountSecurityMock: vi.fn(),
   revokeUserRoleMock: vi.fn(),
   setRolePermissionsMock: vi.fn(),
   setUserAccountActiveMock: vi.fn(),
   updateRoleMock: vi.fn(),
 }));
+
+// The notifications module is server-only; the workflow under test is not a
+// Client Component, so the marker is neutralised for the unit run.
+vi.mock('server-only', () => ({}));
 
 vi.mock('@/modules/authorization', async () => {
   const guards = await vi.importActual<typeof import('@/modules/authorization/guards')>(
@@ -55,6 +63,7 @@ vi.mock('@/modules/authorization', async () => {
     assignUserRole: assignUserRoleMock,
     createRole: createRoleMock,
     deleteRole: deleteRoleMock,
+    invalidateUserSessions: invalidateUserSessionsMock,
     listRoles: listRolesMock,
     listUserRoleAssignments: listUserRoleAssignmentsMock,
     revokeUserRole: revokeUserRoleMock,
@@ -66,6 +75,10 @@ vi.mock('@/modules/authorization', async () => {
 vi.mock('@/modules/auth', () => ({
   getUserAccount: getUserAccountMock,
   setUserAccountActive: setUserAccountActiveMock,
+}));
+
+vi.mock('@/modules/notifications', () => ({
+  notifyAccountSecurity: notifyAccountSecurityMock,
 }));
 
 import {
@@ -80,6 +93,7 @@ import {
   listUserRolesForAdmin,
   revokeUserRoleForAdmin,
   setUserAccountActiveForAdmin,
+  terminateUserSessionsForAdmin,
 } from '@/workflows/admin/users';
 import type { ActorContext } from '@/modules/authorization/actors';
 
@@ -237,6 +251,71 @@ describe('user role workflows', () => {
 
     expect(revokeUserRoleMock).toHaveBeenCalledWith(superAdmin, 'user-1', 'role-1');
   });
+
+  it('tells the account owner when a role is assigned', async () => {
+    assignUserRoleMock.mockResolvedValue([
+      {
+        roleId: 'role-1',
+        roleName: 'Content Manager',
+        assignedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+
+    await assignUserRoleForAdmin(superAdmin, 'user-1', 'role-1');
+
+    expect(notifyAccountSecurityMock).toHaveBeenCalledTimes(1);
+    expect(notifyAccountSecurityMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        title: expect.stringContaining('role'),
+        content: expect.stringContaining('Content Manager'),
+      })
+    );
+  });
+
+  it('tells the account owner when a role is removed', async () => {
+    listUserRoleAssignmentsMock.mockResolvedValue([
+      {
+        roleId: 'role-1',
+        roleName: 'Content Manager',
+        assignedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    revokeUserRoleMock.mockResolvedValue([]);
+
+    await revokeUserRoleForAdmin(superAdmin, 'user-1', 'role-1');
+
+    expect(notifyAccountSecurityMock).toHaveBeenCalledTimes(1);
+    expect(notifyAccountSecurityMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        title: expect.stringContaining('role'),
+        content: expect.stringContaining('Content Manager'),
+      })
+    );
+  });
+});
+
+describe('session termination workflow', () => {
+  it('rejects an actor that is not a Super Admin', async () => {
+    await expect(
+      terminateUserSessionsForAdmin(adminManager, 'user-1')
+    ).rejects.toBeInstanceOf(AuthorizationError);
+
+    expect(invalidateUserSessionsMock).not.toHaveBeenCalled();
+  });
+
+  it('terminates the sessions and tells the account owner', async () => {
+    invalidateUserSessionsMock.mockResolvedValue(undefined);
+
+    await terminateUserSessionsForAdmin(superAdmin, 'user-1');
+
+    expect(invalidateUserSessionsMock).toHaveBeenCalledWith('user-1', 'super-1');
+    expect(notifyAccountSecurityMock).toHaveBeenCalledTimes(1);
+    expect(notifyAccountSecurityMock).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-1' })
+    );
+  });
 });
 
 describe('account status workflow', () => {
@@ -269,6 +348,40 @@ describe('account status workflow', () => {
     await setUserAccountActiveForAdmin(adminManager, 'user-1', false);
 
     expect(setUserAccountActiveMock).toHaveBeenCalledWith('user-1', false);
+  });
+
+  it('tells the account owner when the account is deactivated', async () => {
+    setUserAccountActiveMock.mockResolvedValue({
+      id: 'user-1',
+      isActive: false,
+    });
+
+    await setUserAccountActiveForAdmin(adminManager, 'user-1', false);
+
+    expect(notifyAccountSecurityMock).toHaveBeenCalledTimes(1);
+    expect(notifyAccountSecurityMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        title: expect.stringContaining('deactivated'),
+      })
+    );
+  });
+
+  it('tells the account owner when the account is reactivated', async () => {
+    setUserAccountActiveMock.mockResolvedValue({
+      id: 'user-1',
+      isActive: true,
+    });
+
+    await setUserAccountActiveForAdmin(adminManager, 'user-1', true);
+
+    expect(notifyAccountSecurityMock).toHaveBeenCalledTimes(1);
+    expect(notifyAccountSecurityMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        title: expect.stringContaining('reactivated'),
+      })
+    );
   });
 
   it('refuses to change a Super Admin account for a non-Super-Admin', async () => {

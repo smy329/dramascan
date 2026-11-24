@@ -108,7 +108,10 @@ test.describe('footer information links', () => {
         .getByRole('link', { name: 'DramaScan home' })
         .first()
         .click();
-      await expect(page).toHaveURL(/\/$/);
+      // The home route is compiled on its first request by the development
+      // server, so the transition back to it gets the same budget as the
+      // navigation to the information page above.
+      await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
     }
   });
 

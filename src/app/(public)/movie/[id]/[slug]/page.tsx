@@ -21,6 +21,7 @@ import {
 } from '@/modules/reviews';
 import { getMoviePlaybackState, isBookmarked } from '@/modules/users';
 
+import { ViewTracker } from '@/components/analytics/view-tracker';
 import { BookmarkButton } from '@/components/public/bookmark-button';
 import { ContentHero } from '@/components/public/content-hero';
 import { ContinueWatching } from '@/components/public/continue-watching';
@@ -188,6 +189,7 @@ export default async function MovieDetailPage({
 
   return (
     <PublicPageLayout title={movie.title}>
+      <ViewTracker type="movie" contentId={movie.id} />
       <div className="space-y-12">
         <ContentHero
           eyebrow="Movie"

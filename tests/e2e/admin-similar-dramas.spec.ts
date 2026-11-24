@@ -81,17 +81,24 @@ test.describe('admin similar dramas', () => {
         await search.fill(term);
         await searchButton.click();
 
+        // The candidate list is rendered once the search request answers, so
+        // the candidate row is the condition that says the search finished.
+        // Waiting for it is deterministic; a blind sleep is not.
+        const candidate = page
+          .getByRole('listitem')
+          .filter({ hasText: fixture.title })
+          .getByRole('button', { name: 'Add' });
+
+        await expect(candidate).toBeVisible({ timeout: 30_000 });
+
         const added = page.waitForResponse(
           response =>
             response.url().endsWith('/admin/api/similar-dramas') &&
-            response.request().method() === 'POST'
+            response.request().method() === 'POST',
+          { timeout: 30_000 }
         );
 
-        await page
-          .getByRole('listitem')
-          .filter({ hasText: fixture.title })
-          .getByRole('button', { name: 'Add' })
-          .click();
+        await candidate.click();
 
         expect((await added).status()).toBe(201);
         await expect(page.getByRole('cell', { name: fixture.title, exact: true })).toBeVisible();
@@ -108,7 +115,8 @@ test.describe('admin similar dramas', () => {
       const reordered = page.waitForResponse(
         response =>
           response.url().includes('/admin/api/similar-dramas/reorder') &&
-          response.request().method() === 'PUT'
+          response.request().method() === 'PUT',
+        { timeout: 30_000 }
       );
       await page.getByRole('button', { name: `Move ${beta.title} up` }).click();
       expect((await reordered).status()).toBe(200);
@@ -129,7 +137,8 @@ test.describe('admin similar dramas', () => {
       const removed = page.waitForResponse(
         response =>
           response.url().endsWith('/admin/api/similar-dramas') &&
-          response.request().method() === 'DELETE'
+          response.request().method() === 'DELETE',
+        { timeout: 30_000 }
       );
       const alphaRow = page.getByRole('row', { name: new RegExp(alpha.title) });
       await alphaRow.getByRole('button', { name: 'Remove' }).click();

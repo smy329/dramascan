@@ -326,6 +326,7 @@ its authorization is deliberately narrow:
 - Backups are protected and access-controlled; see §11.
 - Queries use parameterization and least-privilege access. Reporting and read models do not gain write access.
 - Guest session identifiers are pseudonymous analytics identifiers, not authentication credentials and not public profiles. They follow the documented retention policy.
+- **Retention (D-065):** the raw analytics events and the guest-session rows are kept for 400 days, and a guest-session row linked to an account is kept for as long as the account exists. The removal is a bounded, short-lived command (`npm run db:analytics:retention`), never a worker, and it removes at most one batch of rows per table per run. The session identifier is therefore never a durable personal identifier.
 
 ---
 

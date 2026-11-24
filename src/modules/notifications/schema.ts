@@ -12,13 +12,17 @@
  *
  * Five event preferences (per D-005 and requirements §11):
  *   - new_episode: when a new eligible episode is manually published
- *   - new_drama_season: when a drama or season is manually published
+ *   - new_drama: when a new drama is manually published
+ *   - new_drama_season: when a new season is manually published
  *   - website_announcement: when an administrator publishes a manual announcement
  *   - account_security: mandatory notifications (cannot be disabled through
  *     ordinary event preferences). Covers user deactivation/reactivation,
  *     administrator authorization/deactivation, role changes, and session
  *     termination.
- *   - global_on_off: overall in-app and browser push on/off switch
+ *
+ * The two global delivery switches (`global_in_app`, `global_push`) sit beside
+ * them: delivery requires both the global switch for the channel and the
+ * relevant event preference.
  *
  * Mandatory security notifications (per D-005) remain visible regardless of
  * event preference settings. All other notifications respect the user's
@@ -46,10 +50,15 @@ export const push_subscriptions = pgTable('push_subscriptions', {
 export const notification_preferences = pgTable('notification_preferences', {
   id: uuidPrimaryKey(),
   user_id: uuid('user_id').notNull(),
+  // The five event preferences. `account_security` is mandatory: the column
+  // exists so the row is complete, but a workflow never consults it to decide
+  // whether to deliver a security notification.
   new_episode: boolean('new_episode').default(true),
+  new_drama: boolean('new_drama').default(true),
   new_drama_season: boolean('new_drama_season').default(true),
   website_announcement: boolean('website_announcement').default(true),
   account_security: boolean('account_security').default(true),
+  // The two global delivery switches.
   global_in_app: boolean('global_in_app').default(true),
   global_push: boolean('global_push').default(true),
   created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

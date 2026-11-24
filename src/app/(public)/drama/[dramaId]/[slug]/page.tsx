@@ -23,6 +23,7 @@ import {
 } from '@/modules/reviews';
 import { getDramaResumePoint, isBookmarked } from '@/modules/users';
 
+import { ViewTracker } from '@/components/analytics/view-tracker';
 import { BookmarkButton } from '@/components/public/bookmark-button';
 import { ContentCard } from '@/components/public/ContentCard';
 import { ContentHero } from '@/components/public/content-hero';
@@ -207,6 +208,7 @@ export default async function DramaDetailPage({
 
   return (
     <PublicPageLayout title={drama.title}>
+      <ViewTracker type="drama" contentId={drama.id} />
       <div className="space-y-12">
         <ContentHero
           eyebrow="Drama"

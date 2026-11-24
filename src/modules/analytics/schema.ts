@@ -58,6 +58,7 @@ export const content_view_events = pgTable(
     movie_id: uuid('movie_id'),
     viewed_at: timestamp('viewed_at', { withTimezone: true }).notNull().defaultNow(),
     viewed_hour_bucket: text('viewed_hour_bucket'), // e.g. "2026-11-10T14"
+    deleted_at: deletedAt(),
     // Deduplication is enforced at the application level and via partial unique
     // index in migrations; the schema defines the columns for the index.
   },
@@ -78,16 +79,18 @@ export const playback_analytics_events = pgTable(
   {
     id: uuidPrimaryKey(),
     guest_session_id: uuid('guest_session_id'), // FK to guest_sessions, nullable
-    content_id: uuid('content_id').notNull(), // legacy target id
-    content_type: text('content_type').notNull(), // legacy: drama | movie
+    content_id: uuid('content_id').notNull(), // the episode or movie the event describes
+    content_type: text('content_type').notNull(), // drama | movie
     drama_id: uuid('drama_id'),
     movie_id: uuid('movie_id'),
+    episode_id: uuid('episode_id'), // set when the event describes one episode
     event_type: text('event_type').notNull(), // play_pause | seek | completion | exit
     position_seconds: integer('position_seconds'),
     watch_duration_seconds: integer('watch_duration_seconds'),
     completion_threshold_met: boolean('completion_threshold_met').default(false),
     event_at: timestamp('event_at', { withTimezone: true }).notNull().defaultNow(),
     event_hour_bucket: text('event_hour_bucket'), // e.g. "2026-11-10T14"
+    deleted_at: deletedAt(),
     // Deduplication enforced at application level and via partial unique index in migrations.
   },
   table => [
@@ -145,6 +148,7 @@ export const search_events = pgTable('search_events', {
   result_count: integer('result_count').default(0),
   searched_at: timestamp('searched_at', { withTimezone: true }).notNull().defaultNow(),
   search_hour_bucket: text('search_hour_bucket'), // e.g. "2026-11-10T14"
+  deleted_at: deletedAt(),
   // Deduplication enforced at application level and via partial unique index in migrations.
 });
 

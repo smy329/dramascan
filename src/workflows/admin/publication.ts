@@ -15,6 +15,8 @@ import {
   type PublicationStatus,
 } from '@/modules/content/publication';
 import { parsePublicationRequest } from '@/modules/content/validation';
+import { notifyPublishedContent } from '@/modules/notifications';
+import { createRequestLogger } from '@/platform/logging';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -363,6 +365,12 @@ export async function updatePublication(
       });
 
       results.push(...batchResults);
+
+      // The publication has committed. The viewers are told about it now, so a
+      // notification never claims something that was rolled back. A failed
+      // notification must not undo a publication that already happened, so the
+      // failure is swallowed and reported in the server log.
+      await announcePublishedContent(parsed.contentType, batchResults);
     } catch {
       for (const id of batch) {
         results.push({
@@ -392,6 +400,52 @@ export async function updatePublication(
   };
 }
 
+/**
+ * Tell the viewers about the content that has just been published.
+ *
+ * Only content that became publicly available is announced, and only the
+ * publication of a drama, a season, or an episode has a notification event: a
+ * movie has none in this phase.
+ *
+ * The notification round runs after the publication transaction has committed.
+ * A failure is logged and swallowed: the publication already happened, and a
+ * failed announcement must never undo it or fail the administrator's action.
+ *
+ * @param contentType what was published
+ * @param batchResults the results of the committed batch
+ */
+async function announcePublishedContent(
+  contentType: PublicationContentType,
+  batchResults: readonly PublicationItemResult[]
+): Promise<void> {
+  if (contentType === 'movie') {
+    return;
+  }
+
+  const ids = batchResults
+    .filter(
+      result =>
+        result.status === 'succeeded' &&
+        result.publicationStatus === 'published' &&
+        result.publiclyAvailable === true
+    )
+    .map(result => result.id);
+
+  if (ids.length === 0) {
+    return;
+  }
+
+  try {
+    await notifyPublishedContent(contentType, ids);
+  } catch (error) {
+    const { logger } = createRequestLogger({ module: 'notifications' });
+    logger.warn(
+      { err: error, event: 'publication_notification_failed', contentType },
+      'The publication was announced to nobody'
+    );
+  }
+}
+
 /** Manual publish of content. */
 export async function publishContent(
   actor: ActorContext,
@@ -399,7 +453,6 @@ export async function publishContent(
 ): Promise<PublicationResult> {
   return updatePublication(actor, { ...(input as object), action: 'publish' });
 }
-
 /** Manual unpublish of content. */
 export async function unpublishContent(
   actor: ActorContext,

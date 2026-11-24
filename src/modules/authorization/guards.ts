@@ -76,6 +76,23 @@ export function requireUser(actor: ActorContext): ActorContext {
 }
 
 /**
+ * Require that the actor is authenticated and return the account id.
+ *
+ * `requireUser` returns the actor, whose `userId` is still typed as
+ * nullable. This helper is the narrow form: it throws for an anonymous actor
+ * and hands back a value that is a real account id.
+ *
+ * @param actor The actor to check.
+ * @returns The authenticated account id.
+ */
+export function requireUserId(actor: ActorContext): string {
+  if (actor.userId === null) {
+    throw new AuthenticationError('Authentication required.');
+  }
+  return actor.userId;
+}
+
+/**
  * Require that the actor is an administrator (Super Admin or holder of the
  * `admin.manage` permission). Throws `AuthenticationError` when anonymous,
  * `AuthorizationError` when not permitted.

@@ -3,6 +3,93 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-24  
+
+### Phase 11 — Analytics and Notifications (2026-11-24)
+
+Prompts 139-154 implement the privacy-conscious analytics layer (anonymous guest sessions, six-hour view counting, playback analytics, on-demand daily aggregation, and the administrator analytics dashboard) and the notification system (event preferences, the in-app notification centre, browser push infrastructure, publication and security notifications, and delivery safety).
+
+#### Implemented
+
+- **Anonymous guest sessions (Prompt 139).** `guest_sessions` holds one row per visitor: an anonymous `session_id`, a nullable `user_id`, a hashed IP, and the country code. The event tables carry `guest_sessions.id` and nothing else that identifies a person — no fingerprint, no raw IP. The row is found by `user_id` for a signed-in viewer and by the `session_id` cookie for a guest, and the same row gains the `user_id` when the account signs in, so the views recorded before sign-in keep the same visitor key. The cookie is written by the view-tracking route handler, because Next.js forbids `cookies().set()` in a Server Component (D-057).
+- **Retention policy (Prompt 139).** The raw analytics events and the guest-session rows are kept for 400 days, which is longer than the 366-day range the dashboard may query, so every number the dashboard can show can still be rebuilt from the raw events. A guest-session row is kept for the same window as the events it identifies, because the unique-visitor counts are made of the visitor keys; a session row linked to an account is never removed, because it is that account's stable visitor key. The removal is a bounded, short-lived command (`npm run db:analytics:retention`) that removes at most one batch of rows per table and exits — there is no worker and no recurring job (D-065).
+- **View counting (Prompt 140).** `POST /api/analytics/view` counts one view per visitor per content item in a rolling six-hour window. The window is an application rule — the workflow looks for a view by the same visitor for the same content inside the previous six hours — with a per-hour-bucket partial unique index as the database-level safety net against a concurrent double submit (D-058). The public count reads `content_view_events` directly, so it is correct on a fresh deployment that has never run the aggregation. The title is checked against the public availability rules before the view is counted, so a caller cannot inflate the count of a draft by posting its id.
+- **Playback analytics (Prompts 141, 142).** The player reports `play_pause`, `seek`, `completion`, and `exit` to `POST /api/analytics/playback`. Writes are bounded to one row per (visitor, content, event type, hour bucket). `watch_duration_seconds` is the per-event delta — the seconds the viewer accumulated since the last event the server *stored* — and the browser only clears its accumulator when the server confirms the row was written, so an event the bounded write dropped does not lose the watch time it carried. The reports are serialized through a promise chain, so two reports for one viewer cannot race into the same bucket. A position jump of more than five seconds is a seek, not watch time (D-060).
+- **Daily aggregation (Prompt 143).** A calendar day is a Dhaka day: the aggregate's `date` is `to_char(timestamp at time zone 'UTC' + interval '6 hours','YYYY-MM-DD')`. The aggregation is a bounded, on-demand command — five reads and one scoped delete/insert inside a transaction — so re-running it for the same day produces the same result. There is no worker, no queue, and no recurring job; the dashboard's refresh button is the only scheduler (D-059).
+- **Admin analytics dashboard (Prompts 144-147).** `/admin/analytics` shows the overview, the content performance table, the engagement trend, the viewer activity, and the time the numbers were last written. The range comes from the URL: the seven approved presets plus a custom pair of calendar days. The range is always bounded — an unknown preset falls back to `last_7_days`, an inverted or oversized custom range falls back too, and a range may not exceed `MAX_RANGE_DAYS`. The selected range survives a refresh because it lives in the URL. The range-level "unique viewers" is the distinct visitor count over the raw events, not the sum of the daily distinct counts.
+- **Notification preferences (Prompt 150).** `/settings/notifications` offers five independent event preferences (new episode, new drama, new season, website announcement, and the account/security events that are mandatory and therefore have no switch) plus the global In-app and Browser Push switches. The event preference decides whether the row is written at all; `global_in_app` gates the notification centre and `global_push` gates browser push. The two channels are separate because a viewer may mute the centre and still want push (D-061). `notification_preferences.new_drama` is a new column: the old `new_drama_season` column only ever covered the season case.
+- **In-app notification centre (Prompts 148, 149).** `/notifications` lists the viewer's own notifications with mark-read and mark-unread behaviour, and the public navigation carries a bell with the unread count. The count is resolved on the server (`PublicPageLayout` → `resolveNavUser` → `PublicNavbar` → `NotificationBell`), so it is correct on the first render. A notification is private to its recipient: every read is filtered by `user_id`, and there is no path that reads another viewer's rows.
+- **Browser push (Prompt 151).** Two providers implement one interface: an FCM provider and a native Web Push provider, and `resolvePushProvider` prefers FCM when it is configured. A deployment without a transport credential reports an explicit failure; it never claims a delivery it did not perform. The permission is requested inside the click handler of the opt-in island — a browser asked for a permission without a gesture answers "denied", and the viewer never sees the choice again. The service worker (`public/sw.js`) handles `push` and `notificationclick` only (D-063).
+- **Notification events (Prompt 152).** A newly published drama, season, or episode notifies the eligible viewers — the bookmarks of the parent drama for an episode, the whole audience for a drama or a season — after the publication transaction has committed. Only content that is published *and* publicly available is announced, the round is idempotent, and the audience is read in three bulk queries with a bound of 5000 (D-062). Account deactivation, reactivation, role changes, and session termination produce mandatory account/security notifications (D-064).
+- **Announcements (Prompt 153).** `/admin/notifications` creates a draft announcement and publishes it by hand; the published list is bounded to 50 rows. Publishing an announcement writes one row per eligible viewer.
+- **Delivery safety and cleanup (Prompt 154).** `notification_deliveries` records every attempt, the attempt count is capped at ten, and an expired subscription is soft-deleted instead of retried forever. The cleanup commands remove orphaned deliveries, invalid notifications, and old delivery records in bounded batches. There is no persistent worker, no queue, and no email fallback: the delivery round is a short-lived, on-demand operation.
+
+#### Permissions
+
+| Surface                                  | Permission          |
+| ---------------------------------------- | ------------------- |
+| `/admin/analytics` (read)               | `analytics.read`    |
+| `/admin/analytics` (refresh the range)  | `analytics.manage`  |
+| `/admin/notifications`                   | `settings.manage`   |
+
+The navigation entry for `/admin/notifications` names exactly the permission the page checks, so an operator sees only what they may open.
+
+#### Module boundaries
+
+- `analytics` owns the guest sessions, the view events, the playback events, and the daily aggregates; the four dashboard read models live in `analytics/read-models/`, the only directory where a read-only join across modules is allowed.
+- `notifications` owns the preferences, the notification rows, the push subscriptions, the delivery records, and the announcements. It may read `users` and `content`; it never imports `content`.
+- `content` does not import `notifications`, and `authorization` does not import `notifications`. The publication workflow (`workflows/admin/publication.ts`) and the user-administration workflow (`workflows/admin/users.ts`) are the places that coordinate the two, because the dependency matrix forbids the module-level edges.
+- The view tracker and the playback reporter are client islands; they talk to the server only through the two analytics route handlers.
+
+#### Bugs found and fixed
+
+- **The shared analytics fixture cleanup deleted every guest session in the test database.** The cleanup removed the rows named `session-%`, which is every anonymous session the analytics suite creates, including the ones the *other* test files were still using. The playback-event insert then failed on the foreign key while the file was running. The cleanup is now scoped by each file's own prefix, and the guest session ids carry that prefix.
+- **The analytics fixtures left 97 dramas and 97 movies behind in the shared test database.** The leftovers appeared in the public list queries and broke `public-dramas` and `conversion`. The cleanup now removes the seeded rows as well, and the backlog was purged.
+- **The end-to-end fixtures could not delete the content they had seeded.** The new analytics rows point at the drama and its episodes with a `RESTRICT` foreign key, so the content deletion was refused. The fixtures remove the analytics and notification rows before the content.
+- **A late analytics beacon could still break that cleanup.** The details page reports its view in the background, and the beacon can reach the server after the fixture has already deleted the dependent rows. The deletion now rolls back to a savepoint, waits for the beacons that are still on their way, removes the rows that arrived, and tries again; only a foreign-key violation is retried. The shared helper (`tests/e2e/support/late-analytics.mjs`) serves the drama and the movie fixtures, so both have the same tolerance.
+- **A late analytics beacon answered HTTP 500.** The view and playback handlers inserted the event without checking whether the title had been deleted in the meantime, so the `RESTRICT` foreign key turned a fire-and-forget beacon into a server error. Both workflows now recognise the foreign-key violation (`isForeignKeyViolation`, SQLSTATE 23503) and drop the event: a view of a deleted title is not an error.
+- **The watch time was carried as a cumulative session total.** Several events of the same hour bucket each carried the whole session total, so the reported watch time was a multiple of the real watching time. The value is now the per-event delta, and the browser keeps the unconfirmed delta pending until the server confirms the row was stored.
+- **The date-range resolver had no fallback branch.** An unvalidated preset that reached it by a cast produced an unbounded range. It now falls back to `last_7_days`, and the URL resolver validates a custom range before it reaches a query.
+- **The admin navigation was wider than the page guards.** The Notifications entry asked for `settings.manage` or `admin.manage`, while the page requires `settings.manage`. It now names exactly the page's own permission.
+- **Two of the five event preferences shared one column.** `notification_preferences.new_drama_season` covered both "new drama" and "new season", so a viewer could not switch them independently. Migration `0018` adds `notification_preferences.new_drama`.
+- **The event tables could not be soft-deleted.** `content_view_events`, `playback_analytics_events`, and `search_events` had no `deleted_at` column, which the partial unique indexes require. Migration `0018` adds it.
+
+#### Changed files
+
+- `drizzle/0018_analytics_and_notifications.sql` (new), `drizzle/0019_analytics_retention_indexes.sql` (new), `drizzle/meta/_journal.json`
+- `src/modules/analytics/{guest-session,visitor,view-counting-workflow,playback-analytics-workflow,aggregation-workflow,date-filters,analytics-inputs,retention}.ts` (new), `src/modules/analytics/read-models/dashboard.ts` (new), `src/modules/analytics/{index,schema,view-counts}.ts`
+- `src/modules/notifications/{delivery-rules,preferences,notifications,notification-center,events,announcements,subscriptions,push-provider,delivery,delivery-records}.ts` (new), `src/modules/notifications/{index,schema}.ts`
+- `src/modules/authorization/{guards,index}.ts` — the `requireUserId` guard
+- `src/workflows/analytics/{record-view,record-playback,dashboard}.ts` (new), `src/workflows/notifications/{center,preferences,subscriptions}.ts` (new), `src/workflows/admin/announcements.ts` (new), `src/workflows/admin/{publication,users}.ts`
+- `src/app/api/analytics/{view,playback}/route.ts` (new), `src/app/admin/analytics/page.tsx` (new), `src/app/admin/notifications/page.tsx` (new), `src/app/(public)/notifications/page.tsx` (new), `src/app/(public)/settings/notifications/page.tsx` (new)
+- `src/components/analytics/view-tracker.tsx` (new), `src/components/player/playback-analytics.ts` (new), `src/components/notifications/*` (new), `src/components/admin/analytics/*` (new), `src/components/admin/notifications/announcement-admin.tsx` (new)
+- `src/components/{public/Layout,public/PublicNavbar,player/vidstack-player,admin/navigation}.tsx` and the three public details pages
+- `public/sw.js` (new)
+- `scripts/analytics-retention.mjs` (new), `package.json` — the `db:analytics:retention` script
+- `tests/unit/modules/analytics/*` (new), `tests/unit/modules/notifications/*` (new), `tests/unit/components/player/*` (new)
+- `tests/integration/analytics/**` (new), `tests/integration/notifications/**` (new)
+- `tests/e2e/{admin-analytics,admin-notifications,notifications}.spec.ts` (new), `tests/e2e/support/notification-fixture.mjs` (new), `tests/e2e/support/late-analytics.mjs` (new), `tests/e2e/support/{drama-fixture,movie-fixture,stale-fixtures,warmup}.mjs`
+- `src/platform/db/errors.ts` — the `isForeignKeyViolation` helper
+- `playwright.config.ts` — the test budget is now larger than the navigation timeout
+
+#### Verification
+
+- Typecheck: **PASS** (`npm run typecheck`)
+- Lint: **PASS** (`npm run lint`)
+- Unit tests: **PASS** — 1174/1174, 111 files (`npm test`)
+- Integration tests: **PASS** — 756/756, 52 files (`npm run test:integration`)
+- Playwright E2E: **PASS** — 92/92 (`npx playwright test`), including the new `admin-analytics`, `admin-notifications`, and `notifications` specs
+- Production build: **PASS** (`npm run build` with HTTPS `APP_URL` and
+  `TRUSTED_ORIGINS`; the local `.env.local` uses `http://localhost`, which the
+  production configuration rejects)
+
+#### Known limitations
+
+- **Browser push was not delivered end to end.** No transport credential (FCM or VAPID) is configured in this environment, so the provider reports an explicit failure. The abstraction, the opt-in, the subscription storage, and the delivery records are exercised; the transport itself is not verified against a live provider.
+- **The aggregates are written on demand.** There is no worker, no queue, and no recurring schedule, so the dashboard's numbers are as fresh as the last manual refresh. The dashboard shows when they were last written.
+- **The search events table is indexed but not yet written.** The table, its soft-delete column, and its deduplication index exist; the search page does not record a search event yet.
+
+---
+
 ### Phase 9 — Ratings, Reviews, and Moderation (2026-11-24)
 
 Prompts 115-120 implement the rating submission, review submission/editing, rating aggregation, review enjoyment reactions, review sorting/reporting, and review moderation features. The pass that produced this section audited the whole phase and fixed the defects listed under *Bugs found and fixed*.

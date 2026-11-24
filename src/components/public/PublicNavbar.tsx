@@ -7,10 +7,13 @@ import { Bookmark, ChevronRight, Flame, Home, LogIn, Menu, Play, UserRound, X } 
 
 import { cn } from '@/lib/utils';
 import { buttonVariants } from '@/components/ui/button';
+import { NotificationBell } from '@/components/notifications/notification-bell';
 
 type PublicNavbarProps = Readonly<{
   signedIn: boolean;
   userName?: string | null;
+  /** How many notifications the viewer has not read. */
+  unreadCount?: number;
 }>;
 
 const PRIMARY_LINKS = [
@@ -51,7 +54,7 @@ function Brand() {
   );
 }
 
-export function PublicNavbar({ signedIn, userName }: PublicNavbarProps) {
+export function PublicNavbar({ signedIn, userName, unreadCount = 0 }: PublicNavbarProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -132,6 +135,8 @@ export function PublicNavbar({ signedIn, userName }: PublicNavbarProps) {
                 </Link>
               );
             })}
+
+            <NotificationBell unreadCount={unreadCount} signedIn={signedIn} />
 
             <Link
               href={accountHref}
@@ -240,6 +245,18 @@ export function PublicNavbar({ signedIn, userName }: PublicNavbarProps) {
             </nav>
 
             <div className="border-t border-border p-4">
+              {signedIn ? (
+                <Link
+                  href="/notifications"
+                  className="mb-3 flex min-h-11 items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
+                >
+                  Notifications
+                  <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                    {unreadCount > 0 ? `${unreadCount} unread` : 'All read'}
+                  </span>
+                </Link>
+              ) : null}
+
               <Link
                 href={accountHref}
                 className={cn(buttonVariants({ variant: 'default', size: 'lg' }), 'w-full gap-2')}

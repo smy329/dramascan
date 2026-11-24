@@ -9,6 +9,11 @@ import type { SubtitleTrackDto } from '@/lib/contracts/subtitle-track-form';
 
 import { PlaybackFailureReport } from './playback-failure-report';
 import { usePlaybackReset } from './playback-reset';
+import {
+  createPlaybackAnalyticsReporter,
+  type PlaybackAnalyticsReporter,
+  type PlaybackAnalyticsTarget,
+} from './playback-analytics';
 
 /**
  * The viewer's player.
@@ -39,6 +44,8 @@ export type PlayerSubtitleTrack = Pick<
 export type VidstackPlayerProps = {
   /** The episode being watched; used when reporting a failure. */
   episodeId?: string;
+  /** The drama the episode belongs to; used to attribute the playback event. */
+  dramaId?: string;
   /** The standalone movie being watched. Exactly one of episode/movie is set. */
   movieId?: string;
   /** The episode title, shown as the player's title. */
@@ -138,6 +145,7 @@ export function formatPlaybackTime(seconds: number): string {
 }
 export function VidstackPlayer({
   episodeId,
+  dramaId,
   movieId,
   title,
   source,
@@ -175,6 +183,25 @@ export function VidstackPlayer({
   const reportedPositionRef = useRef(0);
   const thresholdReachedRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The playback analytics reporter. It is created once per target and keeps
+  // the watch time in its own closure, so reporting an event never re-renders
+  // the player.
+  const analyticsTargetRef = useRef<PlaybackAnalyticsTarget | null>(null);
+  const reporterRef = useRef<PlaybackAnalyticsReporter | null>(null);
+  const playingRef = useRef(false);
+
+  if (analyticsTargetRef.current === null && episodeId !== undefined && dramaId !== undefined) {
+    analyticsTargetRef.current = { type: 'drama', episodeId, dramaId };
+    reporterRef.current = createPlaybackAnalyticsReporter({
+      target: analyticsTargetRef.current,
+    });
+  } else if (analyticsTargetRef.current === null && movieId !== undefined) {
+    analyticsTargetRef.current = { type: 'movie', movieId };
+    reporterRef.current = createPlaybackAnalyticsReporter({
+      target: analyticsTargetRef.current,
+    });
+  }
 
   const handleError = useCallback((detail: { message?: string; code?: number }) => {
     setFailure(detail?.message || 'The browser could not play this source.');
@@ -282,6 +309,10 @@ export function VidstackPlayer({
     (detail: { currentTime: number }) => {
       positionRef.current = detail.currentTime;
 
+      // The watch time is the time the media was playing, not the time the
+      // page was open. The reporter discards the jump a seek produces.
+      reporterRef.current?.observe(detail.currentTime, playingRef.current);
+
       const duration = durationRef.current;
       const reached =
         duration > 0 && detail.currentTime >= duration * completionThresholdPercent / 100;
@@ -290,6 +321,10 @@ export function VidstackPlayer({
         // The episode counts as watched now, so the server is told right away
         // instead of at the next interval.
         flushProgress();
+        reporterRef.current?.report('completion', {
+          positionSeconds: detail.currentTime,
+          completionThresholdMet: true,
+        });
         return;
       }
 
@@ -297,6 +332,24 @@ export function VidstackPlayer({
     },
     [completionThresholdPercent, flushProgress, scheduleProgressReport]
   );
+
+  /** The viewer started playback. */
+  const handlePlay = useCallback(() => {
+    playingRef.current = true;
+    reporterRef.current?.report('play_pause', { positionSeconds: positionRef.current });
+  }, []);
+
+  /** The viewer paused playback. */
+  const handlePause = useCallback(() => {
+    playingRef.current = false;
+    reporterRef.current?.report('play_pause', { positionSeconds: positionRef.current });
+    flushProgress();
+  }, [flushProgress]);
+
+  /** The viewer moved to another position. */
+  const handleSeeked = useCallback(() => {
+    reporterRef.current?.report('seek', { positionSeconds: positionRef.current });
+  }, []);
 
   const handleDurationChange = useCallback((duration: number) => {
     durationRef.current = duration;
@@ -312,6 +365,8 @@ export function VidstackPlayer({
    */
   const handleEnded = useCallback(() => {
     flushProgress();
+    playingRef.current = false;
+    reporterRef.current?.report('exit', { positionSeconds: positionRef.current });
 
     if (!nextHref) {
       return;
@@ -361,6 +416,10 @@ export function VidstackPlayer({
       }
 
       reportProgress();
+
+      // The viewer left the player. The exit event carries the watch time the
+      // viewer accumulated since the last stored event.
+      reporterRef.current?.report('exit', { positionSeconds: positionRef.current });
     },
     [reportProgress]
   );
@@ -434,7 +493,9 @@ export function VidstackPlayer({
         onCanPlay={handleCanPlay}
         onTimeUpdate={handleTimeUpdate}
         onDurationChange={handleDurationChange}
-        onPause={flushProgress}
+        onPlay={handlePlay}
+        onPause={handlePause}
+        onSeeked={handleSeeked}
         onEnded={handleEnded}
         className="w-full overflow-hidden rounded-lg border border-border bg-black"
         style={{ aspectRatio: '16 / 9' }}

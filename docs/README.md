@@ -60,6 +60,7 @@ For the future upgrade backlog, see `future/`.
 - [Progress Tracker](implementation/progress-tracker.md)
 - [Future Upgrade Backlog](future/future-upgrade-backlog.md)
 - [Episode Video Source Workflow Plan (Prompts 080–090)](superpowers/plans/2026-11-23-prompts-080-090-video-source-completion.md)
+- [Phase 11 Plan — Analytics and Notifications (Prompts 139–154)](superpowers/plans/2026-11-25-phase-11-analytics-and-notifications.md)
 
 ---
 

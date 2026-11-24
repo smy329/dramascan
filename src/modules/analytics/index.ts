@@ -29,3 +29,100 @@ export type {
   RankedContentType,
   TrendingPin,
 } from './read-models/discovery';
+
+export {
+  DASHBOARD_ROW_LIMIT,
+  getAnalyticsLastUpdated,
+  getAnalyticsOverview,
+  listContentPerformance,
+  listEngagementTrend,
+  listViewerActivity,
+} from './read-models/dashboard';
+
+export type {
+  AnalyticsOverview,
+  ContentPerformanceRow,
+  EngagementTrendPoint,
+  ViewerActivityRow,
+} from './read-models/dashboard';
+
+export {
+  DATE_RANGE_PRESETS,
+  DATE_RANGE_PRESET_LABELS,
+  DASHBOARD_TIME_ZONE,
+  DASHBOARD_UTC_OFFSET_MINUTES,
+  MAX_RANGE_DAYS,
+  addDays,
+  buildDateRange,
+  daysBetween,
+  dhakaDateString,
+  eachDay,
+  endOfDhakaDay,
+  endOfMonth,
+  isCalendarDay,
+  isDateRangePreset,
+  resolveDateRange,
+  startOfDhakaDay,
+  startOfMonth,
+  utcHourBucket,
+} from './date-filters';
+
+export type { DateRange, DateRangePreset } from './date-filters';
+
+export {
+  GUEST_SESSION_COOKIE,
+  GUEST_SESSION_MAX_AGE_SECONDS,
+  ensureGuestSessionId,
+  generateGuestSessionId,
+  readGuestSessionId,
+} from './guest-session';
+
+export { resolveAnalyticsVisitor } from './visitor';
+
+export type { AnalyticsVisitor } from './visitor';
+
+export { VIEW_DEDUP_WINDOW_HOURS, recordContentView } from './view-counting-workflow';
+
+export type { ContentViewResult } from './view-counting-workflow';
+
+export {
+  PLAYBACK_EVENT_TYPES,
+  getPlaybackAnalyticsSummary,
+  recordPlaybackEvent,
+} from './playback-analytics-workflow';
+
+export type {
+  PlaybackEventResult,
+  PlaybackEventTarget,
+  PlaybackEventType,
+} from './playback-analytics-workflow';
+
+export { aggregateDailyAnalytics, aggregateDateRange, aggregateToday } from './aggregation-workflow';
+
+export {
+  ANALYTICS_EVENT_RETENTION_DAYS,
+  ANALYTICS_RETENTION_BATCH_SIZE,
+  ANALYTICS_RETENTION_MAX_BATCH_SIZE,
+  GUEST_SESSION_RETENTION_DAYS,
+  purgeExpiredGuestData,
+} from './retention';
+
+export type {
+  AnalyticsRetentionOptions,
+  AnalyticsRetentionResult,
+} from './retention';
+
+export {
+  analyticsContentTypeSchema,
+  analyticsPlaybackEventTypeSchema,
+  analyticsPlaybackInputSchema,
+  analyticsViewInputSchema,
+  isPublicAnalyticsTarget,
+  parseAnalyticsPlaybackInput,
+  parseAnalyticsViewInput,
+} from './analytics-inputs';
+
+export type {
+  AnalyticsPlaybackInput,
+  AnalyticsViewInput,
+} from './analytics-inputs';

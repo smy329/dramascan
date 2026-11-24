@@ -38,7 +38,10 @@ export default defineConfig({
   // A single worker keeps first-request route compilation from racing across
   // tests. This suite is small; determinism matters more than parallelism.
   workers: 1,
-  timeout: 30_000,
+  // The test budget has to be larger than the navigation timeout below:
+  // otherwise a route that is still compiling when the navigation timeout
+  // expires could never finish the assertions that follow it.
+  timeout: 60_000,
   // Development servers compile routes on first request. A cold `/drama`
   // compile under load can exceed the default 5s expectation, so allow the
   // route transition to finish without masking genuine failures.

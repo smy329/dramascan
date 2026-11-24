@@ -1,5 +1,6 @@
 import {
   assignUserRole,
+  invalidateUserSessions,
   listUserRoleAssignments,
   revokeUserRole,
   type UserRoleAssignment,
@@ -12,7 +13,9 @@ import {
   type ActorContext,
 } from '@/modules/authorization';
 import { getUserAccount, setUserAccountActive, type UserAccountRecord } from '@/modules/auth';
+import { notifyAccountSecurity } from '@/modules/notifications';
 import { NotFoundError } from '@/platform/errors';
+import { createRequestLogger } from '@/platform/logging';
 
 /**
  * Administrator user account management workflows.
@@ -40,6 +43,39 @@ import { NotFoundError } from '@/platform/errors';
  * these functions, and they resolve the actor themselves (D-031).
  */
 
+/** The deep link a security notification points the viewer at. */
+const ACCOUNT_LINK = '/profile';
+
+/**
+ * Record a mandatory account/security notification.
+ *
+ * The notification is written after the state change has already committed, so
+ * a failed write must not fail the administrator's action: the account really
+ * was changed, and reporting the action as failed would be a lie. The failure
+ * is logged instead, and the platform does not claim a delivery it did not
+ * make.
+ */
+async function notifySecurityEvent(input: {
+  userId: string;
+  title: string;
+  content: string;
+}): Promise<void> {
+  try {
+    await notifyAccountSecurity({
+      userId: input.userId,
+      title: input.title,
+      content: input.content,
+      link: ACCOUNT_LINK,
+    });
+  } catch (error) {
+    const { logger } = createRequestLogger({ module: 'notifications' });
+    logger.warn(
+      { err: error, event: 'account_security_notification_failed' },
+      'The account change was committed but its security notification was not written'
+    );
+  }
+}
+
 /** List the roles assigned to one user. */
 export async function listUserRolesForAdmin(
   actor: ActorContext,
@@ -58,7 +94,18 @@ export async function assignUserRoleForAdmin(
 ): Promise<UserRoleAssignment[]> {
   requireSuperAdmin(actor);
 
-  return assignUserRole(actor, userId, roleId);
+  const assignments = await assignUserRole(actor, userId, roleId);
+  const roleName = assignments.find(row => row.roleId === roleId)?.roleName ?? null;
+
+  await notifySecurityEvent({
+    userId,
+    title: 'Your account role was added',
+    content: roleName
+      ? `The role "${roleName}" was added to your account.`
+      : 'A role was added to your account.',
+  });
+
+  return assignments;
 }
 
 /** Remove one role from a user. */
@@ -69,7 +116,45 @@ export async function revokeUserRoleForAdmin(
 ): Promise<UserRoleAssignment[]> {
   requireSuperAdmin(actor);
 
-  return revokeUserRole(actor, userId, roleId);
+  // The role name is read before the removal, because the assignment is gone
+  // by the time the module answers.
+  const roleName =
+    (await listUserRoleAssignments(actor, userId)).find(row => row.roleId === roleId)
+      ?.roleName ?? null;
+
+  const assignments = await revokeUserRole(actor, userId, roleId);
+
+  await notifySecurityEvent({
+    userId,
+    title: 'Your account role was removed',
+    content: roleName
+      ? `The role "${roleName}" was removed from your account.`
+      : 'A role was removed from your account.',
+  });
+
+  return assignments;
+}
+
+/**
+ * Terminate every session of one account.
+ *
+ * A Super Admin may end an administrator's sessions at any time. The
+ * termination is a security event the account owner has to hear about, so it
+ * is announced like every other mandatory security notification.
+ */
+export async function terminateUserSessionsForAdmin(
+  actor: ActorContext,
+  userId: string
+): Promise<void> {
+  requireSuperAdmin(actor);
+
+  await invalidateUserSessions(userId, actor.userId ?? '');
+
+  await notifySecurityEvent({
+    userId,
+    title: 'Your sessions were terminated',
+    content: 'An administrator signed you out of every device. Sign in again to continue.',
+  });
 }
 
 /**
@@ -96,5 +181,15 @@ export async function setUserAccountActiveForAdmin(
     requireSuperAdmin(actor);
   }
 
-  return setUserAccountActive(userId, isActive);
+  const updated = await setUserAccountActive(userId, isActive);
+
+  await notifySecurityEvent({
+    userId,
+    title: isActive ? 'Your account was reactivated' : 'Your account was deactivated',
+    content: isActive
+      ? 'An administrator reactivated your account. You can sign in again.'
+      : 'An administrator deactivated your account. Your bookmarks and watch history were kept.',
+  });
+
+  return updated;
 }

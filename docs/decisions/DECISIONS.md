@@ -2498,3 +2498,301 @@ silent.
 
 ---
 
+## D-057 — The analytics visitor is a guest-session row, and the cookie is written by the route handler
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 11 implementation)
+**Extends:** D-002 (the six-hour view window)
+
+**Context:** The event tables must not store a personal identifier, but a view
+still has to be attributable to *a* visitor so the six-hour window can
+deduplicate it. The platform has exactly one anonymous identity available: the
+`guest_sessions` row. A fingerprint would be a personal identifier in disguise,
+and the requirements forbid it.
+
+**Decision:**
+
+1. **The visitor key is `guest_sessions.id`.** The event tables carry that
+   uuid and nothing else that identifies a person.
+2. **The row is found by `user_id` for a signed-in viewer and by the anonymous
+   `session_id` cookie for a guest.** The cookie value is a random identifier
+   the server issues; it is not derived from the browser.
+3. **The guest row is linked, not replaced.** When the account signs in, the
+   same `guest_sessions` row gains the `user_id`, so the views recorded before
+   sign-in stay with the same visitor key.
+4. **The cookie is written by the view-tracking route handler.** Next.js
+   forbids `cookies().set()` in a Server Component, so the route handler is
+   the only place that may issue it.
+
+**Consequences:**
+
+- The event tables hold no identifier that can be traced back to a person
+  without joining `guest_sessions`, and that table has a retention policy.
+- A signed-in viewer and a guest on the same browser are one visitor key.
+- The six-hour window is one indexed read per view.
+
+---
+
+## D-058 — The six-hour view window is an application rule with an hourly unique index as a safety net
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 11 implementation)
+**Extends:** D-002 (the six-hour view window)
+
+**Context:** A unique index can express "one row per (visitor, content, hour
+bucket)". That is a one-hour window, which is stricter than the approved
+six-hour rule and would under-count a viewer who opens a title at 09:30 and
+again at 10:30.
+
+**Decision:**
+
+1. **The application enforces the six-hour rolling window.** Before a view is
+   written, the workflow looks for a view by the same visitor for the same
+   content inside the previous six hours.
+2. **The per-hour-bucket unique index is the database-level safety net.** It
+   makes a duplicate write inside one hour impossible even under a race.
+3. **The dedup key uses `viewed_hour_bucket` (`YYYY-MM-DDTHH`).** The
+   indexes are partial (`WHERE deleted_at IS NULL`), so a soft-deleted event
+   does not block a new one.
+
+**Consequences:**
+
+- The count matches the approved rule exactly, and a concurrent double submit
+  still produces one row.
+- The window costs one indexed read per recorded view.
+
+---
+
+## D-059 — The analytics day is a Dhaka day, and the aggregates are written on demand
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 11 implementation)
+
+**Context:** The requirements ask for `Asia/Dhaka` display and UTC storage.
+Those are different things: `2026-11-24T20:30:00Z` is already the 25th in
+Dhaka. The phase also forbids a persistent worker, a queue, and recurring
+schedules, so the daily aggregates cannot be produced by a background process.
+
+**Decision:**
+
+1. **A calendar day is `to_char(timestamp at time zone 'UTC' + interval '6 hours','YYYY-MM-DD')`.**
+   The aggregate row's `date` is the Dhaka day, not the UTC day.
+2. **The aggregation is a bounded, on-demand command.** It reads the raw
+   events, computes the rows, and replaces the scoped rows inside one
+   transaction. Running it twice for the same day produces the same result.
+3. **The dashboard refreshes the historical range by hand.** The button is the
+   only scheduler, and the dashboard shows when the numbers were last written.
+
+**Consequences:**
+
+- No worker, no queue, and no recurring job is introduced.
+- The dashboard is cheap: it reads stored aggregates, and the distinct-viewer
+  counts come from the raw events for the selected range.
+- A range is always bounded: an unknown preset falls back to the default
+  range, and a custom range is validated before it reaches a query.
+
+---
+
+## D-060 — Playback events are bounded to one row per visitor, content, type, and hour
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 11 implementation)
+
+**Context:** The requirements forbid a database write per playback second and
+require the play/pause, seek, completion, and exit events. The watch time has
+to survive a dropped event without multiplying.
+
+**Decision:**
+
+1. **One row per (visitor, content, event type, hour bucket).** The unique
+   index `uq_playback_analytics_events_dedup` enforces it.
+2. **`watch_duration_seconds` is the delta of that event, not a running
+   total.** The browser keeps the unconfirmed delta pending until the server
+   has stored it, so a dropped event does not lose watch time and a repeated
+   event does not double it.
+3. **The reports are serialized through a promise chain.** Two reports for the
+   same viewer cannot race each other into the same bucket.
+4. **A position jump larger than five seconds is a seek, not watch time.**
+
+**Consequences:**
+
+- The write rate is bounded by the number of events, not by the video length.
+- The watch time is a lower bound if the exit event is lost, and never a
+  multiple of the real watching time.
+
+---
+
+## D-061 — The event preference and the global channel switches are separate decisions
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 11 implementation)
+**Extends:** D-005 (mandatory account/security notifications)
+
+**Context:** Requirements §11.1 asks for five independent event preferences
+plus a global In-app switch and a global Browser Push switch, and says that
+delivery requires both the global switch and the event preference. A single
+boolean cannot express that.
+
+**Decision:**
+
+1. **The event preference decides whether the row is written at all.** A
+   viewer who switched an event off gets no row for it.
+2. **`global_in_app` gates the notification centre.** The row exists, and it
+   is not shown in the centre.
+3. **`global_push` gates browser push.** The row exists, and push may carry
+   it.
+4. **The two are separate because a viewer may mute the centre and still want
+   push.** One boolean for both would force that viewer to choose.
+5. **Account/security notifications and moderation outcomes are mandatory.**
+   No switch withholds them, and they are always visible in the centre.
+
+**Consequences:**
+
+- The preferences table carries one column per event preference plus the two
+  global switches.
+- The notification centre applies the in-app gate to optional events and
+  always shows mandatory ones.
+
+---
+
+## D-062 — A publication notifies the viewers after the transaction commits
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 11 implementation)
+
+**Context:** Publishing a drama, a season, or an episode must notify the
+eligible viewers, and a repeated publication request must not notify them
+twice. The notification must also never claim something that was rolled back.
+
+**Decision:**
+
+1. **The notification round runs after the publication transaction has
+   committed.** The publication workflow calls `notifyPublishedContent` with
+   the ids that became published *and* publicly available.
+2. **Only publicly available content is announced.** A published episode under
+   an unpublished drama is not something a viewer can open.
+3. **The round is idempotent.** The audience is checked against the
+   notifications that already exist.
+4. **A failed announcement does not undo the publication.** The failure is
+   logged and swallowed: the content really is published.
+5. **The audience is read in three bulk queries**, not three queries per
+   viewer. The audience is bounded at 5000.
+
+**Consequences:**
+
+- The `content` module never imports `notifications`; the workflow
+  coordinates the two.
+- A retry of a publication request produces no second notification.
+
+---
+
+## D-063 — Browser push sits behind a provider interface that reports honest failures
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 11 implementation)
+
+**Context:** The requirements prefer Firebase Cloud Messaging at no cost and
+fall back to native Web Push, forbid a paid provider, and forbid email. A
+deployment without a transport credential cannot deliver a push, and it must
+not claim that it did.
+
+**Decision:**
+
+1. **Two providers implement one interface**: an FCM provider and a native
+   Web Push provider. `resolvePushProvider` prefers FCM when it is
+   configured.
+2. **An unconfigured provider reports an explicit failure.** It never returns
+   a successful delivery it did not perform.
+3. **Provider-specific code stays inside `push-provider.ts`.** The delivery
+   rules do not know which provider carries the message.
+4. **The delivery attempt count is capped at ten**, and an expired
+   subscription is soft-deleted instead of retried forever.
+5. **The permission is requested inside the click handler.** A browser asked
+   for a permission without a gesture answers "denied", and the viewer never
+   sees the choice again.
+
+**Consequences:**
+
+- A deployment without a push credential behaves honestly: the opt-in says
+  browser push is not available yet.
+- Swapping the provider does not touch the notification rules.
+
+---
+
+## D-064 — An account or security notification is written by the workflow, after the state change
+
+**Date:** 2026-11-24
+**Status:** Approved by user (Phase 11 implementation)
+**Extends:** D-005 (mandatory account/security notifications)
+
+**Context:** Requirements §11.4 makes these notifications mandatory for the
+events the platform can reliably detect: account deactivation and
+reactivation, administrator authorization and deactivation, administrator role
+changes, and administrator session termination.
+
+**Decision:**
+
+1. **`notifications.notifyAccountSecurity` writes the notification.** The
+   event is `account_security`, the priority is `high`, and no switch
+   withholds it.
+2. **The workflow layer fires it.** The dependency matrix forbids
+   `authorization → notifications`, so `workflows/admin/users.ts` is the place
+   that coordinates the account change and the notification.
+3. **The notification is written after the state change has committed, and a
+   failed write is logged rather than thrown.** The account really was
+   changed; reporting the administrator's action as failed would be a lie.
+4. **The platform never promises a Google-side security event.** It announces
+   only the events it records itself.
+
+**Consequences:**
+
+- A viewer learns that their account was deactivated, reactivated, given a
+  role, lost a role, or had its sessions terminated.
+- A failed notification is visible in the server log instead of silently
+  swallowed.
+
+---
+
+## D-065 — The analytics retention policy is 400 days, and it is applied by a bounded command
+
+**Date:** 2026-11-25
+**Status:** Approved by user (Phase 11 implementation)
+**Extends:** D-057 (the analytics visitor is a guest-session row)
+
+**Context:** Requirements §10.1 asks for a limited retention policy for guest
+sessions and analytics data: "session identifiers must not function as public
+personal profiles". The platform has no worker, no queue, and no recurring
+job, so the policy needs a bounded, short-lived command rather than a
+background process.
+
+**Decision:**
+
+1. **The raw events are kept for 400 days.** The dashboard may query a range
+   of at most 366 days (`MAX_RANGE_DAYS`), so 400 days of raw events are
+   enough to rebuild every number the dashboard is allowed to show.
+2. **A guest-session row is kept for the same window as the events it
+   identifies.** The unique-visitor counts are `count(distinct
+   guest_session_id)`, so removing a session row while its events are still
+   kept would silently drop those visitors from the numbers.
+3. **A session row linked to an account is never removed.** It is the
+   account's stable visitor key: the same row is found again for every request
+   of that account. There is one such row per account, so keeping them is
+   bounded.
+4. **One run removes at most one batch of rows per table.** The command is
+   `scripts/analytics-retention.mjs` (`npm run db:analytics:retention`), it is
+   started by a `systemd` timer, and it exits. It is not a worker and it does
+   not schedule itself.
+5. **The application-side implementation is `analytics.purgeExpiredGuestData`.**
+   The command mirrors its SQL; the two are kept in step.
+
+**Consequences:**
+
+- The analytics tables cannot grow for ever, and the raw history always
+  covers the longest range the dashboard may ask for.
+- The command has to run more than once to clear a large backlog; that is the
+  price of a bounded write.
+- Migration `0019` adds the indexes the removal needs, so the command never
+  reads a whole table.
+
+---
+

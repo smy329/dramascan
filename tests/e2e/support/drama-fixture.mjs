@@ -15,6 +15,7 @@ import { Client } from 'pg';
 
 import { loadLocalEnv } from './load-local-env.mjs';
 import { describeDatabaseTarget, resolveTestDatabase } from './database-target.mjs';
+import { deleteContentWithLateAnalyticsRetry } from './late-analytics.mjs';
 
 loadLocalEnv();
 
@@ -75,6 +76,25 @@ async function run(client, operation, target, query, params) {
   } catch {
     throw databaseFailure(operation, target);
   }
+}
+
+/**
+ * Delete a drama, tolerating an analytics beacon that lands during cleanup.
+ *
+ * The public details page reports its view in the background. That beacon can
+ * reach the server after the fixture has already deleted the dependent rows,
+ * and the `RESTRICT` foreign key from `content_view_events` then refuses the
+ * drama deletion. The shared helper rolls back to a savepoint, waits for the
+ * beacons that are still on their way, removes the rows that arrived, and
+ * tries again.
+ *
+ * @param {import('pg').Client} client
+ * @param {{ name: string }} target
+ * @param {string} dramaId
+ * @returns {Promise<void>}
+ */
+async function deleteDramaWithLateAnalyticsRetry(client, target, dramaId) {
+  await deleteContentWithLateAnalyticsRetry(client, target, 'drama', dramaId);
 }
 
 /**
@@ -244,6 +264,53 @@ export async function removeDramaBySlug(slug) {
          WHERE episode_id IN (SELECT id FROM episodes WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1))`,
         [slug]
       );
+      // The public pages record analytics, so the created drama may own view,
+      // playback, and aggregate rows. They point at the drama and its episodes
+      // with a `RESTRICT` foreign key, so they have to go first.
+      await run(
+        client,
+        'delete the created playback analytics events',
+        target,
+        `DELETE FROM playback_analytics_events
+         WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1)
+            OR episode_id IN (SELECT id FROM episodes WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1))`,
+        [slug]
+      );
+      await run(
+        client,
+        'delete the created content view events',
+        target,
+        'DELETE FROM content_view_events WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1)',
+        [slug]
+      );
+      await run(
+        client,
+        'delete the created analytics aggregates',
+        target,
+        'DELETE FROM analytics_daily_aggregates WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1)',
+        [slug]
+      );
+      await run(
+        client,
+        'delete the created notification deliveries',
+        target,
+        `DELETE FROM notification_deliveries
+         WHERE notification_id IN (
+           SELECT id FROM notifications
+            WHERE content_id IN (SELECT id FROM dramas WHERE slug = $1)
+               OR content_id IN (SELECT id FROM episodes WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1))
+         )`,
+        [slug]
+      );
+      await run(
+        client,
+        'delete the created notifications',
+        target,
+        `DELETE FROM notifications
+         WHERE content_id IN (SELECT id FROM dramas WHERE slug = $1)
+            OR content_id IN (SELECT id FROM episodes WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1))`,
+        [slug]
+      );
       await run(
         client,
         'delete the created episodes',
@@ -265,9 +332,11 @@ export async function removeDramaBySlug(slug) {
         'DELETE FROM structure_conversion_snapshots WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1)',
         [slug]
       );
-      await run(client, 'delete the created drama', target, 'DELETE FROM dramas WHERE slug = $1', [
-        slug,
-      ]);
+      const created = await client.query('SELECT id FROM dramas WHERE slug = $1', [slug]);
+
+      for (const row of created.rows) {
+        await deleteDramaWithLateAnalyticsRetry(client, target, row.id);
+      }
 
       await run(client, 'commit the transaction', target, 'COMMIT');
     } catch (error) {
@@ -409,6 +478,53 @@ export async function removeDrama(fixture) {  const { target, client } = require
         'DELETE FROM content_slug_history WHERE content_id = $1',
         [fixture.id]
       );
+      // The public pages record analytics, so the seeded drama owns view,
+      // playback, and aggregate rows. They point at the drama and its episodes
+      // with a `RESTRICT` foreign key, so they have to go first.
+      await run(
+        client,
+        'delete the seeded playback analytics events',
+        target,
+        `DELETE FROM playback_analytics_events
+          WHERE drama_id = $1
+             OR episode_id IN (SELECT id FROM episodes WHERE drama_id = $1)`,
+        [fixture.id]
+      );
+      await run(
+        client,
+        'delete the seeded content view events',
+        target,
+        'DELETE FROM content_view_events WHERE drama_id = $1',
+        [fixture.id]
+      );
+      await run(
+        client,
+        'delete the seeded analytics aggregates',
+        target,
+        'DELETE FROM analytics_daily_aggregates WHERE drama_id = $1',
+        [fixture.id]
+      );
+      await run(
+        client,
+        'delete the seeded notification deliveries',
+        target,
+        `DELETE FROM notification_deliveries
+          WHERE notification_id IN (
+            SELECT id FROM notifications
+             WHERE content_id = $1
+                OR content_id IN (SELECT id FROM episodes WHERE drama_id = $1)
+          )`,
+        [fixture.id]
+      );
+      await run(
+        client,
+        'delete the seeded notifications',
+        target,
+        `DELETE FROM notifications
+          WHERE content_id = $1
+             OR content_id IN (SELECT id FROM episodes WHERE drama_id = $1)`,
+        [fixture.id]
+      );
       await run(
         client,
         'delete the seeded episodes',
@@ -440,9 +556,7 @@ export async function removeDrama(fixture) {  const { target, client } = require
         'DELETE FROM similar_dramas WHERE drama_id = $1 OR similar_drama_id = $1',
         [fixture.id]
       );
-      await run(client, 'delete the seeded drama', target, 'DELETE FROM dramas WHERE id = $1', [
-        fixture.id,
-      ]);
+      await deleteDramaWithLateAnalyticsRetry(client, target, fixture.id);
 
       await run(client, 'commit the transaction', target, 'COMMIT');
     } catch (error) {

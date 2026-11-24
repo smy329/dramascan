@@ -1,11 +1,18 @@
 import 'server-only';
 
-import { eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import type { DbExecutor } from '@/platform/db/executor';
 
-import { notification_preferences, notifications } from './schema';
+import {
+  isDeliveryAllowed,
+  isEventAllowed,
+  type NotificationPreferenceSet,
+} from './delivery-rules';
+import { recordDelivery } from './delivery-records';
+import { getNotificationPreferences } from './preferences';
+import { notifications } from './schema';
 
 /**
  * In-app notifications.
@@ -13,11 +20,25 @@ import { notification_preferences, notifications } from './schema';
  * The module owns the notification rows. Callers pass a validated payload
  * snapshot — the recipient, the title, the body, and a deep link — and the
  * module decides whether the recipient wants to hear about it.
+ *
+ * Two decisions live here, and they are deliberately separate:
+ *
+ *   1. **The event preference** decides whether the event is wanted at all.
+ *      When it is off, no row is written and nothing is delivered.
+ *   2. **The global channel switches** decide how the event is delivered. The
+ *      in-app switch governs the notification centre; the push switch governs
+ *      browser push. A viewer who muted the centre can still receive push, so
+ *      the row is written either way and the delivery records say honestly
+ *      which channel carried it.
+ *
+ * Account/security notifications and moderation outcomes are mandatory: no
+ * switch withholds them.
  */
 
 /** The event types this module can record. */
 export const NOTIFICATION_EVENT_TYPES = [
   'new_episode',
+  'new_drama',
   'new_drama_season',
   'website_announcement',
   'account_security',
@@ -43,61 +64,25 @@ export type NotificationInput = {
 };
 
 /**
- * The event types a viewer can switch off.
- *
- * Moderation outcomes are deliberately absent: the platform promised to tell a
- * reporter what happened to their report, and a preference switch must not be
- * able to swallow that answer.
- */
-const PREFERENCE_GATED_EVENT_TYPES: ReadonlySet<NotificationEventType> = new Set([
-  'new_episode',
-  'new_drama_season',
-  'website_announcement',
-]);
-
-/**
  * Does the recipient want to receive this event?
  *
- * The global switch and the event preference both have to be on. A missing
- * preference row means the default: on.
+ * The answer is the event preference alone. The global channel switches do
+ * not take part: they decide *where* a wanted event is delivered, not whether
+ * the viewer wants to hear about it at all.
+ *
+ * @param userId the recipient
+ * @param eventType the event
+ * @param executor the database executor
+ * @returns whether the event is wanted
  */
 export async function acceptsNotification(
   userId: string,
   eventType: NotificationEventType,
   executor: DbExecutor = db
 ): Promise<boolean> {
-  if (!PREFERENCE_GATED_EVENT_TYPES.has(eventType)) {
-    return true;
-  }
+  const preferences = await getNotificationPreferences(userId, executor);
 
-  const [preference] = await executor
-    .select({
-      globalInApp: notification_preferences.global_in_app,
-      newEpisode: notification_preferences.new_episode,
-      newDramaSeason: notification_preferences.new_drama_season,
-      websiteAnnouncement: notification_preferences.website_announcement,
-    })
-    .from(notification_preferences)
-    .where(eq(notification_preferences.user_id, userId))
-    .limit(1);
-
-  if (!preference) {
-    return true;
-  }
-
-  if (preference.globalInApp === false) {
-    return false;
-  }
-
-  if (eventType === 'new_episode') {
-    return preference.newEpisode !== false;
-  }
-
-  if (eventType === 'new_drama_season') {
-    return preference.newDramaSeason !== false;
-  }
-
-  return preference.websiteAnnouncement !== false;
+  return isEventAllowed(preferences, eventType);
 }
 
 /**
@@ -107,14 +92,41 @@ export async function acceptsNotification(
  * off. The row is written inside the caller's executor, so a workflow can
  * create the notification in the same transaction as the state change it
  * announces.
+ *
+ * @param input the notification
+ * @param executor the database executor
+ * @returns the created row, or `null` when the event is not wanted
  */
 export async function createNotification(
   input: NotificationInput,
   executor: DbExecutor = db
 ): Promise<{ id: string } | null> {
-  if (!await acceptsNotification(input.userId, input.eventType, executor)) {
+  const preferences = await getNotificationPreferences(input.userId, executor);
+
+  return writeNotification(input, preferences, executor);
+}
+
+/**
+ * Write one notification for a recipient whose preferences are already known.
+ *
+ * The broadcast paths read every recipient's preferences in one query, so they
+ * hand them in instead of making every recipient pay for a second read.
+ *
+ * @param input the notification
+ * @param preferences the recipient's preference set
+ * @param executor the database executor
+ * @returns the created row, or `null` when the event is not wanted
+ */
+export async function writeNotification(
+  input: NotificationInput,
+  preferences: NotificationPreferenceSet,
+  executor: DbExecutor = db
+): Promise<{ id: string } | null> {
+  if (!isEventAllowed(preferences, input.eventType)) {
     return null;
   }
+
+  const inAppDelivered = isDeliveryAllowed(preferences, input.eventType, 'in_app');
 
   const [row] = await executor
     .insert(notifications)
@@ -128,11 +140,66 @@ export async function createNotification(
       link: input.link ?? null,
       priority: input.priority ?? 'normal',
       is_read: false,
-      delivered: false,
+      delivered: inAppDelivered,
+      delivery_timestamp: inAppDelivered ? sql`now()` : null,
     })
     .returning({ id: notifications.id });
 
-  return row ?? null;
+  if (!row) {
+    return null;
+  }
+
+  if (inAppDelivered) {
+    await recordDelivery(executor, {
+      notificationId: row.id,
+      userId: input.userId,
+      channel: 'in_app',
+      success: true,
+      errorMessage: null,
+    });
+  }
+
+  return row;
+}
+
+/**
+ * Tell a viewer about an account or security change.
+ *
+ * These notifications are mandatory (D-005): no preference switch withholds
+ * them, and they are always delivered in the app. The wording comes from the
+ * caller, because the platform only announces the events it actually
+ * records — it never promises a Google-side security event it cannot detect.
+ *
+ * @param input the notification
+ * @param executor the database executor
+ * @returns the created row, or `null` when nothing was written
+ */
+export async function notifyAccountSecurity(
+  input: {
+    /** The account the event happened to. */
+    userId: string;
+    title: string;
+    content: string;
+    /** The deep link back to the account area, when there is one. */
+    link?: string | null;
+    contentId?: string | null;
+    contentType?: string | null;
+  },
+  executor: DbExecutor = db
+): Promise<{ id: string } | null> {
+  return createNotification(
+    {
+      userId: input.userId,
+      title: input.title,
+      content: input.content,
+      eventType: 'account_security',
+      contentId: input.contentId ?? null,
+      contentType: input.contentType ?? null,
+      link: input.link ?? null,
+      priority: 'high',
+    },
+    executor
+  );
 }
 
 /**

@@ -42,18 +42,44 @@ type PublicPageLayoutProps = Readonly<{
   children?: ReactNode;
 }>;
 
-/** Best-effort session lookup for the public header. */
-async function resolveNavUser(): Promise<{ signedIn: boolean; userName?: string | null }> {
+/** What the public header knows about the viewer. */
+type NavUser = {
+  signedIn: boolean;
+  userName?: string | null;
+  /** How many notifications the viewer has not read. */
+  unreadCount: number;
+};
+
+/**
+ * Best-effort session lookup for the public header.
+ *
+ * The unread count is resolved on the server: the browser is never asked to
+ * invent a number, and a viewer only ever sees their own count. A failure in
+ * the notification read must not take the whole public header down, so the
+ * count falls back to zero.
+ */
+async function resolveNavUser(): Promise<NavUser> {
   try {
     // Dynamic import keeps a missing configuration from breaking public pages.
     const { getActiveSession } = await import('@/platform/auth/session');
     const session = await getActiveSession();
 
-    return session
-      ? { signedIn: true, userName: session.userName }
-      : { signedIn: false, userName: null };
+    if (!session) {
+      return { signedIn: false, userName: null, unreadCount: 0 };
+    }
+
+    let unreadCount = 0;
+
+    try {
+      const { getUnreadNotificationCount } = await import('@/modules/notifications');
+      unreadCount = await getUnreadNotificationCount(session.userId);
+    } catch {
+      unreadCount = 0;
+    }
+
+    return { signedIn: true, userName: session.userName, unreadCount };
   } catch {
-    return { signedIn: false, userName: null };
+    return { signedIn: false, userName: null, unreadCount: 0 };
   }
 }
 
@@ -325,12 +351,12 @@ export async function PublicPageLayout({
   title,
   children,
 }: PublicPageLayoutProps): Promise<JSX.Element> {
-  const { signedIn, userName } = await resolveNavUser();
+  const { signedIn, userName, unreadCount } = await resolveNavUser();
   const isHome = title === 'Home';
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <PublicNavbar signedIn={signedIn} userName={userName} />
+      <PublicNavbar signedIn={signedIn} userName={userName} unreadCount={unreadCount} />
 
       <main id="main-content" className="flex-1 pb-24 md:pb-0">
         {children &&

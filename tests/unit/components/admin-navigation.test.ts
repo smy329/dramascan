@@ -56,6 +56,8 @@ describe('ADMIN_NAVIGATION', () => {
       'hero-rotation',
       'trending-pins',
       'users',
+      'analytics',
+      'notifications',
       'roles',
     ]);
 
@@ -105,10 +107,12 @@ describe('filterAdminNavigation', () => {
       'moderation',
       'homepage',
       'users',
+      'analytics',
+      'notifications',
       'system',
     ]);
     expect(visible[0]?.entries.map(entry => entry.id)).toEqual(['overview']);
-    expect(visible[5]?.entries.map(entry => entry.id)).toEqual(['roles']);
+    expect(visible[7]?.entries.map(entry => entry.id)).toEqual(['roles']);
   });
 
   it.each([ANONYMOUS, actor()])('renders nothing without admin-area access', current => {

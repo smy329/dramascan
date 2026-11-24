@@ -127,6 +127,20 @@
       "when": 1795675246318,
       "tag": "0017_audit_log_nullable_entity",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795761234567,
+      "tag": "0018_analytics_and_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795847634567,
+      "tag": "0019_analytics_retention_indexes",
+      "breakpoints": true
     }
   ]
 }

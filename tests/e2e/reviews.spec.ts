@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext } from '@playwright/test';
+import { expect, test, type BrowserContext, type Locator } from '@playwright/test';
 
 import { adminSession } from './support/admin-session.mjs';
 import { removeDrama, seedDrama } from './support/drama-fixture.mjs';
@@ -17,6 +17,18 @@ import { readNotifications } from './support/moderation-fixture.mjs';
 const VIDEO_SOURCE = 'https://media.example.com/episodes/e2e-reviews.mp4';
 
 const REVIEW_TEXT = 'E2E review body: the pacing is wonderful.';
+
+/**
+ * The published review body, scoped to the published review list.
+ *
+ * The review form keeps the text the reviewer typed in its textarea, and a
+ * textarea carries that text as its value, so a plain text query for the
+ * review body matches both the published review and the form. The published
+ * review is the one inside a list item of the review list.
+ */
+function publishedReviewBody(reviews: Locator): Locator {
+  return reviews.getByRole('listitem').filter({ hasText: REVIEW_TEXT }).getByRole('paragraph');
+}
 
 /** Sign a browser context in as a seeded user. */
 async function signIn(
@@ -87,7 +99,7 @@ test.describe('ratings and reviews', () => {
       await reviews.getByRole('button', { name: 'Publish your review' }).click();
 
       await expect(reviews.getByText('Your review was published.')).toBeVisible();
-      await expect(reviews.getByText(REVIEW_TEXT)).toBeVisible();
+      await expect(publishedReviewBody(reviews)).toBeVisible();
 
       // The viewer cannot react to their own review in this test: the
       // reaction is the one control that changes a shared count, so a second
@@ -148,7 +160,7 @@ test.describe('review reports and moderation', () => {
 
       const reporterReviews = reporterPage.getByRole('region', { name: 'Reviews' });
 
-      await expect(reporterReviews.getByText(REVIEW_TEXT)).toBeVisible();
+      await expect(publishedReviewBody(reporterReviews)).toBeVisible();
 
       await reporterReviews.getByRole('button', { name: 'Enjoying' }).click();
 

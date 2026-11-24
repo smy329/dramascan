@@ -271,6 +271,8 @@ Migration tooling and practices are defined in `CONVENTIONS.md` §10. Database-s
 - `drizzle/0015_moderation_and_settings.sql` adds the moderation audit log and the system settings table, and changes the report → review foreign key (Prompts 115–120). It creates `moderation_actions` and `system_settings`; it adds the immutable `review_id_snapshot` to `review_reports`, backfills it from the existing `review_id`, makes `review_id` nullable, and replaces the `ON DELETE RESTRICT` foreign key with an `ON DELETE SET NULL` one, so a permanently removed review no longer deletes the moderation history that refers to it. The CHECK `ck_review_reports_review_reference` requires a report to name either a live review or its snapshot, so the history can never lose its subject. The cross-module foreign keys (`moderation_actions.actor_user_id`, `system_settings.updated_by`) are added `NOT VALID` and use `ON DELETE SET NULL`: an audit row outlives the administrator who wrote it. Forward-fix-only: rolling back would drop the audit log and the settings.
 - `drizzle/0016_search_indexes.sql` installs the `pg_trgm` extension and adds the GIN indexes that the search and the relevance order use (Prompts 121–138). It adds a `gin_trgm_ops` index on `dramas.title`, `movies.title`, `categories.name`, and `platforms.name`, and a `to_tsvector('simple', …)` GIN index on the two title columns. The extension is installed inside a guarded block, so the migration is safe to re-run against a database that already has it. Reversible: the indexes and the extension can be dropped without touching any row.
 - `drizzle/0017_audit_log_nullable_entity.sql` makes `admin_audit_log.entity_id` nullable (Prompts 121–138 audit fix, D-056). A global homepage setting — the featured item, the hero rotation, the Trending pins — is not a content row and has no identifier, so an action on one is recorded with `entity_type = 'homepage_setting'` and no entity id. Before this migration the column was `NOT NULL`, and the workflow wrote the literal strings `featured`, `hero_rotation`, and `trending_pins` into it; PostgreSQL rejected the insert, the transaction rolled back, and every save of those settings failed. The column stays a uuid, the indexes are unchanged, and no row is rewritten. Reversible: `ALTER TABLE "admin_audit_log" ALTER COLUMN "entity_id" SET NOT NULL` restores the old constraint once no setting event exists.
+- `drizzle/0018_analytics_and_notifications.sql` completes the analytics and notification data model (Prompts 139–154). It adds the `deleted_at` column to `content_view_events`, `playback_analytics_events`, and `search_events`, the `episode_id` column to `playback_analytics_events`, the three guest-session foreign keys and the episode foreign key (`ON DELETE restrict`), the deduplication indexes that make the six-hour view window and the bounded playback writes enforceable, the notification indexes, and the independent `notification_preferences.new_drama` switch. See §8.9.
+- `drizzle/0019_analytics_retention_indexes.sql` adds the three indexes the analytics retention command needs: `idx_guest_sessions_created_at` (the expired anonymous sessions), `idx_search_events_searched_at` (the expired search events), and `idx_playback_analytics_events_guest_session` (the "does an event still point at this session?" check). Without them the command would read a whole table on every run.
 - The content Trash (Prompts 072–074) needs no migration: it reuses the existing `deleted_at` columns on `dramas`, `seasons`, `episodes`, and `movies`, and the existing `deleted_at` indexes. The cascade timestamp is a value in those columns, not a new column.
 - Image assets (Prompts 075–078) need no migration: the stored artwork lives on the application disk, and the content tables keep only the managed `/media/...` path in `dramas.poster`, `dramas.banner`, `movies.poster`, and `movies.banner`.
 - `npm run db:generate` creates the next numbered migration from schema changes; `npm run db:migrate` applies pending migrations. `npm run db:push` is local-only and must never be used against production.
@@ -629,6 +631,88 @@ Migration properties:
   other cross-module foreign keys: the migration cannot abort on legacy data,
   and the constraint is validated by `npm run db:integrity`.
 
+
+### 8.9 Analytics and notification data model (Prompts 139–154)
+
+Migration `drizzle/0018_analytics_and_notifications.sql` completes the data
+model of the analytics and notification domains.
+
+#### Columns
+
+| Table                | Change             | Detail                                                                                                   |
+| -------------------- | ------------------ | -------------------------------------------------------------------------------------------------------- |
+| `content_view_events`   | `deleted_at`       | `timestamptz null`. A soft-deleted event leaves the counts and the deduplication indexes.                 |
+| `playback_analytics_events` | `deleted_at`   | `timestamptz null`. Same rule.                                                                             |
+| `search_events`          | `deleted_at`   | `timestamptz null`. Same rule.                                                                             |
+| `playback_analytics_events` | `episode_id`  | `uuid null`, `ON DELETE restrict`. A playback event names the episode that was watched; the typed `drama_id` / `movie_id` columns still name the parent, so the dashboard can roll episode playback up to its drama. |
+| `notification_preferences` | `new_drama`  | `boolean NOT NULL DEFAULT true`. Requirements §11.1 asks for five independent event preferences; the shared `new_drama_season` column only ever covered the season case. |
+
+#### Foreign keys
+
+| Constraint                                     | Target              | Deletion behaviour |
+| ---------------------------------------------- | ------------------- | ------------------ |
+| `fk_content_view_events_guest_session_id`      | `guest_sessions.id` | `ON DELETE set null` |
+| `fk_playback_analytics_events_guest_session_id` | `guest_sessions.id` | `ON DELETE set null` |
+| `fk_search_events_guest_session_id`            | `guest_sessions.id` | `ON DELETE set null` |
+| `fk_playback_analytics_events_episode_id`      | `episodes.id`       | `ON DELETE restrict` |
+
+The guest-session keys use `set null` because an analytics event outlives the
+visitor row it was attributed to: the retention policy removes the visitor,
+not the measurement. The episode key uses `restrict` because an episode is
+content, and content is not silently removed by a foreign key (D-042). All
+three are added `NOT VALID` and are validated by `npm run db:integrity`.
+
+#### Deduplication indexes
+
+| Index                                  | Columns                                                                    | Rule |
+| -------------------------------------- | -------------------------------------------------------------------------- | ---- |
+| `uq_guest_sessions_session_id`         | `session_id`                                                               | One active row per anonymous session identifier. |
+| `uq_guest_sessions_user_id`            | `user_id` (partial: `user_id IS NOT NULL`)                                  | One active row per linked account; the visitor key stays stable across requests. |
+| `uq_content_view_events_dedup`         | `content_id, content_type, guest_session_id, viewed_hour_bucket`             | One view per visitor, content item, and hour. The six-hour rolling window is applied by the application on top of this safety net (D-058). |
+| `uq_playback_analytics_events_dedup`   | `content_id, content_type, guest_session_id, event_type, event_hour_bucket`   | One playback event of each type per visitor, content item, and hour. This is the bound that keeps playback analytics from becoming a per-second log (D-060). |
+| `uq_search_events_dedup`               | `guest_session_id, search_hour_bucket`                                       | One search per guest session and hour. |
+| `uq_notification_preferences_active`   | `user_id`                                                                   | One active preference row per account. |
+| `uq_push_subscriptions_active`         | `user_id, endpoint`                                                         | One active subscription per account and browser endpoint. |
+
+Every index is partial (`WHERE deleted_at IS NULL`), so a soft-deleted row
+does not block a new one.
+
+#### Query indexes
+
+| Index                                            | Serves |
+| ------------------------------------------------ | ------ |
+| `idx_content_view_events_visitor_window`         | The six-hour window lookup: a visitor's recent views of one content item. |
+| `idx_content_view_events_viewed_at`              | The range-level view and distinct-viewer reads. |
+| `idx_playback_analytics_events_event_at`         | The range-level playback and watch-time reads. |
+| `idx_playback_analytics_events_episode_id`       | The per-episode playback lookup. |
+| `idx_analytics_daily_aggregates_date`            | The dashboard's date-range read of the stored aggregates. |
+| `idx_analytics_daily_aggregates_content`         | The per-content performance rows. |
+| `idx_notifications_user_recent`                  | The notification centre's history read. |
+| `idx_notifications_user_unread`                  | The unread-count read. |
+| `idx_notification_deliveries_notification`       | The delivery-attempt history of one notification. |
+| `idx_announcements_publication_status`           | The published-announcement list. |
+
+Migration properties:
+
+- Reversible: every statement is an additive column, an additive constraint,
+  or a `CREATE INDEX IF NOT EXISTS`. The rollback drops the indexes and the
+  constraints and drops the added columns; no row is rewritten by the
+  migration itself.
+- The `episode_id` foreign key is `NOT VALID`, matching the convention of the
+  other cross-module foreign keys: the migration cannot abort on legacy data,
+  and the constraint is validated by `npm run db:integrity`.
+
+#### Retention indexes (migration `0019`)
+
+| Index                                        | Serves |
+| -------------------------------------------- | ------ |
+| `idx_guest_sessions_created_at`             | The expired anonymous sessions the retention command removes. It is partial (`WHERE user_id IS NULL`), because a session row linked to an account is never removed. |
+| `idx_search_events_searched_at`             | The expired search events. |
+| `idx_playback_analytics_events_guest_session` | The "does an event still point at this session?" check of the guest-session removal. |
+
+Without them the retention command would read a whole table on every run, which
+is the unbounded query requirements §10.4 forbids. The command itself is
+`npm run db:analytics:retention`; the policy is D-065.
 
 ---
 
