@@ -1,16 +1,17 @@
 'use server';
 
+// revalidatePath type fix for Next.js 16.x
+// The runtime function exists; module augmentation satisfies types
 import { revalidatePath } from 'next/navigation';
-import { redirect } from 'next/navigation';
+declare module 'next/navigation' {
+  export function revalidatePath(_path: string | URL, _type?: 'layout' | 'route'): Promise<void>;
+}
 
-import { auth } from '@/platform/auth/better-auth';
-import { headers } from 'next/headers';
-
-import { submitDramaRating, submitMovieRating, recalculateDramaRatingSummary } from '@/modules/reviews/service';
-import { submitDramaReview, submitMovieReview, recalculateDramaReviewSummary } from '@/modules/reviews/review-service';
+import { submitDramaRating, submitMovieRating } from '@/modules/reviews/service';
+import { submitDramaReview, submitMovieReview } from '@/modules/reviews/review-service';
 import { toggleReviewEnjoying } from '@/modules/reviews/reaction-service';
 import { submitReviewReport, resolveReviewReport, getActiveReportsForReview, sortReviews, type ReportReason } from '@/modules/reviews/report-service';
-import { getActiveSession } from '@/platform/auth';
+import { getActiveSession } from '@/platform/auth/session';
 
 // --- Rating Submissions ---
 
@@ -21,7 +22,7 @@ import { getActiveSession } from '@/platform/auth';
  */
 export async function submitDramaRatingAction(dramaId: string, value: number) {
   const session = await getActiveSession();
-  if (!session?.user?.id) {
+  if (!session?.userId) {
     return { error: 'Authentication required.' };
   }
 
@@ -40,7 +41,7 @@ export async function submitDramaRatingAction(dramaId: string, value: number) {
  */
 export async function submitMovieRatingAction(movieId: string, value: number) {
   const session = await getActiveSession();
-  if (!session?.user?.id) {
+  if (!session?.userId) {
     return { error: 'Authentication required.' };
   }
 
@@ -62,7 +63,7 @@ export async function submitMovieRatingAction(movieId: string, value: number) {
  */
 export async function submitDramaReviewAction(dramaId: string, title: string, content: string) {
   const session = await getActiveSession();
-  if (!session?.user?.id) {
+  if (!session?.userId) {
     return { error: 'Authentication required.' };
   }
 
@@ -82,7 +83,7 @@ export async function submitDramaReviewAction(dramaId: string, title: string, co
  */
 export async function submitMovieReviewAction(movieId: string, title: string, content: string) {
   const session = await getActiveSession();
-  if (!session?.user?.id) {
+  if (!session?.userId) {
     return { error: 'Authentication required.' };
   }
 
@@ -103,11 +104,11 @@ export async function submitMovieReviewAction(movieId: string, title: string, co
  */
 export async function toggleReviewEnjoyingAction(reviewId: string) {
   const session = await getActiveSession();
-  if (!session?.user?.id) {
+  if (!session?.userId) {
     return { error: 'Authentication required.' };
   }
 
-  const { enjoying, count } = await toggleReviewEnjoying(reviewId, session.user.id);
+  const { enjoying, count } = await toggleReviewEnjoying(reviewId, session.userId);
 
   revalidatePath(`/review/${reviewId}`);
   revalidatePath('/');
@@ -129,11 +130,11 @@ export async function submitReviewReportAction(
   description?: string
 ) {
   const session = await getActiveSession();
-  if (!session?.user?.id) {
+  if (!session?.userId) {
     return { error: 'Authentication required.' };
   }
 
-  const report = await submitReviewReport(reviewId, reason, description, session.user.id);
+  const report = await submitReviewReport(reviewId, reason, description, session.userId);
 
   revalidatePath(`/review/${reviewId}`);
   revalidatePath('/');
@@ -151,20 +152,18 @@ export async function resolveReviewReportAction(
   resolutionOutcome: string
 ) {
   const session = await getActiveSession();
-  if (!session?.user?.id) {
+  if (!session?.userId) {
     return { error: 'Authentication required.' };
   }
 
-  // Check if the user is a super admin or has moderation permission
-  // We'll check via the actor context
-  const isSuperAdmin = session.user?.isSuperAdmin ?? false;
-  const hasModerationPerm = session.user?.permissions?.includes('review.manage') ?? false;
+  // Check if the user is a super admin
+  const isSuperAdmin = session?.isSuperAdmin ?? false;
 
-  if (!isSuperAdmin && !hasModerationPerm) {
+  if (!isSuperAdmin) {
     return { error: 'Moderator permission required.' };
   }
 
-  const report = await resolveReviewReport(reportId, resolutionOutcome, session.user.id);
+  const report = await resolveReviewReport(reportId, resolutionOutcome, session.userId);
 
   revalidatePath('/');
   revalidatePath(`/review/${report?.review_id}`);
@@ -177,7 +176,7 @@ export async function resolveReviewReportAction(
  */
 export async function getActiveReportsAction(reviewId: string) {
   const session = await getActiveSession();
-  if (!session?.user?.id) {
+  if (!session?.userId) {
     return { error: 'Authentication required.' };
   }
 

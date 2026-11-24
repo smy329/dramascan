@@ -26,6 +26,7 @@ export type ActiveSession = Readonly<{
   userId: string;
   userEmail: string;
   userName: string;
+  isSuperAdmin: boolean;
 }>;
 
 /** Return the signed-in, active user, or `null` when access must be denied. */
@@ -60,5 +61,6 @@ export async function getActiveSession(): Promise<ActiveSession | null> {
     userId: enriched.userId,
     userEmail: enriched.userEmail,
     userName: session.user.name,
+    isSuperAdmin: enriched.userIsSuperAdmin,
   };
 }

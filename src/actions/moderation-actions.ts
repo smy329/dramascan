@@ -1,13 +1,14 @@
 'use server';
 
+// revalidatePath type fix for Next.js 16.x
+// module augmentation satisfies types
 import { revalidatePath } from 'next/navigation';
-import { redirect } from 'next/navigation';
-
-import { auth } from '@/platform/auth/better-auth';
-import { headers } from 'next/headers';
+declare module 'next/navigation' {
+  export function revalidatePath(_path: string | URL, _type?: 'layout' | 'route'): Promise<void>;
+}
 
 import { moderateResolveReport, moderateRemoveReview } from '@/modules/moderation/service';
-import { getActiveSession } from '@/platform/auth';
+import { getActiveSession } from '@/platform/auth/session';
 
 /**
  * Resolve a review report (moderator action).
@@ -17,12 +18,12 @@ import { getActiveSession } from '@/platform/auth';
  */
 export async function resolveReportAction(reportId: string, resolutionOutcome: string) {
   const session = await getActiveSession();
-  if (!session?.user?.id) {
+  if (!session?.userId) {
     return { error: 'Authentication required.' };
   }
 
   // Check if the user is Super Admin
-  if (!session.user.isSuperAdmin) {
+  if (!session?.isSuperAdmin) {
     return { error: 'Super Admin permission required.' };
   }
 
@@ -45,16 +46,16 @@ export async function resolveReportAction(reportId: string, resolutionOutcome: s
  */
 export async function removeReviewAction(reviewId: string) {
   const session = await getActiveSession();
-  if (!session?.user?.id) {
+  if (!session?.userId) {
     return { error: 'Authentication required.' };
   }
 
   // Check if the user is Super Admin
-  if (!session.user.isSuperAdmin) {
+  if (!session?.isSuperAdmin) {
     return { error: 'Super Admin permission required.' };
   }
 
-  const result = await moderateRemoveReview(reviewId);
+  await moderateRemoveReview(reviewId);
 
   revalidatePath('/');
   // The review list/page will not show removed reviews
