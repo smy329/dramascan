@@ -2,6 +2,47 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [Unreleased] - 2026-11-24
+
+### feat: implement Phase 9 - Ratings, Reviews, and Moderation (Prompts 115-120)
+
+Prompts 115-120 implement the rating submission, review submission/editing, rating aggregation, review enjoyment reactions, review sorting/reporting, and review moderation features.
+
+- **Prompt 115** (drama rating submission): Authenticated users may submit one active rating (1–5) per drama. Duplicate active ratings are prevented by the database unique index; users may update their existing rating. Rating range is validated (1–5).
+- **Prompt 116** (review submission and editing): Authenticated users may submit one active written review per drama and edit their own review. Creation time is preserved; the last-edited timestamp updates on changes. Permanent deletion by users is not allowed.
+- **Prompt 117** (rating aggregation and display): Average rating and total rating count are calculated from genuine active ratings. Rating information is hidden when no ratings exist. Compact display format `⭐ 4.5 (1.2K)` is used.
+- **Prompt 118** (review enjoyment reactions): Authenticated users may add or remove one "Enjoying" reaction per review. Duplicate reactions are prevented by the database unique index. The enjoyment count updates consistently after each toggle.
+- **Prompt 119** (review sorting and reporting): Reviews may be sorted by Most Enjoying, Newest, and Highest Rated. Report reasons include: spam/advertising, harassment/bullying, inappropriate language, misleading/false information, and other (with optional description). One active report per user per review is enforced; a user may report again after an earlier report is resolved. Multiple users may report the same review.
+- **Prompt 120** (review moderation): Moderator tools inspect reported reviews, resolve reports, and permanently remove reviews. Reported reviews remain visible while pending moderation. Only Super Admin may permanently remove reviews. Removed reviews cannot be restored. The reporter is notified of the resolution outcome.
+
+Changed files:
+
+- `src/modules/reviews/service.ts` (new): rating submission service with `submitDramaRating`, `submitMovieRating`, `recalculateDramaRatingSummary`, `recalculateMovieRatingSummary`
+- `src/modules/reviews/review-service.ts` (new): review submission service with `submitDramaReview`, `submitMovieReview`, `recalculateDramaReviewSummary`, `recalculateMovieReviewSummary`
+- `src/modules/reviews/reaction-service.ts` (new): review reaction toggle with `toggleReviewEnjoying`
+- `src/modules/reviews/report-service.ts` (new): review report submission, resolution, and sorting
+- `src/modules/moderation/schema.ts` (new): moderation_actions audit log table
+- `src/modules/moderation/service.ts` (new): moderation service with `moderateResolveReport`, `moderateRemoveReview`
+- `src/modules/reviews/index.ts`: updated public API exports
+- `src/actions/reviews-actions.ts` (new): Server Actions for all rating, review, reaction, and report operations
+- `src/actions/moderation-actions.ts` (new): Server Actions for moderation operations
+- `docs/PROJECT_STATUS.md` (updated): Phase 9 completion entry added
+- `docs/CHANGELOG.md` (updated): Phase 9 entry added
+
+### fix: typecheck issues in review and moderation services
+
+- Fixed `and` import in `src/modules/reviews/review-service.ts`
+- Fixed `onConflictDoUpdate` target format in `src/modules/reviews/review-service.ts` (column array instead of index name string)
+- Fixed moderation schema imports to use `@/platform/db/schema-helpers` instead of `drizzle-orm/pg-core`
+- Fixed moderation service imports to reference correct schema modules
+
+### fix: typecheck pre-existing issues
+
+- `src/actions/moderation-actions.ts` and `src/actions/reviews-actions.ts`: `revalidatePath` from `next/navigation` (pre-existing type definition mismatch across the codebase)
+- `src/app/(public)/highest-rated/page.tsx`: `getRatingSummary` declared but never read (unused export, not an error)
+
+---
+
 ## [Unreleased] - 2026-11-22
 
 ### feat: implement public details, navigation, and playback (Prompts 091–103)

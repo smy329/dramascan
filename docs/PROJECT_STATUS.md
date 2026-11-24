@@ -3,6 +3,45 @@
 **DramaScan — International Drama & Movie Streaming Platform**  
 **Version:** 1.0  
 **Date:** 2026-11-23  
+### Phase 9 — Ratings, Reviews, and Moderation (2026-11-24)
+
+Prompts 115-120 implement the rating submission, review submission/editing, rating aggregation, review enjoyment reactions, review sorting/reporting, and review moderation features.
+
+#### Implemented
+
+- **Drama rating submission (Prompt 115).** Authenticated users may submit one active rating (1–5) per drama. Duplicate active ratings are prevented by the database unique index; users may update their existing rating. Rating range is validated (1–5).
+
+- **Review submission and editing (Prompt 116).** Authenticated users may submit one active written review per drama and edit their own review. Creation time is preserved; the last-edited timestamp updates on changes. Permanent deletion by users is not allowed.
+
+- **Rating aggregation and display (Prompt 117).** Average rating and total rating count are calculated from genuine active ratings. Rating information is hidden when no ratings exist. Compact display format `⭐ 4.5 (1.2K)` is used.
+
+- **Review enjoyment reactions (Prompt 118).** Authenticated users may add or remove one "Enjoying" reaction per review. Duplicate reactions are prevented by the database unique index. The enjoyment count updates consistently after each toggle.
+
+- **Review sorting and reporting (Prompt 119).** Reviews may be sorted by Most Enjoying, Newest, and Highest Rated. Report reasons include: spam/advertising, harassment/bullying, inappropriate language, misleading/false information, and other (with optional description). One active report per user per review is enforced; a user may report again after an earlier report is resolved. Multiple users may report the same review.
+
+- **Review moderation (Prompt 120).** Moderator tools inspect reported reviews, resolve reports, and permanently remove reviews. Reported reviews remain visible while pending moderation. Only Super Admin may permanently remove reviews. Removed reviews cannot be restored. The reporter is notified of the resolution outcome.
+
+#### Active
+
+- All Phase 9 prompts 115-120 have been addressed
+- Rating submission and review submission Server Actions are functional
+- Moderation actions require Super Admin authentication
+- Rating summaries display correctly when ratings exist, and hide when no ratings
+
+#### Work State
+
+- Typecheck: PASS
+- Lint: PASS
+- Core services and Server Actions verified
+
+### Module boundaries
+
+- `reviews` owns the ratings, reviews, review reactions, and review reports
+- `moderation` owns the moderation_actions audit log
+- `content` owns the content items that ratings and reviews target
+
+---
+
 **Current Prompt:** Phase 10 — Homepage, discovery, and search features (Prompts 121-138)
 
 ### Prompts 121-138 — Homepage, discovery, and search (2026-11-24)
