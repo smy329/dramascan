@@ -1,7 +1,9 @@
 'use server';
 
 import { resolveActor } from '@/modules/authorization';
+import { createAdminNotification } from '@/modules/notifications';
 import { ValidationError } from '@/platform/errors';
+import { createRequestLogger } from '@/platform/logging';
 
 import { db } from '@/db/client';
 import { report_submissions } from '@/modules/users/schema';
@@ -68,6 +70,29 @@ export async function submitReport(
 
     if (!submission) {
       return { ok: false, error: 'The report could not be saved.' };
+    }
+
+    // Tell the moderators that a report is waiting. The report itself is
+    // already saved, so a notification failure must not turn the successful
+    // submission into an error the reporter would retry.
+    try {
+      await createAdminNotification({
+        title: 'New content report',
+        content: `${contentRef.title} was reported: ${reason}. Review the report in the moderation queue.`,
+        audience: 'roles',
+        audienceRoles: ['moderator'],
+        category: 'content',
+        priority: 'normal',
+        link: '/admin/reports',
+        contentId: content_id,
+        contentType,
+      });
+    } catch (error) {
+      const { logger } = createRequestLogger({ module: 'notifications' });
+      logger.warn(
+        { err: error, event: 'admin_report_notification_failed' },
+        'The report was saved but the moderators were not alerted'
+      );
     }
 
     return { ok: true, submissionId: submission.id };

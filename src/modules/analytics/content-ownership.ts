@@ -100,6 +100,8 @@ type AggregateRow = {
   unique_visitors: number | null;
   total_views: number | null;
   total_playback_events: number | null;
+  playback_starts: number | null;
+  playback_viewers: number | null;
   completion_events: number | null;
   total_watch_duration_seconds: number | null;
 };
@@ -142,6 +144,8 @@ async function moveDailyAggregates(tx: Tx, dramaId: string, movieId: string): Pr
     unique_visitors: analytics_daily_aggregates.unique_visitors,
     total_views: analytics_daily_aggregates.total_views,
     total_playback_events: analytics_daily_aggregates.total_playback_events,
+    playback_starts: analytics_daily_aggregates.playback_starts,
+    playback_viewers: analytics_daily_aggregates.playback_viewers,
     completion_events: analytics_daily_aggregates.completion_events,
     total_watch_duration_seconds: analytics_daily_aggregates.total_watch_duration_seconds,
   };
@@ -185,6 +189,8 @@ async function moveDailyAggregates(tx: Tx, dramaId: string, movieId: string): Pr
         unique_visitors: maxOf(merged.map(row => row.unique_visitors)),
         total_views: sumOf(merged.map(row => row.total_views)),
         total_playback_events: sumOf(merged.map(row => row.total_playback_events)),
+        playback_starts: sumOf(merged.map(row => row.playback_starts)),
+        playback_viewers: maxOf(merged.map(row => row.playback_viewers)),
         completion_events: sumOf(merged.map(row => row.completion_events)),
         total_watch_duration_seconds: sumOf(merged.map(row => row.total_watch_duration_seconds)),
         updated_at: new Date(),

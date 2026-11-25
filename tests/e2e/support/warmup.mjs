@@ -67,6 +67,7 @@ export const WARMUP_PATHS = [
   `/admin/dramas/${PLACEHOLDER_ID}/convert`,
   `/admin/dramas/${PLACEHOLDER_ID}/convert-to-movie`,
   `/admin/dramas/${PLACEHOLDER_ID}/similar-dramas`,
+  `/admin/notifications/${PLACEHOLDER_ID}`,
 
   // Viewer playback.
   `/drama/${PLACEHOLDER_ID}/warmup/episode/${PLACEHOLDER_ID}`,

@@ -114,6 +114,7 @@ Bootstrap is implemented by `src/platform/auth/auth-hooks.ts` through the Better
   - Permission failures on known admin resources return `403`.
 - REST and Server Action authorization must match. The same service guard is used by both entrypoints (`DECISIONS.md` D-010).
 - Visibility is enforced in query services, including for guessed URLs and direct API calls.
+- **Administrator alerts are audience-filtered on the server (D-067):** alerts require `admin.manage`, announcements require `settings.manage`, and the page opens with either. Every alert read — the list, the unread count, the detail, and the read-state write — applies the alert's audience (`all`, `super_admin`, or named roles). An alert outside the viewer's audience returns the same `404` as an alert that does not exist, so an alert cannot be discovered through a different response. Read state is per administrator, so one administrator marking an alert read never marks it read for another.
 
 ### 4.1 Authorization test requirements
 
@@ -448,6 +449,7 @@ These are explicit, accepted limitations of the initial release. They are not hi
 | No external secret manager                       | Secrets live in server environment configuration                                  | Accepted                                          |
 | No virus scanning of uploads                     | Image/subtitle/attachment uploads rely on type/size validation and access control | Accepted initially; revisit if attachments expand |
 | No per-request database RLS                      | Authorization is enforced in the application layer                                | Accepted initially                                |
+| Browser push is not verified against a live push service | The transport is implemented (native Web Push, D-066) but no deployment in this environment holds a VAPID key pair, so an unconfigured deployment records an explicit failure | Accepted (honest failure) |
 | `MEDIA_ALLOWED_HOSTS` empty allows any HTTPS origin | The browser may load media from any HTTPS host until the operator pins the list | Accepted in development; pin in production      |
 | No HSTS or `Permissions-Policy` header           | Transport security and capability limits are the reverse proxy's responsibility | Deferred (see §10.3)                             |
 

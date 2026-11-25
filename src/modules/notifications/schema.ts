@@ -118,7 +118,16 @@ export const admin_notifications = pgTable('admin_notifications', {
   id: uuidPrimaryKey(),
   title: text('title').notNull(),
   content: text('content').notNull(),
-  audience: text('audience').default('all'), // all | super_admin | roles
+  /** `all` | `super_admin` | `roles`. The audience decides who may see it. */
+  audience: text('audience').default('all'),
+  /** The role names an `audience = 'roles'` alert is addressed to. */
+  audience_roles: text('audience_roles').array(),
+  /** `security` | `content` | `system` | `maintenance`. */
+  category: text('category').default('system'),
+  /** A deep link into the administration area. */
+  link: text('link'),
+  /** `normal` | `high`; a critical system alert is `high`. */
+  priority: text('priority').default('normal'),
   content_id: uuid('content_id'),
   content_type: text('content_type'), // drama | movie | announcement | null
   is_resolved: boolean('is_resolved').default(false),
@@ -127,4 +136,15 @@ export const admin_notifications = pgTable('admin_notifications', {
   created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deleted_at: timestamp('deleted_at', { withTimezone: true }),
+});
+
+// ----- admin_notification_reads -----
+// Read state is per administrator, not per alert: one alert addressed to every
+// moderator is still unread for the moderator who has not opened it.
+export const admin_notification_reads = pgTable('admin_notification_reads', {
+  id: uuidPrimaryKey(),
+  notification_id: uuid('notification_id').notNull(),
+  admin_user_id: uuid('admin_user_id').notNull(),
+  read_at: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

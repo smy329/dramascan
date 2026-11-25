@@ -46,6 +46,10 @@ export type AggregateRow = {
   uniqueVisitors: number;
   totalViews: number;
   totalPlaybackEvents: number;
+  /** Playback starts: the bounded `play` event. */
+  playbackStarts: number;
+  /** Distinct visitors that actually played something. */
+  playbackViewers: number;
   completionEvents: number;
   totalWatchDurationSeconds: number;
 };
@@ -180,7 +184,15 @@ async function computeAggregateRows(
   const viewFilter = buildViewFilter(scope);
   const playbackFilter = buildPlaybackFilter(scope);
 
-  const [viewRows, playbackRows, visitorRows, watchRows, siteVisitorRows] = await Promise.all([
+  const [
+    viewRows,
+    playbackRows,
+    visitorRows,
+    watchRows,
+    playbackViewerRows,
+    siteVisitorRows,
+    sitePlaybackViewerRows,
+  ] = await Promise.all([
     runQuery(
       executor,
       sql`
@@ -203,6 +215,7 @@ async function computeAggregateRows(
              ${playback_analytics_events.content_type} as content_type,
              coalesce(${playback_analytics_events.drama_id}, ${playback_analytics_events.movie_id})::text as target_id,
              count(*)::int as total_playback_events,
+             count(*) filter (where ${playback_analytics_events.event_type} = 'play')::int as playback_starts,
              count(*) filter (where ${playback_analytics_events.completion_threshold_met})::int as completion_events
         from ${playback_analytics_events}
        where ${playback_analytics_events.deleted_at} is null
@@ -243,6 +256,22 @@ async function computeAggregateRows(
        group by 1, 2, 3
     `
     ),
+    runQuery(
+      executor,
+      sql`
+      select to_char(${playback_analytics_events.event_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
+             ${playback_analytics_events.content_type} as content_type,
+             coalesce(${playback_analytics_events.drama_id}, ${playback_analytics_events.movie_id})::text as target_id,
+             count(distinct ${playback_analytics_events.guest_session_id})::int as playback_viewers
+        from ${playback_analytics_events}
+       where ${playback_analytics_events.deleted_at} is null
+         and ${playback_analytics_events.event_at} >= ${start}
+         and ${playback_analytics_events.event_at} < ${end}
+         and ${playback_analytics_events.guest_session_id} is not null
+         ${playbackFilter}
+       group by 1, 2, 3
+    `
+    ),
     scope.kind === 'site'
       ? runQuery(
           executor,
@@ -268,6 +297,21 @@ async function computeAggregateRows(
         `
         )
       : Promise.resolve([] as Record<string, unknown>[]),
+    scope.kind === 'site'
+      ? runQuery(
+          executor,
+          sql`
+          select to_char(${playback_analytics_events.event_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
+                 count(distinct ${playback_analytics_events.guest_session_id})::int as playback_viewers
+            from ${playback_analytics_events}
+           where ${playback_analytics_events.deleted_at} is null
+             and ${playback_analytics_events.event_at} >= ${start}
+             and ${playback_analytics_events.event_at} < ${end}
+             and ${playback_analytics_events.guest_session_id} is not null
+           group by 1
+        `
+        )
+      : Promise.resolve([] as Record<string, unknown>[]),
   ]);
 
   const rows = new Map<string, AggregateRow>();
@@ -287,6 +331,8 @@ async function computeAggregateRows(
       uniqueVisitors: 0,
       totalViews: 0,
       totalPlaybackEvents: 0,
+      playbackStarts: 0,
+      playbackViewers: 0,
       completionEvents: 0,
       totalWatchDurationSeconds: 0,
     };
@@ -313,7 +359,19 @@ async function computeAggregateRows(
     const target = rowFor(day, contentType, targetId);
 
     target.totalPlaybackEvents += Number(record.total_playback_events ?? 0);
+    target.playbackStarts += Number(record.playback_starts ?? 0);
     target.completionEvents += Number(record.completion_events ?? 0);
+  }
+
+  for (const row of playbackViewerRows) {
+    const record = row as Record<string, unknown>;
+    const day = String(record.day);
+    const contentType = String(record.content_type);
+    const targetId = String(record.target_id);
+
+    rowFor(day, contentType, targetId).playbackViewers += Number(
+      record.playback_viewers ?? 0
+    );
   }
 
   for (const row of visitorRows) {
@@ -337,7 +395,7 @@ async function computeAggregateRows(
   }
 
   if (scope.kind === 'site') {
-    return buildSiteRows(rows, siteVisitorRows);
+    return buildSiteRows(rows, siteVisitorRows, sitePlaybackViewerRows);
   }
 
   return [...rows.values()];
@@ -352,7 +410,8 @@ async function computeAggregateRows(
  */
 async function buildSiteRows(
   rows: Map<string, AggregateRow>,
-  siteVisitors: readonly Record<string, unknown>[]
+  siteVisitors: readonly Record<string, unknown>[],
+  sitePlaybackViewers: readonly Record<string, unknown>[]
 ): Promise<AggregateRow[]> {
   const byDay = new Map<string, AggregateRow>();
 
@@ -364,20 +423,26 @@ async function buildSiteRows(
         ...row,
         contentType: null,
         contentId: null,
+        // Both visitor counts are distinct counts across the whole site, so
+        // they cannot be folded from the per-title rows; the site queries
+        // below fill them.
         uniqueVisitors: 0,
+        playbackViewers: 0,
       });
       continue;
     }
 
     existing.totalViews += row.totalViews;
     existing.totalPlaybackEvents += row.totalPlaybackEvents;
+    existing.playbackStarts += row.playbackStarts;
     existing.completionEvents += row.completionEvents;
     existing.totalWatchDurationSeconds += row.totalWatchDurationSeconds;
   }
 
   for (const row of siteVisitors) {
     const record = row as Record<string, unknown>;
-    const day = String(record.day);    const existing = byDay.get(day);
+    const day = String(record.day);
+    const existing = byDay.get(day);
 
     if (existing) {
       existing.uniqueVisitors = Number(record.unique_visitors ?? 0);
@@ -391,6 +456,32 @@ async function buildSiteRows(
       uniqueVisitors: Number(record.unique_visitors ?? 0),
       totalViews: 0,
       totalPlaybackEvents: 0,
+      playbackStarts: 0,
+      playbackViewers: 0,
+      completionEvents: 0,
+      totalWatchDurationSeconds: 0,
+    });
+  }
+
+  for (const row of sitePlaybackViewers) {
+    const record = row as Record<string, unknown>;
+    const day = String(record.day);
+    const existing = byDay.get(day);
+
+    if (existing) {
+      existing.playbackViewers = Number(record.playback_viewers ?? 0);
+      continue;
+    }
+
+    byDay.set(day, {
+      date: day,
+      contentType: null,
+      contentId: null,
+      uniqueVisitors: 0,
+      totalViews: 0,
+      totalPlaybackEvents: 0,
+      playbackStarts: 0,
+      playbackViewers: Number(record.playback_viewers ?? 0),
       completionEvents: 0,
       totalWatchDurationSeconds: 0,
     });
@@ -499,6 +590,8 @@ async function insertAggregateRows(
       unique_visitors: row.uniqueVisitors,
       total_views: row.totalViews,
       total_playback_events: row.totalPlaybackEvents,
+      playback_starts: row.playbackStarts,
+      playback_viewers: row.playbackViewers,
       completion_events: row.completionEvents,
       total_watch_duration_seconds: row.totalWatchDurationSeconds,
       created_at: sql`now()`,

@@ -7,7 +7,7 @@ import type { DbExecutor } from '@/platform/db/executor';
 import { users } from '@/modules/auth/schema';
 
 import { announcements } from './schema';
-import { writeNotification } from './notifications';
+import { writeNotificationOnce } from './notifications';
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   isDeliveryAllowed,
@@ -241,7 +241,7 @@ export async function publishAnnouncement(
       continue;
     }
 
-    const notification = await writeNotification(
+    const notification = await writeNotificationOnce(
       {
         userId,
         title: announcement.title,
@@ -255,7 +255,12 @@ export async function publishAnnouncement(
       executor
     );
 
-    if (!notification) {
+    if (notification.status === 'duplicate') {
+      result.skippedAsDuplicate += 1;
+      continue;
+    }
+
+    if (notification.status !== 'created') {
       result.skippedByPreference += 1;
       continue;
     }

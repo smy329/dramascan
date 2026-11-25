@@ -17,10 +17,18 @@
 import { describeDatabaseTarget } from './database-target.mjs';
 
 /** How many times the deletion is attempted. */
-const MAX_ATTEMPTS = 6;
+const MAX_ATTEMPTS = 10;
 
-/** How long the helper waits for the remaining beacons to land, in milliseconds. */
-const BEACON_SETTLE_MS = 250;
+/**
+ * How long the helper waits for the remaining beacons to land, in milliseconds.
+ *
+ * The beacon is fire-and-forget: the browser sends it while the page is being
+ * torn down, and on a loaded machine it can take a few seconds to reach the
+ * server. The wait has to be longer than that, or a correct application — which
+ * drops a beacon about a title that no longer exists — is reported as a broken
+ * fixture.
+ */
+const BEACON_SETTLE_MS = 500;
 
 /**
  * The rows a late analytics beacon may have written for one content item.

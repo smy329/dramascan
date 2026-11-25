@@ -144,6 +144,7 @@ describe('analytics dashboard', () => {
 
   it('summarises the selected range', async () => {
     const now = new Date('2026-11-24T10:00:00.000Z');
+    const playbackSession = `session-${TEST_PREFIX}${randomUUID()}`;
 
     await recordContentView({
       type: 'drama',
@@ -154,11 +155,19 @@ describe('analytics dashboard', () => {
     });
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play',
+      watchDurationSeconds: 0,
+      userId: null,
+      sessionId: playbackSession,
+      now,
+    });
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'completion',
       watchDurationSeconds: 300,
       completionThresholdMet: true,
       userId: null,
-      sessionId: `session-${TEST_PREFIX}${randomUUID()}`,
+      sessionId: playbackSession,
       now,
     });
 
@@ -170,11 +179,94 @@ describe('analytics dashboard', () => {
     const overview = await getAnalyticsOverview(range);
 
     expect(overview.totalViews).toBe(1);
-    expect(overview.totalPlaybackEvents).toBe(1);
+    expect(overview.totalPlaybackEvents).toBe(2);
+    expect(overview.playbackStarts).toBe(1);
+    expect(overview.playbackViewers).toBe(1);
     expect(overview.completionEvents).toBe(1);
     expect(overview.completionRate).toBe(1);
     expect(overview.totalWatchDurationSeconds).toBe(300);
+    // The view and the playback came from two different guest sessions, so the
+    // site-wide visitor count is two while only one of them played.
     expect(overview.uniqueVisitors).toBe(2);
+    expect(overview.averageWatchDurationSeconds).toBe(300);
+  });
+
+  it('measures the completion rate against playback starts, not every event', async () => {
+    const now = new Date('2026-11-24T10:00:00.000Z');
+    const completingSession = `session-${TEST_PREFIX}${randomUUID()}`;
+    const leavingSession = `session-${TEST_PREFIX}${randomUUID()}`;
+    const target = {
+      type: 'drama' as const,
+      episodeId: seeded.episodeId,
+      dramaId: seeded.dramaId,
+    };
+
+    // One viewer starts, pauses, seeks, and finishes.
+    await recordPlaybackEvent({
+      target,
+      eventType: 'play',
+      watchDurationSeconds: 0,
+      userId: null,
+      sessionId: completingSession,
+      now,
+    });
+    await recordPlaybackEvent({
+      target,
+      eventType: 'play_pause',
+      watchDurationSeconds: 30,
+      userId: null,
+      sessionId: completingSession,
+      now,
+    });
+    await recordPlaybackEvent({
+      target,
+      eventType: 'seek',
+      watchDurationSeconds: 10,
+      userId: null,
+      sessionId: completingSession,
+      now,
+    });
+    await recordPlaybackEvent({
+      target,
+      eventType: 'completion',
+      watchDurationSeconds: 260,
+      completionThresholdMet: true,
+      userId: null,
+      sessionId: completingSession,
+      now,
+    });
+    // A second viewer starts and leaves without finishing.
+    await recordPlaybackEvent({
+      target,
+      eventType: 'play',
+      watchDurationSeconds: 0,
+      userId: null,
+      sessionId: leavingSession,
+      now,
+    });
+
+    await aggregateDailyAnalytics(DAY, null, null);
+    await aggregateDailyAnalytics(DAY, 'drama', null);
+
+    const range = buildDateRange(DAY, DAY);
+    const overview = await getAnalyticsOverview(range);
+    const activity = await listViewerActivity(range);
+    const dramaRow = (await listContentPerformance(range)).find(row => row.id === seeded.dramaId);
+
+    // Five stored events, but only two playback starts and one completion.
+    expect(overview.totalPlaybackEvents).toBe(5);
+    expect(overview.playbackStarts).toBe(2);
+    expect(overview.playbackViewers).toBe(2);
+    expect(overview.completionEvents).toBe(1);
+    expect(overview.completionRate).toBe(0.5);
+    // The pauses and the seek must not be mistaken for starts.
+    expect(dramaRow?.playbackStarts).toBe(2);
+    expect(dramaRow?.completionRate).toBe(0.5);
+    // Watch time is averaged over the viewers who played, not every visitor.
+    expect(overview.totalWatchDurationSeconds).toBe(300);
+    expect(overview.averageWatchDurationSeconds).toBe(150);
+    expect(activity[0]?.playbackViewers).toBe(2);
+    expect(activity[0]?.averageWatchDurationSeconds).toBe(150);
   });
 
   it('lists the content performance rows with their titles', async () => {
@@ -236,6 +328,16 @@ describe('analytics dashboard', () => {
 
   it('reports when the aggregates were last written', async () => {
     const before = await getAnalyticsLastUpdated();
+
+    // A day with no events produces no aggregate row at all, so the assertion
+    // needs one real event to write.
+    await recordContentView({
+      type: 'drama',
+      contentId: seeded.dramaId,
+      userId: null,
+      sessionId: `session-${TEST_PREFIX}${randomUUID()}`,
+      now: new Date('2026-11-24T10:00:00.000Z'),
+    });
 
     await aggregateDailyAnalytics(DAY, null, null);
 

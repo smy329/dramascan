@@ -12,6 +12,7 @@ import type {
 import { DATE_RANGE_PRESET_LABELS, DATE_RANGE_PRESETS } from '@/modules/analytics';
 
 import { AnalyticsRefreshButton } from './analytics-refresh-button';
+import { OperationalRefresh } from './operational-refresh';
 
 /**
  * The administrator analytics dashboard (Prompts 144, 145, 146).
@@ -21,9 +22,11 @@ import { AnalyticsRefreshButton } from './analytics-refresh-button';
  * engagement trend. Everything is read from the stored daily aggregates, so a
  * page refresh cannot inflate a number and the page stays cheap.
  *
- * The dashboard never polls. The date filters are links, the refresh is a
- * button, and the "last updated" line says when the numbers were last written,
- * so the administrator always knows how fresh the data is.
+ * Historical numbers are refreshed by a button. Today's numbers are the
+ * exception: `OperationalRefresh` re-aggregates the current Dhaka day once a
+ * minute while the tab is visible, so the default range (which includes today)
+ * is never stale (D-068). The "last updated" line says when the numbers were
+ * last written, so the administrator always knows how fresh the data is.
  */
 
 export type AnalyticsDashboardProps = Readonly<{
@@ -135,17 +138,26 @@ export function AnalyticsDashboard({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {canManage ? (
-            <AnalyticsRefreshButton startDate={range.startDate} endDate={range.endDate} />
-          ) : null}
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex flex-wrap items-center gap-3">
+            {canManage ? (
+              <AnalyticsRefreshButton startDate={range.startDate} endDate={range.endDate} />
+            ) : null}
 
-          <p className="text-sm text-muted-foreground">
-            <span>Last updated</span>{' '}
-            <time dateTime={lastUpdated?.toISOString() ?? undefined}>
-              {lastUpdated ? formatInstant(lastUpdated) : 'never'}
-            </time>
-          </p>        </div>
+            <OperationalRefresh />
+
+            <p className="text-sm text-muted-foreground">
+              <span>Last updated</span>{' '}
+              <time dateTime={lastUpdated?.toISOString() ?? undefined}>
+                {lastUpdated ? formatInstant(lastUpdated) : 'never'}
+              </time>
+            </p>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Today is refreshed automatically every minute while this tab is open.
+          </p>
+        </div>
       </header>
 
       <nav aria-label="Date range" className="flex flex-wrap items-center gap-2">
@@ -174,14 +186,27 @@ export function AnalyticsDashboard({
         <Metric label="Total views" value={overview.totalViews.toLocaleString('en-GB')} />
         <Metric label="Unique viewers" value={overview.uniqueVisitors.toLocaleString('en-GB')} />
         <Metric label="Watch time" value={formatDuration(overview.totalWatchDurationSeconds)} />
+        <Metric
+          label="Playback starts"
+          value={overview.playbackStarts.toLocaleString('en-GB')}
+        />
+        <Metric
+          label="Playback viewers"
+          value={overview.playbackViewers.toLocaleString('en-GB')}
+        />
         <Metric label="Completion rate" value={formatPercent(overview.completionRate)} />
         <Metric label="Playback events" value={overview.totalPlaybackEvents.toLocaleString('en-GB')} />
         <Metric label="Completions" value={overview.completionEvents.toLocaleString('en-GB')} />
         <Metric
-          label="Average per viewer"
+          label="Average per playback viewer"
           value={formatDuration(overview.averageWatchDurationSeconds)}
         />
       </section>
+
+      <p className="text-xs text-muted-foreground">
+        Completion rate is completions divided by playback starts. Average watch time is divided by
+        the viewers who actually played, not by every visitor.
+      </p>
 
       <Panel
         title="Content performance"
@@ -198,6 +223,7 @@ export function AnalyticsDashboard({
                 <th scope="col" className="py-2 pr-4">Views</th>
                 <th scope="col" className="py-2 pr-4">Viewers</th>
                 <th scope="col" className="py-2 pr-4">Watch duration</th>
+                <th scope="col" className="py-2 pr-4">Starts</th>
                 <th scope="col" className="py-2 pr-4">Completions</th>
                 <th scope="col" className="py-2">Completion %</th>
               </tr>
@@ -215,6 +241,9 @@ export function AnalyticsDashboard({
                   </td>
                   <td className="py-2 pr-4 tabular-nums">
                     {formatDuration(row.watchDurationSeconds)}
+                  </td>
+                  <td className="py-2 pr-4 tabular-nums">
+                    {row.playbackStarts.toLocaleString('en-GB')}
                   </td>
                   <td className="py-2 pr-4 tabular-nums">
                     {row.completions.toLocaleString('en-GB')}
@@ -241,7 +270,7 @@ export function AnalyticsDashboard({
                 <th scope="col" className="py-2 pr-4">Viewers</th>
                 <th scope="col" className="py-2 pr-4">Views</th>
                 <th scope="col" className="py-2 pr-4">Playback events</th>
-                <th scope="col" className="py-2">Average per viewer</th>
+                <th scope="col" className="py-2">Average per playback viewer</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

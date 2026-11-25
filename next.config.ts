@@ -17,6 +17,10 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Keep the project's authoritative AGENTS.md free of generated content.
   agentRules: false,
+  // `web-push` is a Node package that reads its own runtime dependencies and
+  // must not be bundled by the server compiler. It is imported lazily by the
+  // push provider, so a deployment without push never loads it.
+  serverExternalPackages: ['web-push'],
   async headers() {
     return [
       {

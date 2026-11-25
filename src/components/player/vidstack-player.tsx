@@ -190,6 +190,10 @@ export function VidstackPlayer({
   const analyticsTargetRef = useRef<PlaybackAnalyticsTarget | null>(null);
   const reporterRef = useRef<PlaybackAnalyticsReporter | null>(null);
   const playingRef = useRef(false);
+  // A viewing session reports its start once. `play_pause` still fires on every
+  // play and pause; `play` is the metric's denominator, so it must not repeat
+  // when the viewer pauses and resumes.
+  const playReportedRef = useRef(false);
 
   if (analyticsTargetRef.current === null && episodeId !== undefined && dramaId !== undefined) {
     analyticsTargetRef.current = { type: 'drama', episodeId, dramaId };
@@ -336,6 +340,12 @@ export function VidstackPlayer({
   /** The viewer started playback. */
   const handlePlay = useCallback(() => {
     playingRef.current = true;
+
+    if (!playReportedRef.current) {
+      playReportedRef.current = true;
+      reporterRef.current?.report('play', { positionSeconds: positionRef.current });
+    }
+
     reporterRef.current?.report('play_pause', { positionSeconds: positionRef.current });
   }, []);
 

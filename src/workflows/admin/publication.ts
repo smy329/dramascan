@@ -15,7 +15,7 @@ import {
   type PublicationStatus,
 } from '@/modules/content/publication';
 import { parsePublicationRequest } from '@/modules/content/validation';
-import { notifyPublishedContent } from '@/modules/notifications';
+import { createAdminNotification, notifyPublishedContent } from '@/modules/notifications';
 import { createRequestLogger } from '@/platform/logging';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -443,6 +443,27 @@ async function announcePublishedContent(
       { err: error, event: 'publication_notification_failed', contentType },
       'The publication was announced to nobody'
     );
+
+    // The content is published; only its announcement failed. The Super Admin
+    // is the administrator who can act on it, so the alert is addressed to
+    // that audience. This alert is best effort: it runs in the catch of a
+    // notification failure, so it must not throw a second time.
+    try {
+      await createAdminNotification({
+        title: 'Publication announcement failed',
+        content:
+          'Content was published, but its notifications could not be sent. Check the publication and notification logs.',
+        audience: 'super_admin',
+        category: 'system',
+        priority: 'high',
+        link: '/admin/publication',
+      });
+    } catch (alertError) {
+      logger.warn(
+        { err: alertError, event: 'admin_notification_failed' },
+        'The Super Admin was not alerted about the failed announcement'
+      );
+    }
   }
 }
 

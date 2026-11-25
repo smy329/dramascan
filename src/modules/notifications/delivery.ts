@@ -1,15 +1,19 @@
 import 'server-only';
 
-import { and, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import type { DbExecutor } from '@/platform/db/executor';
 
-import { notification_deliveries, notifications } from './schema';
+import { notification_deliveries, notifications, push_subscriptions } from './schema';
 import { getNotificationPreferences, isDeliveryAllowed } from './preferences';
 import { listDeliverableSubscriptions, retireExpiredSubscription } from './subscriptions';
 import { resolvePushProvider, type PushMessage } from './push-provider';
-import { recordDelivery, listDeliveries } from './delivery-records';
+import {
+  hasSuccessfulPushDelivery,
+  recordDelivery,
+  listDeliveries,
+} from './delivery-records';
 import type { NotificationEventType } from './notifications';
 import type { NotificationPreferenceSet } from './delivery-rules';
 
@@ -18,11 +22,12 @@ import type { NotificationPreferenceSet } from './delivery-rules';
  *
  * The rules this module enforces:
  *
- *   - **No uncontrolled retries.** A failed delivery is recorded, and that is
- *     the end of it. There is no queue and no retry loop; a message that fails
- *     once is not attempted again automatically.
- *   - **No duplicate notifications.** A notification row is written once. The
- *     caller checks for an existing notification before creating a second one.
+ *   - **No uncontrolled retries.** Nothing retries itself. A short-lived
+ *     maintenance command may retry a notification that has no successful push
+ *     and fewer than `MAX_PUSH_RETRY_ATTEMPTS` recorded attempts, and it never
+ *     re-sends a notification that already reached a browser.
+ *   - **No duplicate notifications.** A notification row is written once; the
+ *     database's partial unique index is the authority.
  *   - **Expired subscriptions are retired.** A provider that reports the
  *     endpoint is gone causes the subscription to be soft-deleted, so the next
  *     delivery does not try it again.
@@ -33,6 +38,12 @@ import type { NotificationPreferenceSet } from './delivery-rules';
 
 /** The maximum number of delivery attempts one call makes. */
 export const MAX_DELIVERY_ATTEMPTS = 10;
+
+/** The maximum number of push attempts one notification ever receives. */
+export const MAX_PUSH_RETRY_ATTEMPTS = 3;
+
+/** How far back the delivery maintenance looks for an undelivered notification. */
+export const PUSH_RETRY_WINDOW_DAYS = 7;
 
 /** The outcome of one delivery round. */
 export type DeliveryOutcome = {
@@ -127,6 +138,23 @@ export async function deliverPush(
   }
 
   const subscriptions = await listDeliverableSubscriptions(notification.userId, executor);
+
+  if (subscriptions.length === 0) {
+    // The viewer enabled push but has no live subscription (for example, the
+    // browser subscription expired between the preference write and this
+    // notification). Recording the attempt keeps the maintenance bounded: the
+    // notification is not re-examined forever.
+    await recordDelivery(executor, {
+      notificationId: notification.id,
+      userId: notification.userId,
+      channel: 'push',
+      success: false,
+      errorMessage: 'The viewer has no active browser push subscription.',
+    });
+
+    return outcome;
+  }
+
   const message: PushMessage = {
     title: notification.title,
     body: notification.content,
@@ -329,10 +357,171 @@ export async function deleteOldDeliveries(
 ): Promise<number> {
   const bounded = Math.max(1, Math.min(limit, 10000));
 
-  const result = await executor
-    .delete(notification_deliveries)
-    .where(lt(notification_deliveries.created_at, olderThan))
-    .returning({ id: notification_deliveries.id });
+  // The bound is enforced by the statement, not by the caller's reading of the
+  // result: a delete that removes every expired row and then reports `bounded`
+  // would be a lie about how much work it did.
+  const result = await executor.execute(sql`
+    delete from ${notification_deliveries}
+     where id in (
+       select d.id
+         from ${notification_deliveries} d
+        where d.created_at < ${olderThan}
+        limit ${bounded}
+     )
+  `);
 
-  return result.length > bounded ? bounded : result.length;
+  return readAffectedRows(result);
+}
+
+/** The outcome of one delivery-maintenance retry round. */
+export type NotificationRetryResult = Readonly<{
+  /** How many notifications the bounded query examined. */
+  considered: number;
+  /** How many notifications were attempted again. */
+  retried: number;
+  /** How many subscriptions accepted a retried message. */
+  delivered: number;
+}>;
+
+/**
+ * Retry the push delivery of notifications that never reached a browser.
+ *
+ * This is the recovery path for a crash between writing the notification row
+ * and delivering its push. It is not a worker and it does not run on its own:
+ * a short-lived maintenance command calls it.
+ *
+ * Three rules keep it bounded and honest:
+ *
+ *   - It only considers notifications from the last `PUSH_RETRY_WINDOW_DAYS`.
+ *   - It never touches a notification that already has a successful push.
+ *   - It stops after `MAX_PUSH_RETRY_ATTEMPTS` recorded push attempts.
+ *
+ * A notification whose recipient has switched push off is skipped without
+ * writing an attempt: the viewer's choice is not a failure.
+ *
+ * @param limit the maximum number of notifications to examine
+ * @param executor the database executor
+ * @returns what the round did
+ */
+export async function retryFailedPushDeliveries(
+  limit: number = 50,
+  executor: DbExecutor = db
+): Promise<NotificationRetryResult> {
+  const bounded = Math.max(1, Math.min(limit, 200));
+
+  const result = await executor.execute(sql`
+    select n.id, n.user_id, n.event_type
+      from ${notifications} n
+     where n.deleted_at is null
+       and n.created_at >= now() - make_interval(days => ${PUSH_RETRY_WINDOW_DAYS})
+       and exists (
+         select 1
+           from ${push_subscriptions} s
+          where s.user_id = n.user_id
+            and s.deleted_at is null
+       )
+       and not exists (
+         select 1
+           from ${notification_deliveries} d
+          where d.notification_id = n.id
+            and d.channel = 'push'
+            and d.success = true
+       )
+       and (
+         select count(*)
+           from ${notification_deliveries} d
+          where d.notification_id = n.id
+            and d.channel = 'push'
+       ) < ${MAX_PUSH_RETRY_ATTEMPTS}
+     order by n.created_at desc
+     limit ${bounded}
+  `);
+
+  const candidates = ((result as { rows?: unknown }).rows ?? []) as Array<{
+    id: string;
+    user_id: string;
+    event_type: string;
+  }>;
+
+  const outcome: { considered: number; retried: number; delivered: number } = {
+    considered: candidates.length,
+    retried: 0,
+    delivered: 0,
+  };
+
+  for (const candidate of candidates) {
+    if (await hasSuccessfulPushDelivery(candidate.id, executor)) {
+      continue;
+    }
+
+    const preferences = await getNotificationPreferences(candidate.user_id, executor);
+
+    if (
+      !isDeliveryAllowed(
+        preferences,
+        candidate.event_type as NotificationEventType,
+        'push'
+      )
+    ) {
+      continue;
+    }
+
+    outcome.retried += 1;
+
+    const delivery = await deliverPush(candidate.id, executor, preferences);
+
+    outcome.delivered += delivery.delivered;
+  }
+
+  return outcome;
+}
+
+/** The outcome of one notification-maintenance run. */
+export type NotificationMaintenanceResult = Readonly<{
+  /** Notifications whose push delivery was attempted again. */
+  retried: number;
+  /** Subscriptions that accepted a retried message. */
+  redelivered: number;
+  /** Structurally invalid notifications that were removed. */
+  invalidNotifications: number;
+  /** Delivery records whose notification no longer exists. */
+  orphanedDeliveries: number;
+  /** Delivery records older than the retention window. */
+  oldDeliveries: number;
+}>;
+
+/** The retention window of the delivery trail, in days. */
+export const DELIVERY_RETENTION_DAYS = 30;
+
+/**
+ * Run the notification maintenance once.
+ *
+ * This is the single entry point of the short-lived maintenance command. It
+ * retries undelivered pushes first, then removes the records the policy no
+ * longer keeps. Every step is bounded, and the command exits when it is done.
+ *
+ * @param options the retention cutoff and the per-step bound
+ * @param executor the database executor
+ * @returns what the run did
+ */
+export async function runNotificationMaintenance(
+  options: { olderThan?: Date; limit?: number } = {},
+  executor: DbExecutor = db
+): Promise<NotificationMaintenanceResult> {
+  const limit = options.limit ?? 1000;
+  const olderThan =
+    options.olderThan ?? new Date(Date.now() - DELIVERY_RETENTION_DAYS * 86_400_000);
+
+  const retry = await retryFailedPushDeliveries(Math.min(limit, 200), executor);
+  const invalidNotifications = await deleteInvalidNotifications(limit, executor);
+  const orphanedDeliveries = await deleteOrphanedDeliveries(limit, executor);
+  const oldDeliveries = await deleteOldDeliveries(olderThan, limit, executor);
+
+  return {
+    retried: retry.retried,
+    redelivered: retry.delivered,
+    invalidNotifications,
+    orphanedDeliveries,
+    oldDeliveries,
+  };
 }

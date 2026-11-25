@@ -13,8 +13,9 @@ import { resolveAnalyticsVisitor, type AnalyticsVisitor } from './visitor';
 /**
  * The playback analytics workflow (Prompts 141, 142).
  *
- * The player reports four kinds of event:
+ * The player reports five kinds of event:
  *
+ *   - `play`: playback started (the first play of a viewing session).
  *   - `play_pause`: playback started or paused.
  *   - `seek`: the viewer moved to another position.
  *   - `completion`: the viewer reached the completion threshold.
@@ -31,7 +32,13 @@ import { resolveAnalyticsVisitor, type AnalyticsVisitor } from './visitor';
  */
 
 /** The event types the player reports. */
-export const PLAYBACK_EVENT_TYPES = ['play_pause', 'seek', 'completion', 'exit'] as const;
+export const PLAYBACK_EVENT_TYPES = [
+  'play',
+  'play_pause',
+  'seek',
+  'completion',
+  'exit',
+] as const;
 
 /** One playback event type. */
 export type PlaybackEventType = (typeof PLAYBACK_EVENT_TYPES)[number];

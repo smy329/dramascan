@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
+import { and, count, eq, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import type { DbExecutor } from '@/platform/db/executor';
@@ -57,6 +57,63 @@ export async function recordDelivery(
     subscription_id: input.subscriptionId ?? null,
     delivered_at: sql`now()`,
   });
+}
+
+/**
+ * Has this notification already been pushed successfully?
+ *
+ * The delivery maintenance uses this to keep its promise: a notification that
+ * reached a browser once is never pushed again, no matter how many times the
+ * maintenance command runs.
+ *
+ * @param notificationId the notification
+ * @param executor the database executor
+ * @returns whether a successful push delivery exists
+ */
+export async function hasSuccessfulPushDelivery(
+  notificationId: string,
+  executor: DbExecutor = db
+): Promise<boolean> {
+  const [row] = await executor
+    .select({ id: notification_deliveries.id })
+    .from(notification_deliveries)
+    .where(
+      and(
+        eq(notification_deliveries.notification_id, notificationId),
+        eq(notification_deliveries.channel, 'push'),
+        eq(notification_deliveries.success, true)
+      )
+    )
+    .limit(1);
+
+  return row !== undefined;
+}
+
+/**
+ * How many push attempts this notification has had.
+ *
+ * The count bounds the delivery maintenance: a notification that failed three
+ * times is not attempted a fourth time.
+ *
+ * @param notificationId the notification
+ * @param executor the database executor
+ * @returns the number of recorded push attempts
+ */
+export async function countPushAttempts(
+  notificationId: string,
+  executor: DbExecutor = db
+): Promise<number> {
+  const [row] = await executor
+    .select({ total: count() })
+    .from(notification_deliveries)
+    .where(
+      and(
+        eq(notification_deliveries.notification_id, notificationId),
+        eq(notification_deliveries.channel, 'push')
+      )
+    );
+
+  return Number(row?.total ?? 0);
 }
 
 /**

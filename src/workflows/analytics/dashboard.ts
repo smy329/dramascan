@@ -5,8 +5,8 @@ import { z } from 'zod';
 import type { ActionResult } from '@/lib/contracts/common';
 import { hasPermission, requireUser, resolveActor, toPermissionKey } from '@/modules/authorization';
 import {
-  aggregateDailyAnalytics,
   aggregateDateRange,
+  aggregateToday,
   buildDateRange,
   isCalendarDay,
 } from '@/modules/analytics';
@@ -80,18 +80,25 @@ export async function refreshAnalyticsAction(
 }
 
 /**
- * Aggregate the current Dhaka day.
+ * Aggregate the current Dhaka day for the operational dashboard (D-068).
+ *
+ * The dashboard's default range includes today, so today has to be current or
+ * a fresh deployment shows zeros until somebody presses a button. This action
+ * is the dashboard's automatic refresh: the page calls it once a minute while
+ * the tab is visible. It is authorized by `analytics.read`, because it only
+ * maintains the numbers the reader is already allowed to see; rewriting a
+ * historical range still requires `analytics.manage`.
  *
  * @returns the day that was aggregated
  */
-export async function refreshTodayAnalyticsAction(): Promise<
+export async function refreshOperationalAnalyticsAction(): Promise<
   ActionResult<{ date: string }>
 > {
   try {
     const actor = await resolveActor();
     requireUser(actor);
 
-    if (!hasPermission(actor, toPermissionKey('analytics', 'manage'))) {
+    if (!hasPermission(actor, toPermissionKey('analytics', 'read'))) {
       return {
         ok: false,
         error: { code: 'forbidden', message: 'You may not refresh the analytics.' },
@@ -101,9 +108,7 @@ export async function refreshTodayAnalyticsAction(): Promise<
     const { dhakaDateString } = await import('@/modules/analytics');
     const date = dhakaDateString(new Date());
 
-    await aggregateDailyAnalytics(date, 'drama', null);
-    await aggregateDailyAnalytics(date, 'movie', null);
-    await aggregateDailyAnalytics(date, null, null);
+    await aggregateToday();
 
     return { ok: true, data: { date } };
   } catch (error) {

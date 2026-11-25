@@ -2796,3 +2796,176 @@ background process.
 
 ---
 
+## D-066 — Browser push is native Web Push, and FCM is an isolated adapter that is not selected
+
+**Date:** 2026-11-25
+**Status:** Approved by user (Phase 11 review round 1)
+**Supersedes:** the transport choice recorded in D-063
+
+**Context:** The Phase 11 review found that the browser push transport was a
+stub: the VAPID branch always answered "transport is not available" and the FCM
+branch always answered "not an FCM registration token", so no push could ever
+be delivered. The browser half — the service worker, the permission request,
+the subscription storage — was real. The requirements allow either native Web
+Push or FCM, and forbid claiming a delivery that did not happen.
+
+**Decision:**
+
+1. **The selected provider is native Web Push (VAPID).** It speaks the
+   subscription the browser already hands the application — `endpoint`,
+   `p256dh`, `auth` — and it is free. The transport is the `web-push` package,
+   imported lazily so a deployment without push never loads it.
+2. **The VAPID keys come from the environment.** `WEB_PUSH_PUBLIC_KEY`,
+   `WEB_PUSH_PRIVATE_KEY`, and an optional `WEB_PUSH_SUBJECT` and
+   `WEB_PUSH_TTL_SECONDS`. Without a key pair, `isAvailable()` is false and a
+   delivery records an honest "not configured" failure.
+3. **FCM remains an isolated adapter, not the selection.** Its browser SDK
+   yields a registration token, not the native subscription shape the platform
+   stores, so an FCM transport cannot address the stored rows without a second
+   identity system. `resolvePushProvider` never selects it.
+4. **A `404` or `410` from the push service retires the subscription.** The row
+   is soft-deleted and the message is not retried. Any other failure is
+   recorded without the endpoint or the response body, because the endpoint is
+   a capability.
+
+**Consequences:**
+
+- Push works with a standard browser subscription and a VAPID key pair, and it
+  fails honestly when the deployment is not configured.
+- Switching to FCM later means adding a registration-token identity and a
+  subscription migration; it does not mean rewriting notification logic.
+
+---
+
+## D-067 — The administrator notification centre filters every read by the alert's audience, and read state is per administrator
+
+**Date:** 2026-11-25
+**Status:** Approved by user (Phase 11 review round 1)
+**Extends:** D-061 (the event preference and the global channel switches)
+
+**Context:** `admin_notifications` existed but nothing created, listed, or read
+it: the table was only counted and deleted by content cleanup. Prompt 153 asks
+for an administrator notification centre, and Requirements §11 asks that
+administrator notifications be private to their intended recipients. The page
+was gated on `settings.manage`, which is the announcement permission, so an
+administrator who may read alerts but not write announcements could not reach
+them, and nothing enforced the `audience` column.
+
+**Decision:**
+
+1. **The page opens with either permission, and each surface has its own
+   guard.** Alerts require `admin.manage`; announcements require
+   `settings.manage`. The page checks both itself, so a layout bypass cannot
+   leave a surface open.
+2. **Every alert read applies the audience on the server.** `all` reaches every
+   alert reader, `super_admin` only the Super Admin, and `roles` the holders of
+   the named role names. The list, the unread count, the detail, and the
+   read-state write all use the same rule. An alert outside the audience and an
+   alert that does not exist produce the same 404, so an alert cannot be
+   discovered through a different response.
+3. **Read state is per administrator.** `admin_notification_reads` stores one
+   row per (alert, administrator). One alert addressed to every moderator is
+   still unread for the moderator who has not opened it.
+4. **The audience rule is stated once, as a pure function.** The SQL form and
+   `canViewAdminNotification` must agree; the integration suite compares them.
+5. **Producers are workflows.** A new content report writes a `content` alert
+   to the moderators; a failed publication announcement writes a `high`
+   `system` alert to the Super Admin. The producers never run inside the
+   transaction whose failure they announce.
+
+**Consequences:**
+
+- An administrator sees only the alerts they can act on, and their read state
+  is their own.
+- An alert addressed to a role that no longer exists is visible to nobody; it
+  is not silently promoted to `all`.
+
+---
+
+## D-068 — Completion rate divides by playback starts, average watch time by playback viewers, and today's aggregate is refreshed while the dashboard is open
+
+**Date:** 2026-11-25
+**Status:** Approved by user (Phase 11 review round 1)
+**Extends:** D-059 (the analytics day is a Dhaka day, and the aggregates are
+written on demand), D-060 (playback events are bounded)
+
+**Context:** The review found two misleading ratios and a freshness gap. The
+"completion rate" divided completions by *all* playback events, so a pause or a
+seek lowered it. The "average watch time" divided by every unique visitor,
+including visitors who only opened a details page and never played. And the
+dashboard's default range includes today, but today was only aggregated when an
+administrator pressed the manual refresh button, so a fresh deployment showed
+zeros.
+
+**Decision:**
+
+1. **The player reports a `play` event once per viewing session.** It is the
+   playback start. `play_pause` still fires on every play and pause, because it
+   is the playback state, but it is not a start.
+2. **`analytics_daily_aggregates` stores `playback_starts` and
+   `playback_viewers`.** The first is the count of `play` events; the second is
+   the distinct visitors over playback events. The site-level viewer count is a
+   distinct count across the whole site, not a sum of the per-title counts.
+3. **The completion rate is `completions / playback_starts`, and the average
+   watch time is `watch seconds / playback_viewers`.** Both ratios now have a
+   denominator that describes the same population as the numerator.
+4. **The dashboard refreshes today's aggregate every 60 seconds while the tab
+   is visible.** The refresh is a bounded server action authorised by
+   `analytics.read`, because it only maintains numbers the reader may already
+   see. Rewriting a historical range still requires `analytics.manage`.
+   A hidden tab does not write: the interval checks `document.visibilityState`.
+
+**Consequences:**
+
+- A pause or a seek no longer makes a title look less completed.
+- A visitor who never pressed play no longer dilutes the average watch time.
+- Today's numbers are at most a minute old while somebody is looking at them;
+  there is still no worker, no queue, and no server-side interval.
+
+---
+
+## D-069 — A notification is written once by the database, and delivery maintenance is bounded and never re-sends a delivered push
+
+**Date:** 2026-11-25
+**Status:** Approved by user (Phase 11 review round 1)
+**Extends:** D-061 (the event preference and the global channel switches)
+
+**Context:** The review found that notification de-duplication was a
+read-then-write in the broadcast path, so two concurrent publication retries
+could both see "not notified" and both insert. It also found that a failed push
+was never retried, so a crash between the notification write and the delivery
+left a notification with no push at all. And the delivery cleanup deleted every
+expired row and then reported at most the caller's limit, so the reported bound
+was not the real bound.
+
+**Decision:**
+
+1. **The database decides whether a notification is new.** A partial unique
+   index on `(user_id, event_type, content_id)` (where the row is live and
+   `content_id` is not null) plus `ON CONFLICT DO NOTHING` makes the write
+   idempotent. The writer returns `created`, `duplicate`, or `not_wanted`, and
+   the broadcast counters report duplicates separately from preferences.
+2. **A notification without a content id is never collapsed.** Account and
+   security events have no natural de-duplication key, and two session
+   terminations are two facts, not one.
+3. **Delivery maintenance is a short-lived command, not a worker.** It
+   considers notifications from the last seven days that have no successful
+   push and fewer than three recorded push attempts. It never re-sends a
+   notification that reached a browser once.
+4. **The cleanup is bounded by the statement.** Old delivery records are
+   removed through a `limit`ed subquery, so the number the command reports is
+   the number it actually removed. The same bound applies to orphaned
+   deliveries and structurally invalid notifications.
+
+**Consequences:**
+
+- A repeated publication, a double submit, or two concurrent retries cannot
+  produce two notifications.
+- A crash between the row write and the push is recoverable by running the
+  maintenance command; the recovery is bounded and idempotent.
+- Running the command on a large backlog requires more than one run; that is
+  the price of a bounded delete.
+
+---
+
+

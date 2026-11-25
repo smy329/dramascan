@@ -84,7 +84,7 @@ export const playback_analytics_events = pgTable(
     drama_id: uuid('drama_id'),
     movie_id: uuid('movie_id'),
     episode_id: uuid('episode_id'), // set when the event describes one episode
-    event_type: text('event_type').notNull(), // play_pause | seek | completion | exit
+    event_type: text('event_type').notNull(), // play | play_pause | seek | completion | exit
     position_seconds: integer('position_seconds'),
     watch_duration_seconds: integer('watch_duration_seconds'),
     completion_threshold_met: boolean('completion_threshold_met').default(false),
@@ -120,6 +120,10 @@ export const analytics_daily_aggregates = pgTable(
     unique_visitors: integer('unique_visitors').default(0),
     total_views: integer('total_views').default(0),
     total_playback_events: integer('total_playback_events').default(0),
+    /** Playback starts: the bounded `play` event, one per viewer/content/hour. */
+    playback_starts: integer('playback_starts').default(0),
+    /** Distinct visitors that actually played something (not merely opened a page). */
+    playback_viewers: integer('playback_viewers').default(0),
     completion_events: integer('completion_events').default(0),
     total_watch_duration_seconds: integer('total_watch_duration_seconds').default(0),
     created_at: createdAt(),

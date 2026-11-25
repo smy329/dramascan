@@ -4,6 +4,70 @@ All notable changes to the DramaScan project will be documented in this file.
 
 ## [Unreleased] - 2026-11-24
 
+### fix: resolve the Phase 11 review findings (Prompts 139–154)
+
+A fresh review of the Phase 11 commit found ten defects, all confirmed against
+the code. This pass fixes them and adds the regression coverage that proves the
+fixes.
+
+#### Analytics
+
+- **A `play` event marks a playback start.** The player reports it once per
+  viewing session; `play_pause` still reports every play and pause. The daily
+  aggregate stores `playback_starts`, and the completion rate is
+  `completions / playback_starts` (D-068).
+- **Average watch time is divided by `playback_viewers`,** the distinct visitors
+  who actually played, not by every visitor. The site-level count is a distinct
+  count across the site, not a sum of the per-title counts (D-068).
+- **Today's aggregate is refreshed every 60 seconds while the dashboard tab is
+  visible.** The refresh is a bounded server action authorised by
+  `analytics.read`; a hidden tab does not write. Rewriting a historical range
+  still requires `analytics.manage` (D-068).
+- **The dashboard names its denominators.** It shows playback starts and
+  playback viewers, and explains that the completion rate is completions over
+  starts.
+
+#### Notifications
+
+- **Browser push is real native Web Push.** `web-push` signs the request with a
+  VAPID key pair from the environment; a `404`/`410` retires the subscription.
+  FCM is retained as an isolated adapter but is not selected, because its web
+  SDK yields registration tokens, not the stored native subscription (D-066).
+- **The administrator alert centre exists.** `/admin/notifications` now lists,
+  filters, paginates, and reads alerts, with per-administrator read state. A
+  content report writes a `content` alert to the moderators; a failed
+  publication announcement writes a `high` `system` alert to the Super Admin.
+  Every read is audience-filtered on the server, and an alert outside the
+  audience answers 404 (D-067).
+- **A notification is written at most once.** A partial unique index on
+  `(user_id, event_type, content_id)` plus `ON CONFLICT DO NOTHING` makes the
+  write idempotent. The writer distinguishes `created`, `duplicate`, and
+  `not_wanted`, and the broadcast counters report duplicates separately
+  (D-069).
+- **A failed push is recoverable.** A short-lived maintenance command retries a
+  notification from the last seven days with no successful push and fewer than
+  three attempts. It never re-sends a notification that reached a browser once
+  (D-069).
+- **The delivery cleanup is bounded by the statement.** The `limit` is inside
+  the delete, so the reported number is the number actually removed (D-069).
+
+#### Schema
+
+- `drizzle/0020_phase11_review_fixes.sql`: the notification de-duplication
+  index, the delivery-maintenance index, the administrator alert columns and
+  the `admin_notification_reads` table, and the two new aggregate columns.
+
+#### Verification
+
+- Typecheck: **PASS** (`npm run typecheck`)
+- Lint: **PASS** (`npm run lint`)
+- Unit tests: **PASS** — 1180/1180, 112 files (`npm test`)
+- Integration tests: **PASS** — 770/770, 54 files (`npm run test:integration`)
+- Playwright E2E: **PASS** — 93/93 (`npx playwright test`)
+- Production build: **PASS** (`npm run build`)
+
+---
+
 ### feat: complete Phase 9 (Prompts 115-120) and Phase 10 (Prompts 121-138)
 
 This pass audited both phases end to end, fixed the defects listed below, and
@@ -197,10 +261,10 @@ or a fingerprint.
   with a per-hour-bucket partial unique index as the safety net (D-058). The
   public count reads the raw events, so it is correct before the first
   aggregation.
-- **Playback analytics.** The player reports `play_pause`, `seek`, `completion`,
-  and `exit`. Writes are bounded to one row per (visitor, content, event type,
-  hour bucket), and `watch_duration_seconds` is the per-event delta — the
-  browser only clears its accumulator when the server confirms the row was
+- **Playback analytics.** The player reports `play`, `play_pause`, `seek`,
+  `completion`, and `exit`. Writes are bounded to one row per (visitor, content,
+  event type, hour bucket), and `watch_duration_seconds` is the per-event delta —
+  the browser only clears its accumulator when the server confirms the row was
   stored (D-060).
 - **Daily aggregation.** A calendar day is a Dhaka day. The aggregation is a
   bounded, on-demand command inside one transaction, so re-running it for the
@@ -222,22 +286,25 @@ or a fingerprint.
   behaviour, and a bell with the unread count in the public navigation. The
   count is resolved on the server, so it is right on the first render. Every
   read is filtered by `user_id`.
-- **Browser push.** An FCM provider and a native Web Push provider behind one
-  interface, with FCM preferred. A deployment without a transport credential
-  reports an explicit failure and never claims a delivery it did not perform.
-  The permission is requested inside the click handler, never on the first page
-  load (D-063).
+- **Browser push.** A native Web Push provider behind one interface, with the
+  VAPID keys read from the environment; the FCM adapter is retained but not
+  selected. A deployment without a key pair reports an explicit failure and
+  never claims a delivery it did not perform. The permission is requested inside
+  the click handler, never on the first page load (D-063, D-066).
 - **Events.** A newly published drama, season, or episode notifies the
   eligible viewers after the publication transaction has committed. Only
   published *and* publicly available content is announced, the round is
   idempotent, and the audience is read in three bulk queries (D-062). Account
   deactivation, reactivation, role changes, and session termination produce
   mandatory account/security notifications (D-064).
-- **Announcements.** `/admin/notifications` creates a draft announcement and
-  publishes it by hand; the published list is bounded to 50 rows.
+- **Announcements and the administrator alert centre.** `/admin/notifications`
+  creates a draft announcement and publishes it by hand; the published list is
+  bounded to 50 rows. The same page lists the administrator alerts, filtered by
+  the alert's audience with per-administrator read state (D-067).
 - **Delivery safety.** Every attempt is recorded, the attempt count is capped
   at ten, and an expired subscription is soft-deleted instead of retried
-  forever.
+  forever. A notification is written at most once, and the maintenance command
+  retries an undelivered notification at most three times (D-069).
 
 #### Schema
 
@@ -275,8 +342,9 @@ or a fingerprint.
 - **The date-range resolver had no fallback branch**, so an unvalidated preset
   could produce an unbounded range. It now falls back to `last_7_days`.
 - **The admin navigation was wider than the page guards**: the Notifications
-  entry named `admin.manage` as well, while the page requires
-  `settings.manage`.
+  entry named `admin.manage` as well, while the page required only
+  `settings.manage`. The page now accepts either permission and guards each
+  surface separately (D-067).
 - **Two of the five event preferences shared one column**, so "new drama" and
   "new season" could not be switched independently.
 

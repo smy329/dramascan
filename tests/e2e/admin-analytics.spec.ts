@@ -42,6 +42,8 @@ test.describe('admin analytics dashboard', () => {
       await expect(page.getByText('Total views', { exact: true })).toBeVisible();
       await expect(page.getByText('Unique viewers', { exact: true })).toBeVisible();
       await expect(page.getByText('Watch time', { exact: true })).toBeVisible();
+      await expect(page.getByText('Playback starts', { exact: true })).toBeVisible();
+      await expect(page.getByText('Playback viewers', { exact: true })).toBeVisible();
       await expect(page.getByText('Completion rate', { exact: true })).toBeVisible();
 
       // The approved date filters.
@@ -62,8 +64,19 @@ test.describe('admin analytics dashboard', () => {
       await expect(page.getByRole('heading', { name: 'Viewer activity' })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Engagement trend' })).toBeVisible();
 
-      // The dashboard says when the numbers were last written.
+      // The dashboard says when the numbers were last written, and that today
+      // is maintained automatically while the tab is open.
       await expect(page.getByText('Last updated', { exact: true })).toBeVisible();
+      await expect(
+        page.getByText('Today is refreshed automatically every minute while this tab is open.', {
+          exact: true,
+        })
+      ).toBeVisible();
+      await expect(
+        page.getByText('Completion rate is completions divided by playback starts.', {
+          exact: false,
+        })
+      ).toBeVisible();
     } finally {
       await adminSession.remove(session.userId);
     }

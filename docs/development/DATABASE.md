@@ -273,6 +273,7 @@ Migration tooling and practices are defined in `CONVENTIONS.md` §10. Database-s
 - `drizzle/0017_audit_log_nullable_entity.sql` makes `admin_audit_log.entity_id` nullable (Prompts 121–138 audit fix, D-056). A global homepage setting — the featured item, the hero rotation, the Trending pins — is not a content row and has no identifier, so an action on one is recorded with `entity_type = 'homepage_setting'` and no entity id. Before this migration the column was `NOT NULL`, and the workflow wrote the literal strings `featured`, `hero_rotation`, and `trending_pins` into it; PostgreSQL rejected the insert, the transaction rolled back, and every save of those settings failed. The column stays a uuid, the indexes are unchanged, and no row is rewritten. Reversible: `ALTER TABLE "admin_audit_log" ALTER COLUMN "entity_id" SET NOT NULL` restores the old constraint once no setting event exists.
 - `drizzle/0018_analytics_and_notifications.sql` completes the analytics and notification data model (Prompts 139–154). It adds the `deleted_at` column to `content_view_events`, `playback_analytics_events`, and `search_events`, the `episode_id` column to `playback_analytics_events`, the three guest-session foreign keys and the episode foreign key (`ON DELETE restrict`), the deduplication indexes that make the six-hour view window and the bounded playback writes enforceable, the notification indexes, and the independent `notification_preferences.new_drama` switch. See §8.9.
 - `drizzle/0019_analytics_retention_indexes.sql` adds the three indexes the analytics retention command needs: `idx_guest_sessions_created_at` (the expired anonymous sessions), `idx_search_events_searched_at` (the expired search events), and `idx_playback_analytics_events_guest_session` (the "does an event still point at this session?" check). Without them the command would read a whole table on every run.
+- `drizzle/0020_phase11_review_fixes.sql` closes the gaps the Phase 11 review found: the notification de-duplication index, the delivery-maintenance index, the administrator alert columns and the `admin_notification_reads` table, and the two new aggregate columns. It adds no rows and rewrites none.
 - The content Trash (Prompts 072–074) needs no migration: it reuses the existing `deleted_at` columns on `dramas`, `seasons`, `episodes`, and `movies`, and the existing `deleted_at` indexes. The cascade timestamp is a value in those columns, not a new column.
 - Image assets (Prompts 075–078) need no migration: the stored artwork lives on the application disk, and the content tables keep only the managed `/media/...` path in `dramas.poster`, `dramas.banner`, `movies.poster`, and `movies.banner`.
 - `npm run db:generate` creates the next numbered migration from schema changes; `npm run db:migrate` applies pending migrations. `npm run db:push` is local-only and must never be used against production.
@@ -330,7 +331,8 @@ This catalog is filled in as tables are implemented. Each entry records the tabl
 | push_subscriptions             | notifications Push subscription endpoints                | ✅ Implemented                                                           |
 | notification_deliveries        | notifications Delivery tracking records                  | ✅ Implemented                                                           |
 | announcements                  | notifications Site-wide announcements                    | ✅ Implemented                                                           |
-| admin_notifications            | notifications Admin-targeted notifications               | ✅ Implemented                                                           |
+| admin_notifications            | notifications Admin-targeted notifications               | ✅ Implemented (`drizzle/0020_phase11_review_fixes.sql`)                |
+| admin_notification_reads       | notifications Per-administrator read state of an alert    | ✅ Implemented (`drizzle/0020_phase11_review_fixes.sql`)                |
 | users                          | auth Auth users (Better Auth)                            | ✅ Implemented                                                           |
 | accounts                       | auth OAuth/account linking                               | ✅ Implemented                                                           |
 | sessions                       | auth Auth sessions                                       | ✅ Implemented                                                           |
@@ -647,6 +649,18 @@ model of the analytics and notification domains.
 | `playback_analytics_events` | `episode_id`  | `uuid null`, `ON DELETE restrict`. A playback event names the episode that was watched; the typed `drama_id` / `movie_id` columns still name the parent, so the dashboard can roll episode playback up to its drama. |
 | `notification_preferences` | `new_drama`  | `boolean NOT NULL DEFAULT true`. Requirements §11.1 asks for five independent event preferences; the shared `new_drama_season` column only ever covered the season case. |
 
+#### Columns added by the review migration `0020`
+
+| Table                       | Change                                             | Detail                                                                                                   |
+| --------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `admin_notifications`       | `category`, `link`, `priority`, `audience_roles`   | The alert's category (`security`, `content`, `system`, `maintenance`), its deep link, its priority (`normal`, `high`), and the role names an `audience = 'roles'` alert addresses. |
+| `analytics_daily_aggregates` | `playback_starts`, `playback_viewers`            | The bounded `play` events and the distinct visitors who actually played, so the completion rate and the average watch time have denominators that describe the same population as their numerator (D-068). |
+
+The new table `admin_notification_reads` stores one row per (alert,
+administrator): the read state belongs to the administrator, not to the alert
+(D-067). It has no foreign key to `admin_notifications`; the alert centre and
+the maintenance command remove the read rows they own.
+
 #### Foreign keys
 
 | Constraint                                     | Target              | Deletion behaviour |
@@ -673,6 +687,8 @@ three are added `NOT VALID` and are validated by `npm run db:integrity`.
 | `uq_search_events_dedup`               | `guest_session_id, search_hour_bucket`                                       | One search per guest session and hour. |
 | `uq_notification_preferences_active`   | `user_id`                                                                   | One active preference row per account. |
 | `uq_push_subscriptions_active`         | `user_id, endpoint`                                                         | One active subscription per account and browser endpoint. |
+| `uq_notifications_user_event_content`  | `user_id, event_type, content_id` (partial: `deleted_at IS NULL AND content_id IS NOT NULL`) | One live notification per recipient, event, and content item. The database decides whether a notification is new, so two concurrent publication retries cannot both write it (D-069). Rows without a content id are excluded: mandatory account/security notifications legitimately share an event type. |
+| `uq_admin_notification_reads_notification_user` | `notification_id, admin_user_id`                                  | One read-state row per alert and administrator (D-067). |
 
 Every index is partial (`WHERE deleted_at IS NULL`), so a soft-deleted row
 does not block a new one.
@@ -690,6 +706,9 @@ does not block a new one.
 | `idx_notifications_user_recent`                  | The notification centre's history read. |
 | `idx_notifications_user_unread`                  | The unread-count read. |
 | `idx_notification_deliveries_notification`       | The delivery-attempt history of one notification. |
+| `idx_notification_deliveries_notification_channel` | The maintenance question "has this notification ever been pushed successfully?" and the attempt count (D-069). |
+| `idx_admin_notifications_created_at`             | The alert centre's ordered list (partial: `deleted_at IS NULL`). |
+| `idx_admin_notification_reads_admin_user`        | The unread count of one administrator. |
 | `idx_announcements_publication_status`           | The published-announcement list. |
 
 Migration properties:

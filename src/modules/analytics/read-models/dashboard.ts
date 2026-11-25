@@ -36,13 +36,17 @@ export type AnalyticsOverview = {
   totalViews: number;
   /** The total number of playback events in the range. */
   totalPlaybackEvents: number;
+  /** The number of playback starts in the range. */
+  playbackStarts: number;
+  /** The number of distinct viewers who actually played something. */
+  playbackViewers: number;
   /** The number of completed viewings in the range. */
   completionEvents: number;
   /** The total watch time in seconds. */
   totalWatchDurationSeconds: number;
-  /** The completion rate as a fraction between 0 and 1. */
+  /** The completion rate as a fraction between 0 and 1: completions / starts. */
   completionRate: number;
-  /** The average watch time per viewer, in seconds. */
+  /** The average watch time per viewer who played, in seconds. */
   averageWatchDurationSeconds: number;
 };
 
@@ -59,7 +63,9 @@ export type ContentPerformanceRow = {
   watchDurationSeconds: number;
   /** The number of completed viewings. */
   completions: number;
-  /** The completion rate as a fraction between 0 and 1. */
+  /** The number of playback starts. */
+  playbackStarts: number;
+  /** The completion rate as a fraction between 0 and 1: completions / starts. */
   completionRate: number;
 };
 
@@ -87,7 +93,9 @@ export type ViewerActivityRow = {
   totalViews: number;
   /** The number of playback events that day. */
   playbackEvents: number;
-  /** The average watch time per viewer that day, in seconds. */
+  /** The number of distinct viewers who played something that day. */
+  playbackViewers: number;
+  /** The average watch time per viewer who played that day, in seconds. */
   averageWatchDurationSeconds: number;
 };
 
@@ -105,6 +113,8 @@ export async function getAnalyticsOverview(range: DateRange): Promise<AnalyticsO
     .select({
       totalViews: sql<number>`coalesce(sum(${analytics_daily_aggregates.total_views}), 0)`,
       totalPlaybackEvents: sql<number>`coalesce(sum(${analytics_daily_aggregates.total_playback_events}), 0)`,
+      playbackStarts: sql<number>`coalesce(sum(${analytics_daily_aggregates.playback_starts}), 0)`,
+      playbackViewers: sql<number>`coalesce(sum(${analytics_daily_aggregates.playback_viewers}), 0)`,
       completionEvents: sql<number>`coalesce(sum(${analytics_daily_aggregates.completion_events}), 0)`,
       totalWatchDurationSeconds: sql<number>`coalesce(sum(${analytics_daily_aggregates.total_watch_duration_seconds}), 0)`,
     })
@@ -120,6 +130,8 @@ export async function getAnalyticsOverview(range: DateRange): Promise<AnalyticsO
 
   const totalViews = Number(row?.totalViews ?? 0);
   const totalPlaybackEvents = Number(row?.totalPlaybackEvents ?? 0);
+  const playbackStarts = Number(row?.playbackStarts ?? 0);
+  const playbackViewers = Number(row?.playbackViewers ?? 0);
   const completionEvents = Number(row?.completionEvents ?? 0);
   const totalWatchDurationSeconds = Number(row?.totalWatchDurationSeconds ?? 0);
   const uniqueVisitors = await countDistinctVisitors(range);
@@ -128,12 +140,19 @@ export async function getAnalyticsOverview(range: DateRange): Promise<AnalyticsO
     uniqueVisitors,
     totalViews,
     totalPlaybackEvents,
+    playbackStarts,
+    playbackViewers,
     completionEvents,
     totalWatchDurationSeconds,
+    // A completion is a finished viewing of something that was started. Pauses
+    // and seeks are playback events, not starts, so they must not lower the
+    // rate.
     completionRate:
-      totalPlaybackEvents === 0 ? 0 : Math.min(1, completionEvents / totalPlaybackEvents),
+      playbackStarts === 0 ? 0 : Math.min(1, completionEvents / playbackStarts),
+    // The watch time belongs to the viewers who played. Dividing it by every
+    // visitor would count the people who only opened a details page.
     averageWatchDurationSeconds:
-      uniqueVisitors === 0 ? 0 : Math.round(totalWatchDurationSeconds / uniqueVisitors),
+      playbackViewers === 0 ? 0 : Math.round(totalWatchDurationSeconds / playbackViewers),
   };
 }
 
@@ -160,7 +179,7 @@ export async function listContentPerformance(
       views: sql<number>`coalesce(sum(${analytics_daily_aggregates.total_views}), 0)`,
       watchDurationSeconds: sql<number>`coalesce(sum(${analytics_daily_aggregates.total_watch_duration_seconds}), 0)`,
       completions: sql<number>`coalesce(sum(${analytics_daily_aggregates.completion_events}), 0)`,
-      playbackEvents: sql<number>`coalesce(sum(${analytics_daily_aggregates.total_playback_events}), 0)`,
+      playbackStarts: sql<number>`coalesce(sum(${analytics_daily_aggregates.playback_starts}), 0)`,
     })
     .from(analytics_daily_aggregates)
     .where(
@@ -217,7 +236,7 @@ export async function listContentPerformance(
   return rows.map(row => {
     const views = Number(row.views ?? 0);
     const completions = Number(row.completions ?? 0);
-    const playbackEvents = Number(row.playbackEvents ?? 0);
+    const playbackStarts = Number(row.playbackStarts ?? 0);
     const type = row.type === 'movie' ? 'movie' : 'drama';
     const id = row.id ?? '';
 
@@ -229,7 +248,9 @@ export async function listContentPerformance(
       uniqueVisitors: visitorsByContent.get(`${type}:${id}`) ?? 0,
       watchDurationSeconds: Number(row.watchDurationSeconds ?? 0),
       completions,
-      completionRate: playbackEvents === 0 ? 0 : Math.min(1, completions / playbackEvents),
+      playbackStarts,
+      completionRate:
+        playbackStarts === 0 ? 0 : Math.min(1, completions / playbackStarts),
     };
   });
 }
@@ -310,6 +331,7 @@ export async function listViewerActivity(range: DateRange): Promise<ViewerActivi
       uniqueVisitors: analytics_daily_aggregates.unique_visitors,
       totalViews: analytics_daily_aggregates.total_views,
       playbackEvents: analytics_daily_aggregates.total_playback_events,
+      playbackViewers: analytics_daily_aggregates.playback_viewers,
       watchDurationSeconds: analytics_daily_aggregates.total_watch_duration_seconds,
     })
     .from(analytics_daily_aggregates)
@@ -327,6 +349,7 @@ export async function listViewerActivity(range: DateRange): Promise<ViewerActivi
 
   for (const row of rows) {
     const uniqueVisitors = Number(row.uniqueVisitors ?? 0);
+    const playbackViewers = Number(row.playbackViewers ?? 0);
     const watchDurationSeconds = Number(row.watchDurationSeconds ?? 0);
 
     byDate.set(row.date, {
@@ -334,8 +357,9 @@ export async function listViewerActivity(range: DateRange): Promise<ViewerActivi
       uniqueVisitors,
       totalViews: Number(row.totalViews ?? 0),
       playbackEvents: Number(row.playbackEvents ?? 0),
+      playbackViewers,
       averageWatchDurationSeconds:
-        uniqueVisitors === 0 ? 0 : Math.round(watchDurationSeconds / uniqueVisitors),
+        playbackViewers === 0 ? 0 : Math.round(watchDurationSeconds / playbackViewers),
     });
   }
 
@@ -349,6 +373,7 @@ export async function listViewerActivity(range: DateRange): Promise<ViewerActivi
         uniqueVisitors: 0,
         totalViews: 0,
         playbackEvents: 0,
+        playbackViewers: 0,
         averageWatchDurationSeconds: 0,
       }
     );

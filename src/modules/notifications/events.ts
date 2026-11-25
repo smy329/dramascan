@@ -9,7 +9,7 @@ import { users } from '@/modules/auth/schema';
 import { dramas, episodes, seasons } from '@/modules/content/schema';
 import { publicDramaHref, publicEpisodeHref } from '@/modules/content';
 
-import { writeNotification, type NotificationEventType } from './notifications';
+import { writeNotificationOnce, type NotificationEventType } from './notifications';
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   isDeliveryAllowed,
@@ -231,6 +231,10 @@ async function deliverToAudience(input: {
   ]);
 
   for (const userId of input.userIds) {
+    // The bulk read avoids a write attempt for an audience that has already
+    // been told. It is an optimisation, not the guarantee: the partial unique
+    // index behind `writeNotificationOnce` is what makes a concurrent retry
+    // safe.
     if (alreadyNotified.has(userId)) {
       result.skippedAsDuplicate += 1;
       continue;
@@ -244,7 +248,7 @@ async function deliverToAudience(input: {
       continue;
     }
 
-    const notification = await writeNotification(
+    const notification = await writeNotificationOnce(
       {
         userId,
         title: input.message.title,
@@ -258,7 +262,12 @@ async function deliverToAudience(input: {
       input.executor
     );
 
-    if (!notification) {
+    if (notification.status === 'duplicate') {
+      result.skippedAsDuplicate += 1;
+      continue;
+    }
+
+    if (notification.status !== 'created') {
       result.skippedByPreference += 1;
       continue;
     }

@@ -107,6 +107,19 @@ export async function createNotification(
 }
 
 /**
+ * What happened to a notification write.
+ *
+ * `duplicate` is distinct from `not_wanted` on purpose: a repeated publication
+ * is not a viewer's preference, and the broadcast counters report them
+ * separately. The distinction is only possible because the database, not a
+ * read-then-write, decides whether the row is new.
+ */
+export type NotificationWriteOutcome =
+  | Readonly<{ status: 'created'; id: string }>
+  | Readonly<{ status: 'duplicate' }>
+  | Readonly<{ status: 'not_wanted' }>;
+
+/**
  * Write one notification for a recipient whose preferences are already known.
  *
  * The broadcast paths read every recipient's preferences in one query, so they
@@ -115,15 +128,42 @@ export async function createNotification(
  * @param input the notification
  * @param preferences the recipient's preference set
  * @param executor the database executor
- * @returns the created row, or `null` when the event is not wanted
+ * @returns the created row, or `null` when the event is not wanted or already exists
  */
 export async function writeNotification(
   input: NotificationInput,
   preferences: NotificationPreferenceSet,
   executor: DbExecutor = db
 ): Promise<{ id: string } | null> {
+  const outcome = await writeNotificationOnce(input, preferences, executor);
+
+  return outcome.status === 'created' ? { id: outcome.id } : null;
+}
+
+/**
+ * Write one notification exactly once.
+ *
+ * The insert carries `ON CONFLICT DO NOTHING`, and the partial unique index
+ * `uq_notifications_user_event_content` is the authority on whether a
+ * notification already exists. Two concurrent publication retries therefore
+ * cannot both write the same notification: one insert wins and the other
+ * reports `duplicate`. A read-then-write check alone could not promise that.
+ *
+ * A notification without a content id (an account/security event) has no
+ * natural de-duplication key and is never collapsed.
+ *
+ * @param input the notification
+ * @param preferences the recipient's preference set
+ * @param executor the database executor
+ * @returns whether the row was created, already existed, or is not wanted
+ */
+export async function writeNotificationOnce(
+  input: NotificationInput,
+  preferences: NotificationPreferenceSet,
+  executor: DbExecutor = db
+): Promise<NotificationWriteOutcome> {
   if (!isEventAllowed(preferences, input.eventType)) {
-    return null;
+    return { status: 'not_wanted' };
   }
 
   const inAppDelivered = isDeliveryAllowed(preferences, input.eventType, 'in_app');
@@ -143,10 +183,11 @@ export async function writeNotification(
       delivered: inAppDelivered,
       delivery_timestamp: inAppDelivered ? sql`now()` : null,
     })
+    .onConflictDoNothing()
     .returning({ id: notifications.id });
 
   if (!row) {
-    return null;
+    return { status: 'duplicate' };
   }
 
   if (inAppDelivered) {
@@ -159,7 +200,7 @@ export async function writeNotification(
     });
   }
 
-  return row;
+  return { status: 'created', id: row.id };
 }
 
 /**

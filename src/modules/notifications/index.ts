@@ -14,11 +14,13 @@ export {
   createNotification,
   notifyAccountSecurity,
   notifyReporter,
+  writeNotificationOnce,
 } from './notifications';
 
 export type {
   NotificationEventType,
   NotificationInput,
+  NotificationWriteOutcome,
 } from './notifications';
 
 export {
@@ -85,18 +87,31 @@ export type {
 } from './push-provider';
 
 export {
+  DELIVERY_RETENTION_DAYS,
   MAX_DELIVERY_ATTEMPTS,
+  MAX_PUSH_RETRY_ATTEMPTS,
+  PUSH_RETRY_WINDOW_DAYS,
   deleteInvalidNotifications,
   deleteOldDeliveries,
   deleteOrphanedDeliveries,
   deliverPush,
   listDeliveries,
   markInAppDelivered,
+  retryFailedPushDeliveries,
+  runNotificationMaintenance,
 } from './delivery';
 
-export type { DeliveryOutcome } from './delivery';
+export type {
+  DeliveryOutcome,
+  NotificationMaintenanceResult,
+  NotificationRetryResult,
+} from './delivery';
 
-export { recordDelivery } from './delivery-records';
+export {
+  countPushAttempts,
+  hasSuccessfulPushDelivery,
+  recordDelivery,
+} from './delivery-records';
 
 export type { DeliveryChannel, DeliveryRecordInput } from './delivery-records';
 
@@ -127,3 +142,28 @@ export type {
   AnnouncementStatus,
   AnnouncementView,
 } from './announcements';
+
+export {
+  ADMIN_NOTIFICATION_AUDIENCES,
+  ADMIN_NOTIFICATION_CATEGORIES,
+  ADMIN_NOTIFICATION_CONTENT_MAX_LENGTH,
+  ADMIN_NOTIFICATION_PAGE_SIZE,
+  ADMIN_NOTIFICATION_PRIORITIES,
+  ADMIN_NOTIFICATION_TITLE_MAX_LENGTH,
+  canViewAdminNotification,
+  countUnreadAdminNotifications,
+  createAdminNotification,
+  getAdminNotification,
+  listAdminNotifications,
+  setAdminNotificationRead,
+} from './admin-notifications';
+
+export type {
+  AdminNotificationAudience,
+  AdminNotificationCategory,
+  AdminNotificationInput,
+  AdminNotificationPage,
+  AdminNotificationPriority,
+  AdminNotificationView,
+  AdminNotificationViewer,
+} from './admin-notifications';

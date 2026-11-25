@@ -175,7 +175,7 @@ an item that is not publicly available.
 | Method | Path                      | Auth                           | Permission | Purpose                                                                | Status  |
 | ------ | ------------------------- | ------------------------------ | ---------- | ---------------------------------------------------------------------- | ------- |
 | `POST` | `/api/analytics/view`     | Public (guest session or user) | —          | Record a deduplicated content view for a drama or movie                | Implemented |
-| `POST` | `/api/analytics/playback` | Public (guest session or user) | —          | Record bounded playback events (play/pause, seek, completion, exit)    | Implemented |
+| `POST` | `/api/analytics/playback` | Public (guest session or user) | —          | Record bounded playback events (play, play/pause, seek, completion, exit) | Implemented |
 
 Beacons are small, idempotent/deduplicated, and bounded. They never write on every playback second.
 
@@ -187,11 +187,13 @@ view is counted once per visitor per content item in a rolling six-hour window
 (D-002, D-058).
 
 `POST /api/analytics/playback` carries exactly one target — `episodeId`
-together with `dramaId`, or `movieId` — plus `eventType` (`play_pause`,
-`seek`, `completion`, or `exit`), `positionSeconds`, `watchDurationSeconds`,
-and `completionThresholdMet`. At most one event of each type is stored per
-visitor, per content item, per hour, so the table never becomes a per-second
-log (D-060).
+together with `dramaId`, or `movieId` — plus `eventType` (`play`,
+`play_pause`, `seek`, `completion`, or `exit`), `positionSeconds`,
+`watchDurationSeconds`, and `completionThresholdMet`. At most one event of each
+type is stored per visitor, per content item, per hour, so the table never
+becomes a per-second log (D-060). `play` is the playback start: the player
+reports it once per viewing session, and it is the denominator of the
+dashboard's completion rate (D-068).
 
 Both endpoints are **route handlers** rather than Server Actions for the same
 reason the playback progress endpoint is: the browser sends them with

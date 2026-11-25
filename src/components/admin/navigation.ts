@@ -192,7 +192,9 @@ export const ADMIN_NAVIGATION: readonly AdminNavGroup[] = [
         id: 'notifications',
         label: 'Notifications',
         href: '/admin/notifications',
-        permissions: ['settings.manage'],
+        // Alerts need `admin.manage`; announcements need `settings.manage`.
+        // Either permission opens the page, and each surface checks its own.
+        permissions: ['admin.manage', 'settings.manage'],
         implemented: true,
       },
     ],

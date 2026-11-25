@@ -24,6 +24,7 @@ export const analyticsViewInputSchema = z.object({
 
 /** The playback event types the player may report. */
 export const analyticsPlaybackEventTypeSchema = z.enum([
+  'play',
   'play_pause',
   'seek',
   'completion',

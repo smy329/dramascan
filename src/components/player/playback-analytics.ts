@@ -23,6 +23,7 @@
 
 /** The events the player reports. */
 export const PLAYBACK_ANALYTICS_EVENT_TYPES = [
+  'play',
   'play_pause',
   'seek',
   'completion',
