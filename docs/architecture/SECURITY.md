@@ -32,6 +32,8 @@ deferred and recorded in §12.
 | Database role separation and local-only access       | Operator-managed deployment prerequisite | Server setup (Prompt 019+) |
 | Image upload validation                              | **Implemented**                          | Prompts 075–078            |
 | External media URL validation (no server-side fetch) | **Implemented**                          | Prompts 080–090            |
+| Browser push endpoint validation (no private address) | **Implemented**                          | Prompts 139–154 (D-070)    |
+| Playback beacon plausibility bounds                    | **Implemented**                          | Prompts 139–154 (D-070)    |
 | Backup integrity and restore validation              | Not implemented                          | Maintenance phase          |
 | Error monitoring records                             | Not implemented                          | Operations phase           |
 
@@ -133,6 +135,7 @@ Every permission key requires tests for: allowed role, denied role, missing sess
 - **Mass assignment:** input schemas list allowed fields explicitly. Never spread a request body into a database update.
 - **URL validation:** video, subtitle, image, and attachment URLs require HTTPS (except documented local development), a valid host, and no embedded credentials. See §7.
 - **CSV import:** validate headers, row count, field types, lengths, and referential targets. Import runs as a preview/dry run followed by an explicit confirmed apply. Never execute formulas or evaluate imported content.
+- **A public beacon is an untrusted claim (D-070).** The playback beacon arrives from the viewer's browser, so the server bounds what it may assert: the watch duration is clamped to the time that passed since the previous stored event of the same visitor and the same content, plus thirty seconds of tolerance, and to an absolute maximum; an impossible media position is dropped; and the completion flag is honoured on a `completion` event only and forced to `false` on every other event. The recorded numbers are therefore lower bounds, not an attestation.
 
 ---
 
@@ -278,9 +281,42 @@ server:
   application directory is rejected at startup, because a deployment replaces
   that directory and would delete the artwork stored inside it.
 
+### 7.4 Browser push endpoints (implemented, Prompts 139–154, D-070)
+
+A push subscription is an address the **server** contacts. It is supplied by
+the browser, so it is an untrusted outbound target and an SSRF surface.
+
+- **The endpoint is validated before it is stored and again before it is
+  contacted.** The rules live in one shared module
+  (`modules/notifications/push-transport.ts`), so the application and the
+  maintenance command cannot disagree:
+  - HTTPS only;
+  - no embedded credentials and no fragment;
+  - no local or private host name (`localhost`, the `.local` and `.internal`
+    suffixes, and the like);
+  - no private or reserved IP literal — IPv4 and IPv6, including the
+    IPv4-mapped (`::ffff:127.0.0.1`), NAT64 (`64:ff9b::/96`), and 6to4
+    (`2002::/16`) forms, which would otherwise smuggle a private address past
+    a textual check;
+  - an optional `PUSH_ALLOWED_HOSTS` allowlist for a deployment that wants
+    only its own push service.
+- **The DNS answer is checked at send time and pinned for the connection.** A
+  host name that resolves to a private address is refused, and the request is
+  made to the validated address, so a second lookup cannot substitute a
+  different one.
+- **The outbound request has a timeout.** A push service that accepts the
+  connection and never answers cannot hold a request open indefinitely.
+- **The push configuration is part of `ServerConfig`.** A half-configured
+  VAPID key pair fails at startup, not at the first delivery, and the contact
+  address must be a `mailto:` address or an HTTPS URL.
+- **A delivery failure is reported honestly.** The platform never claims a
+  delivery it did not perform, and it records the attempt so a bounded
+  maintenance command can retry a failed push without re-sending a successful
+  one.
+
 ---
 
-## 7.3 Irreversible content operations (implemented, Prompts 072–074)
+### 7.5 Irreversible content operations (implemented, Prompts 072–074)
 
 Permanent deletion is the only irreversible operation in the content model, so
 its authorization is deliberately narrow:
@@ -473,6 +509,8 @@ When a security-relevant feature is implemented, verify:
 10. Secrets absent from client bundles, logs, error responses, and configuration exports.
 11. CSP and headers do not regress the approved integrations.
 12. Security events appear in audit/notification records with safe metadata.
+13. A push endpoint that names a private or reserved address is refused both when it is stored and when it is contacted, and the answer of a DNS lookup is checked at send time (D-070).
+14. A forged playback beacon cannot inflate the watch time or claim a completion (D-070).
 
 Report what was verified and what was not. Do not claim a control works because the code exists.
 

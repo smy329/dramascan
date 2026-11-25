@@ -17,7 +17,7 @@
 const DEFAULT_CONCURRENCY = 6;
 
 /** A UUID-shaped identifier used to compile the dynamic routes. */
-const PLACEHOLDER_ID = '00000000-0000-4000-8000-000000000000';
+export const WARMUP_PLACEHOLDER_ID = '00000000-0000-4000-8000-000000000000';
 
 /**
  * The routes the suite exercises.
@@ -25,6 +25,12 @@ const PLACEHOLDER_ID = '00000000-0000-4000-8000-000000000000';
  * Static routes are listed exactly. Dynamic routes use a placeholder
  * identifier: the route still compiles, and the placeholder cannot match a
  * real row.
+ *
+ * The list covers **every** route module the application exposes. A route that
+ * is missing from the list is compiled by the first test that reaches it, and
+ * that compile happens inside the test's own assertion window — which reports
+ * a correct application as a broken one. `tests/unit/e2e/warmup-coverage.test.ts`
+ * derives the routes from the source tree and fails when one escapes the list.
  */
 export const WARMUP_PATHS = [
   // Public site.
@@ -34,16 +40,26 @@ export const WARMUP_PATHS = [
   '/categories',
   '/platforms',
   '/trending',
+  '/popular',
+  '/highest-rated',
+  '/recently-added',
+  '/search',
   '/bookmark',
+  '/bookmarks',
+  '/continue-watching',
+  '/dashboard',
   '/help',
   '/notifications',
+  '/profile',
   '/settings/notifications',
+  '/watch-history',
   '/information/terms',
   '/information/privacy',
   '/information/community-guidelines',
   '/information/copyright-dmca',
   '/information/about',
   '/information/contact',
+  `/information/${WARMUP_PLACEHOLDER_ID}`,
 
   // Authentication.
   '/auth/signin',
@@ -57,26 +73,65 @@ export const WARMUP_PATHS = [
   '/admin/dramas',
   '/admin/dramas/new',
   '/admin/movies',
+  '/admin/movies/new',
   '/admin/publication',
   '/admin/trash',
   '/admin/roles',
   '/admin/analytics',
   '/admin/notifications',
-  `/admin/dramas/${PLACEHOLDER_ID}`,
-  `/admin/dramas/${PLACEHOLDER_ID}/edit`,
-  `/admin/dramas/${PLACEHOLDER_ID}/convert`,
-  `/admin/dramas/${PLACEHOLDER_ID}/convert-to-movie`,
-  `/admin/dramas/${PLACEHOLDER_ID}/similar-dramas`,
-  `/admin/notifications/${PLACEHOLDER_ID}`,
+  '/admin/reports',
+  '/admin/reviews',
+  '/admin/featured',
+  '/admin/hero-rotation',
+  '/admin/trending-pins',
+  `/admin/dramas/${WARMUP_PLACEHOLDER_ID}`,
+  `/admin/dramas/${WARMUP_PLACEHOLDER_ID}/edit`,
+  `/admin/dramas/${WARMUP_PLACEHOLDER_ID}/convert`,
+  `/admin/dramas/${WARMUP_PLACEHOLDER_ID}/convert-to-movie`,
+  `/admin/dramas/${WARMUP_PLACEHOLDER_ID}/similar-dramas`,
+  `/admin/movies/${WARMUP_PLACEHOLDER_ID}/edit`,
+  `/admin/notifications/${WARMUP_PLACEHOLDER_ID}`,
 
   // Viewer playback.
-  `/drama/${PLACEHOLDER_ID}/warmup/episode/${PLACEHOLDER_ID}`,
+  `/drama/${WARMUP_PLACEHOLDER_ID}/${WARMUP_PLACEHOLDER_ID}`,
+  `/drama/${WARMUP_PLACEHOLDER_ID}/${WARMUP_PLACEHOLDER_ID}/episode/${WARMUP_PLACEHOLDER_ID}`,
+  `/movie/${WARMUP_PLACEHOLDER_ID}/${WARMUP_PLACEHOLDER_ID}`,
+  `/movie/${WARMUP_PLACEHOLDER_ID}/${WARMUP_PLACEHOLDER_ID}/watch`,
 
   // REST endpoints.
+  '/public/api/dramas',
   '/public/api/dramas?page=1&pageSize=2',
+  '/api/analytics/view',
+  '/api/analytics/playback',
+  '/api/playback/progress',
+  '/api/search/suggestions',
+  `/api/auth/${WARMUP_PLACEHOLDER_ID}`,
+  '/admin/api/dramas',
+  '/admin/api/dramas/convert',
+  '/admin/api/dramas/convert-to-movie',
+  '/admin/api/episodes',
+  '/admin/api/media',
+  '/admin/api/movies',
+  '/admin/api/publication',
   '/admin/api/roles',
+  `/admin/api/roles/${WARMUP_PLACEHOLDER_ID}`,
+  `/admin/api/roles/${WARMUP_PLACEHOLDER_ID}/permissions`,
+  '/admin/api/seasons',
+  '/admin/api/similar-dramas',
+  '/admin/api/similar-dramas/candidates',
+  `/admin/api/similar-dramas/candidates?dramaId=${WARMUP_PLACEHOLDER_ID}&search=a`,
+  '/admin/api/similar-dramas/reorder',
+  '/admin/api/similar-dramas/suggestions',
+  '/admin/api/trash',
+  '/admin/api/trash/permanent-delete',
+  '/admin/api/trash/restore',
   '/admin/api/information-pages',
-  `/admin/api/similar-dramas/candidates?dramaId=${PLACEHOLDER_ID}&search=a`,
+  `/admin/api/information-pages/${WARMUP_PLACEHOLDER_ID}`,
+  '/admin/api/information-pages/reorder',
+  `/admin/api/users/${WARMUP_PLACEHOLDER_ID}/roles`,
+  `/admin/api/users/${WARMUP_PLACEHOLDER_ID}/roles/${WARMUP_PLACEHOLDER_ID}`,
+  `/admin/api/users/${WARMUP_PLACEHOLDER_ID}/status`,
+  `/media/${WARMUP_PLACEHOLDER_ID}`,
 ];
 
 /**

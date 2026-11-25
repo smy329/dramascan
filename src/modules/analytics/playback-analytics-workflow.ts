@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, count, eq, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import type { DbExecutor } from '@/platform/db/executor';
@@ -8,6 +8,7 @@ import { isForeignKeyViolation, isUniqueViolation } from '@/platform/db/errors';
 
 import { playback_analytics_events } from './schema';
 import { utcHourBucket } from './date-filters';
+import { clampPlaybackEvent } from './playback-plausibility';
 import { resolveAnalyticsVisitor, type AnalyticsVisitor } from './visitor';
 
 /**
@@ -61,6 +62,11 @@ export type PlaybackEventResult = {
 /**
  * Record one playback event.
  *
+ * The beacon is public, so the server decides what it may claim: the watch
+ * time is clamped to the time that passed since the previous stored event of
+ * the same visitor and the same content, and an impossible media position is
+ * dropped (D-070).
+ *
  * @param input the event
  * @param executor the database executor
  * @returns whether the event was stored
@@ -89,6 +95,14 @@ export async function recordPlaybackEvent(
   const movieId = input.target.type === 'movie' ? input.target.movieId : null;
   const episodeId = input.target.type === 'drama' ? input.target.episodeId : null;
 
+  const previousEventAt = await findPreviousEventAt(visitor.guestSessionId, contentId, executor);
+  const plausible = clampPlaybackEvent({
+    watchDurationSeconds: input.watchDurationSeconds,
+    positionSeconds: input.positionSeconds,
+    previousEventAt,
+    now,
+  });
+
   try {
     await executor.insert(playback_analytics_events).values({
       guest_session_id: visitor.guestSessionId,
@@ -98,9 +112,14 @@ export async function recordPlaybackEvent(
       movie_id: movieId,
       episode_id: episodeId,
       event_type: input.eventType,
-      position_seconds: input.positionSeconds ?? null,
-      watch_duration_seconds: input.watchDurationSeconds ?? null,
-      completion_threshold_met: input.completionThresholdMet ?? false,
+      position_seconds: plausible.positionSeconds,
+      watch_duration_seconds: plausible.watchDurationSeconds,
+      // The completion flag is honoured on a completion event only. The
+      // validation contract already enforces it, and the write enforces it
+      // again, so no caller of this module can record a completion that the
+      // event type does not support (D-070).
+      completion_threshold_met:
+        input.eventType === 'completion' && input.completionThresholdMet === true,
       event_at: now,
       event_hour_bucket: utcHourBucket(now),
     });
@@ -123,6 +142,38 @@ export async function recordPlaybackEvent(
 
     throw error;
   }
+}
+
+/**
+ * When the previous stored event of this visitor and content was recorded.
+ *
+ * The watch time a beacon carries is the time since the last event the server
+ * *stored*, so this is the instant the plausibility rule measures against.
+ *
+ * @param guestSessionId the visitor
+ * @param contentId the episode or movie
+ * @param executor the database executor
+ * @returns the instant of the previous event, or `null` when there is none
+ */
+async function findPreviousEventAt(
+  guestSessionId: string,
+  contentId: string,
+  executor: DbExecutor
+): Promise<Date | null> {
+  const [row] = await executor
+    .select({ eventAt: playback_analytics_events.event_at })
+    .from(playback_analytics_events)
+    .where(
+      and(
+        eq(playback_analytics_events.guest_session_id, guestSessionId),
+        eq(playback_analytics_events.content_id, contentId),
+        isNull(playback_analytics_events.deleted_at)
+      )
+    )
+    .orderBy(desc(playback_analytics_events.event_at))
+    .limit(1);
+
+  return row?.eventAt ?? null;
 }
 
 /**

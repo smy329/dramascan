@@ -97,6 +97,18 @@ export type {
   PlaybackEventType,
 } from './playback-analytics-workflow';
 
+export {
+  MAX_PLAYBACK_POSITION_SECONDS,
+  MAX_PLAYBACK_WATCH_SECONDS,
+  PLAYBACK_WATCH_DURATION_TOLERANCE_SECONDS,
+  clampPlaybackEvent,
+} from './playback-plausibility';
+
+export type {
+  PlaybackPlausibility,
+  PlaybackPlausibilityInput,
+} from './playback-plausibility';
+
 export { aggregateDailyAnalytics, aggregateDateRange, aggregateToday } from './aggregation-workflow';
 
 export {
@@ -117,7 +129,6 @@ export {
   analyticsPlaybackEventTypeSchema,
   analyticsPlaybackInputSchema,
   analyticsViewInputSchema,
-  isPublicAnalyticsTarget,
   parseAnalyticsPlaybackInput,
   parseAnalyticsViewInput,
 } from './analytics-inputs';
@@ -126,3 +137,5 @@ export type {
   AnalyticsPlaybackInput,
   AnalyticsViewInput,
 } from './analytics-inputs';
+
+export { isPublicAnalyticsTarget } from './analytics-targets';

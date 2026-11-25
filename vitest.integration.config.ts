@@ -16,6 +16,14 @@ export default defineConfig({
     exclude: ['node_modules', '.next', 'dist'],
     environment: 'node',
     globalSetup: './tests/global-setup.ts',
+    // The integration tests share one PostgreSQL database, and a production
+    // broadcast reaches *every* active account: publishing a drama notifies
+    // every active viewer, including an account that another test file
+    // created a moment earlier. Two files running at the same time therefore
+    // interfere with each other, and the result depends on timing rather than
+    // on the code. The files run one after another so the suite is
+    // deterministic; the cost is wall-clock time, not correctness.
+    fileParallelism: false,
   },
   resolve: {
     alias: {

@@ -95,6 +95,13 @@ export async function aggregateDailyAnalytics(
  * the Dhaka day, so a range produces one row per day without a read per day.
  * The rows of the range are then replaced in one transaction, so a refresh
  * never doubles a number and never leaves a half-written range behind.
+ *
+ * Two refreshes of the same scope may run at the same time — the dashboard
+ * refreshes the current day every minute, and an administrator may press the
+ * button as well. The transaction therefore takes a scope-scoped advisory
+ * lock, so the two refreshes queue instead of interleaving, and the insert
+ * ignores a conflict, so the database refuses a duplicate row even if the
+ * lock was not enough (D-070).
  */
 async function aggregateScope(
   scope: AggregationScope,
@@ -106,9 +113,38 @@ async function aggregateScope(
   const rows = await computeAggregateRows(scope, start, end, db);
 
   await db.transaction(async tx => {
+    await lockScope(tx, scope);
     await deleteScopedRange(scope, startDate, endDate, tx);
     await insertAggregateRows(rows, tx);
   });
+}
+
+/**
+ * Serialize the refreshes of one scope.
+ *
+ * The lock is transaction-scoped: it is taken when the transaction starts and
+ * released when it commits, so a crashed refresh never leaves a lock behind.
+ * The key is derived from the scope, so the refresh of one title never waits
+ * for the refresh of another.
+ *
+ * @param executor the transaction
+ * @param scope the scope the run covers
+ */
+async function lockScope(executor: DbExecutor, scope: AggregationScope): Promise<void> {
+  await executor.execute(sql`select pg_advisory_xact_lock(hashtext(${scopeLockKey(scope)}))`);
+}
+
+/** The lock key of one scope. */
+function scopeLockKey(scope: AggregationScope): string {
+  if (scope.kind === 'site') {
+    return 'analytics:site';
+  }
+
+  if (scope.kind === 'type') {
+    return `analytics:type:${scope.type}`;
+  }
+
+  return `analytics:content:${scope.type}:${scope.contentId}`;
 }
 
 /**
@@ -580,22 +616,27 @@ async function insertAggregateRows(
     return;
   }
 
-  await executor.insert(analytics_daily_aggregates).values(
-    rows.map(row => ({
-      date: row.date,
-      content_type: row.contentType,
-      content_id: row.contentId,
-      drama_id: row.contentType === 'drama' ? row.contentId : null,
-      movie_id: row.contentType === 'movie' ? row.contentId : null,
-      unique_visitors: row.uniqueVisitors,
-      total_views: row.totalViews,
-      total_playback_events: row.totalPlaybackEvents,
-      playback_starts: row.playbackStarts,
-      playback_viewers: row.playbackViewers,
-      completion_events: row.completionEvents,
-      total_watch_duration_seconds: row.totalWatchDurationSeconds,
-      created_at: sql`now()`,
-      updated_at: sql`now()`,
-    }))
-  );
+  // The partial unique indexes are the authority: a row that already exists
+  // for the same logical key is left alone instead of being written twice.
+  await executor
+    .insert(analytics_daily_aggregates)
+    .values(
+      rows.map(row => ({
+        date: row.date,
+        content_type: row.contentType,
+        content_id: row.contentId,
+        drama_id: row.contentType === 'drama' ? row.contentId : null,
+        movie_id: row.contentType === 'movie' ? row.contentId : null,
+        unique_visitors: row.uniqueVisitors,
+        total_views: row.totalViews,
+        total_playback_events: row.totalPlaybackEvents,
+        playback_starts: row.playbackStarts,
+        playback_viewers: row.playbackViewers,
+        completion_events: row.completionEvents,
+        total_watch_duration_seconds: row.totalWatchDurationSeconds,
+        created_at: sql`now()`,
+        updated_at: sql`now()`,
+      }))
+    )
+    .onConflictDoNothing();
 }

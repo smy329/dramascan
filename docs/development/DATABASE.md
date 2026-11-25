@@ -274,6 +274,7 @@ Migration tooling and practices are defined in `CONVENTIONS.md` §10. Database-s
 - `drizzle/0018_analytics_and_notifications.sql` completes the analytics and notification data model (Prompts 139–154). It adds the `deleted_at` column to `content_view_events`, `playback_analytics_events`, and `search_events`, the `episode_id` column to `playback_analytics_events`, the three guest-session foreign keys and the episode foreign key (`ON DELETE restrict`), the deduplication indexes that make the six-hour view window and the bounded playback writes enforceable, the notification indexes, and the independent `notification_preferences.new_drama` switch. See §8.9.
 - `drizzle/0019_analytics_retention_indexes.sql` adds the three indexes the analytics retention command needs: `idx_guest_sessions_created_at` (the expired anonymous sessions), `idx_search_events_searched_at` (the expired search events), and `idx_playback_analytics_events_guest_session` (the "does an event still point at this session?" check). Without them the command would read a whole table on every run.
 - `drizzle/0020_phase11_review_fixes.sql` closes the gaps the Phase 11 review found: the notification de-duplication index, the delivery-maintenance index, the administrator alert columns and the `admin_notification_reads` table, and the two new aggregate columns. It adds no rows and rewrites none.
+- `drizzle/0021_phase11_review_fixes_round2.sql` gives `analytics_daily_aggregates` the database-level key it lacked (D-070). Two partial unique indexes state the two logical keys of the table: `uq_analytics_daily_aggregates_site_date` on `(date)` where the content type is null, and `uq_analytics_daily_aggregates_content_date` on `(date, content_type, content_id)` where it is set. Both are partial on `deleted_at IS NULL`, because a soft-deleted row is history and must not collide with the live row of the same key. The migration removes the duplicates the old application could create first, keeping the most recently written row of each key: the rows it deletes were duplicates of each other, so no measurement is lost. Reversible: the rollback drops the two indexes; the removed duplicates are not restored, but the surviving row holds the newest numbers.
 - The content Trash (Prompts 072–074) needs no migration: it reuses the existing `deleted_at` columns on `dramas`, `seasons`, `episodes`, and `movies`, and the existing `deleted_at` indexes. The cascade timestamp is a value in those columns, not a new column.
 - Image assets (Prompts 075–078) need no migration: the stored artwork lives on the application disk, and the content tables keep only the managed `/media/...` path in `dramas.poster`, `dramas.banner`, `movies.poster`, and `movies.banner`.
 - `npm run db:generate` creates the next numbered migration from schema changes; `npm run db:migrate` applies pending migrations. `npm run db:push` is local-only and must never be used against production.
@@ -689,9 +690,13 @@ three are added `NOT VALID` and are validated by `npm run db:integrity`.
 | `uq_push_subscriptions_active`         | `user_id, endpoint`                                                         | One active subscription per account and browser endpoint. |
 | `uq_notifications_user_event_content`  | `user_id, event_type, content_id` (partial: `deleted_at IS NULL AND content_id IS NOT NULL`) | One live notification per recipient, event, and content item. The database decides whether a notification is new, so two concurrent publication retries cannot both write it (D-069). Rows without a content id are excluded: mandatory account/security notifications legitimately share an event type. |
 | `uq_admin_notification_reads_notification_user` | `notification_id, admin_user_id`                                  | One read-state row per alert and administrator (D-067). |
+| `uq_analytics_daily_aggregates_site_date` | `date` (partial: `content_type IS NULL AND deleted_at IS NULL`) | One live site-wide row per day (D-070). |
+| `uq_analytics_daily_aggregates_content_date` | `date, content_type, content_id` (partial: `content_type IS NOT NULL AND deleted_at IS NULL`) | One live row per day and title (D-070). |
 
 Every index is partial (`WHERE deleted_at IS NULL`), so a soft-deleted row
-does not block a new one.
+does not block a new one. The two aggregate indexes are partial on the
+content type as well, because the site-wide row and the row of a title are
+different keys of the same table.
 
 #### Query indexes
 

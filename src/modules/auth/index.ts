@@ -16,6 +16,12 @@ export {
   setUserAccountActive,
 } from './repository';
 
+export {
+  DEFAULT_AUDIENCE_LIMIT,
+  MAX_AUDIENCE_LIMIT,
+  listActiveAccountIds,
+} from './audience';
+
 export { getUserDisplayName, getUserDisplayNames } from './display-names';
 
 export type {

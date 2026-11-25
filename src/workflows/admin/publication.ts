@@ -15,7 +15,14 @@ import {
   type PublicationStatus,
 } from '@/modules/content/publication';
 import { parsePublicationRequest } from '@/modules/content/validation';
-import { createAdminNotification, notifyPublishedContent } from '@/modules/notifications';
+import { publicDramaHref, publicEpisodeHref } from '@/modules/content';
+import {
+  createAdminNotification,
+  notifyNewDrama,
+  notifyNewEpisode,
+  notifyNewSeason,
+  type NotificationRoundResult,
+} from '@/modules/notifications';
 import { createRequestLogger } from '@/platform/logging';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -436,7 +443,7 @@ async function announcePublishedContent(
   }
 
   try {
-    await notifyPublishedContent(contentType, ids);
+    await announceContent(contentType, ids);
   } catch (error) {
     const { logger } = createRequestLogger({ module: 'notifications' });
     logger.warn(
@@ -465,6 +472,115 @@ async function announcePublishedContent(
       );
     }
   }
+}
+
+/**
+ * Announce the published content, one title at a time.
+ *
+ * The content rows are read here, in the workflow layer: the notification
+ * module owns the notification rules and the notification rows, and it is
+ * given the title and the deep link of every announcement rather than a
+ * content id it would have to look up itself (D-070).
+ *
+ * @param contentType what was published
+ * @param ids the ids that became publicly available
+ */
+async function announceContent(
+  contentType: PublicationContentType,
+  ids: readonly string[]
+): Promise<NotificationRoundResult> {
+  const result: NotificationRoundResult = {
+    notified: 0,
+    skippedAsDuplicate: 0,
+    skippedByPreference: 0,
+    pushAttempts: 0,
+  };
+
+  if (contentType === 'drama') {
+    const rows = await db
+      .select({ id: dramas.id, title: dramas.title, slug: dramas.slug })
+      .from(dramas)
+      .where(and(inArray(dramas.id, [...ids]), isNull(dramas.deleted_at)));
+
+    for (const row of rows) {
+      mergeRoundResult(
+        result,
+        await notifyNewDrama({
+          dramaId: row.id,
+          dramaTitle: row.title,
+          link: publicDramaHref(row.id, row.slug),
+        })
+      );
+    }
+
+    return result;
+  }
+
+  if (contentType === 'season') {
+    const rows = await db
+      .select({
+        id: seasons.id,
+        title: seasons.title,
+        dramaId: seasons.drama_id,
+        dramaTitle: dramas.title,
+        dramaSlug: dramas.slug,
+      })
+      .from(seasons)
+      .innerJoin(dramas, eq(seasons.drama_id, dramas.id))
+      .where(and(inArray(seasons.id, [...ids]), isNull(seasons.deleted_at)));
+
+    for (const row of rows) {
+      mergeRoundResult(
+        result,
+        await notifyNewSeason({
+          seasonId: row.id,
+          seasonTitle: row.title,
+          dramaTitle: row.dramaTitle,
+          link: publicDramaHref(row.dramaId, row.dramaSlug),
+        })
+      );
+    }
+
+    return result;
+  }
+
+  const rows = await db
+    .select({
+      id: episodes.id,
+      title: episodes.title,
+      dramaId: episodes.drama_id,
+      dramaTitle: dramas.title,
+      dramaSlug: dramas.slug,
+    })
+    .from(episodes)
+    .innerJoin(dramas, eq(episodes.drama_id, dramas.id))
+    .where(and(inArray(episodes.id, [...ids]), isNull(episodes.deleted_at)));
+
+  for (const row of rows) {
+    mergeRoundResult(
+      result,
+      await notifyNewEpisode({
+        episodeId: row.id,
+        episodeTitle: row.title,
+        dramaId: row.dramaId,
+        dramaTitle: row.dramaTitle,
+        link: publicEpisodeHref(row.dramaId, row.dramaSlug, row.id),
+      })
+    );
+  }
+
+  return result;
+}
+
+/** Fold one round's counters into the round of the whole publication. */
+function mergeRoundResult(
+  target: NotificationRoundResult,
+  round: NotificationRoundResult
+): void {
+  target.notified += round.notified;
+  target.skippedAsDuplicate += round.skippedAsDuplicate;
+  target.skippedByPreference += round.skippedByPreference;
+  target.pushAttempts += round.pushAttempts;
 }
 
 /** Manual publish of content. */

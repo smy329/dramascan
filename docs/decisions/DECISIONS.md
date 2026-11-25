@@ -2968,4 +2968,164 @@ was not the real bound.
 
 ---
 
+## D-070 — The server decides what a public beacon and a push endpoint may claim
+
+**Date:** 2026-11-25
+**Status:** Approved by user (Phase 11 review round 2)
+**Extends:** D-061 (the notification channels), D-065 (the analytics retention
+policy), D-069 (the notification idempotency)
+
+**Context:** The second review found three places where the client decided
+something the server had to decide.
+
+1. A push subscription is an address the *server* contacts. The endpoint came
+   from the browser and was stored as it arrived: no scheme rule, no host rule,
+   no timeout. A signed-in viewer could therefore make the server send a
+   request to an address of their choosing.
+2. A playback beacon is public. It carried an arbitrary watch duration, an
+   arbitrary media position, and a `completionThresholdMet` flag that was
+   honoured on every event type.
+3. The daily aggregate table had no database-level uniqueness, so two
+   overlapping refreshes of the same day could each write a row for it.
+
+**Decision:**
+
+1. **A push endpoint is validated before it is stored and again before it is
+   contacted.** The rules live in one shared module
+   (`modules/notifications/push-transport.ts`): HTTPS only, no credentials and
+   no fragment, no local or private host name, no private or reserved IP
+   literal (IPv4 and IPv6, including the IPv4-mapped, NAT64, and 6to4 forms),
+   an optional `PUSH_ALLOWED_HOSTS` allowlist, and a DNS check at send time
+   whose answer is pinned for the connection itself. The outbound request has
+   a timeout. The push configuration is part of `ServerConfig`: a half
+   configured key pair fails at startup, not at the first delivery.
+2. **The browser push transport is shared with the maintenance command.** The
+   command imports the TypeScript sources directly (Node's native type
+   stripping), so "may this endpoint be contacted?" has exactly one answer.
+3. **The server bounds what a playback beacon may claim.** The watch duration
+   is clamped to the time that passed since the previous stored event of the
+   same visitor and the same content, plus thirty seconds of tolerance, and to
+   an absolute maximum. A media position beyond the absolute maximum is
+   dropped. The completion flag is honoured on a `completion` event only and
+   is forced to `false` on every other event.
+4. **The daily aggregate has a database-level key.** Two partial unique
+   indexes state the two logical keys of `analytics_daily_aggregates` — the
+   site-wide row of a day and the row of a title — and the refresh takes a
+   transaction-scoped advisory lock and inserts with `ON CONFLICT DO NOTHING`.
+5. **The range-level playback viewers are counted over the raw events.** The
+   daily aggregate keeps a viewer count per day; the range counts the distinct
+   visitors of the raw playback events, so a viewer who played on three days
+   is one viewer of the range and not three.
+6. **The notification maintenance command exists as a command.** It is
+   `scripts/notification-maintenance.mjs`, run by `npm run
+   db:notifications:maintenance`, and it shares the delivery rule and the push
+   transport with the application.
+
+**Consequences:**
+
+- A viewer cannot make the server contact a private address, and a deployment
+  without a VAPID key pair says so instead of failing at the first delivery.
+- A forged beacon cannot inflate the watch time or claim a completion that did
+  not happen; the numbers are lower bounds, which is what an untrusted signal
+  can honestly support.
+- Two refreshes of the same day produce one row, whatever the interleaving.
+- The average watch time of a range is divided by the viewers of the range, so
+  it no longer depends on how many days those viewers happened to watch.
+
+---
+
+## D-071 — The integration suite runs its files one after another
+
+**Date:** 2026-11-25
+**Status:** Approved by user (Phase 11 review round 2)
+**Extends:** the test-database rule of the project AGENTS.md
+
+**Context:** The integration tests share one PostgreSQL database. A
+production broadcast reaches *every* active account: publishing a drama
+notifies every active viewer. Two test files running at the same time
+therefore interfere — a file that publishes a drama notifies the accounts that
+another file created a moment earlier, and an assertion about "the
+notifications this viewer holds" becomes a question of timing rather than of
+code. The failure is real and was observed as a count of five notifications
+where one was expected.
+
+**Decision:**
+
+1. **The integration test files run sequentially** (`fileParallelism: false`).
+   The cost is wall-clock time; the benefit is a deterministic suite.
+2. **An assertion about a notification is scoped to its event.** A test that
+   publishes an episode asserts on the notifications of *that* event, not on
+   every notification the recipient happens to hold.
+
+**Consequences:**
+
+- The integration suite gives the same result on every run, which is what a
+  suite that gates a push to `main` has to do.
+- A new integration test does not have to defend itself against the
+  broadcasts of the files that run next to it.
+
+---
+
+## D-072 — The browser suite warms up every route, and the cleanup survives a late beacon
+
+**Date:** 2026-11-25
+**Status:** Approved by user (Phase 11 review round 2)
+**Extends:** D-071 (the integration suite determinism), the E2E harness rule
+of the project AGENTS.md
+
+**Context:** The browser suite failed 8 of its 93 tests, and the failures moved
+between runs. The server log showed every request answering 200 with the
+correct data, and an isolated run of the worst file progressed further each
+attempt. Two harness defects explain the whole pattern.
+
+1. The warm-up list (`tests/e2e/support/warmup.mjs`) was written by hand and
+   had fallen behind the application. A development server compiles a route the
+   first time it is requested, so a test that reached an un-warmed route paid
+   the cold compile inside its own assertion window.
+2. The fixture deleted the drama hierarchy outside the savepoint that protects
+   the late-beacon retry. A late *playback* beacon can land while the cleanup
+   runs, and the restrictive foreign key from
+   `playback_analytics_events.episode_id` then refuses the deletion of the
+   *episode* row, not only the deletion of the drama row.
+
+**Decision:**
+
+1. **The warm-up covers every route module the application exposes, and the
+   invariant is enforced by a unit test.**
+   `tests/unit/e2e/warmup-coverage.test.ts` derives the route addresses from
+   `src/app/**/{page,route}.ts` — dropping the route groups and replacing the
+   dynamic segments with a placeholder identifier — and fails when a route is
+   missing from the list. A route added later cannot silently escape the
+   warm-up.
+2. **The dependent deletions run inside the same savepoint as the content
+   deletion.** `deleteContentWithLateAnalyticsRetry` accepts the statements
+   that have to run before the content row, so a beacon that blocks one of
+   them rolls the whole attempt back and the retry runs the whole hierarchy
+   again.
+3. **The retry watches both SQLSTATEs that mean "a child row still points at
+   this row".** PostgreSQL reports `23001` (`restrict_violation`) for an
+   `ON DELETE RESTRICT` foreign key and `23503` (`foreign_key_violation`) for
+   an `ON DELETE NO ACTION` one. The analytics tables use `RESTRICT`, so the
+   retry was watching the code that never occurs, and every late beacon was
+   reported as a broken fixture instead of being retried. The failure message
+   names the statement and the constraint that were refused, so the next
+   occurrence is diagnosable without a database dump.
+4. **The browser budgets cover a cold compile.** The expectation timeout is 20
+   seconds, the navigation timeout 60 seconds, the test budget 90 seconds, and
+   the action timeout 20 seconds. The warm-up pays the compile cost before the
+   first test runs, so the budget only has to cover what the warm-up cannot
+   pre-compile: the module of a server action, which the browser loads when
+   the action is invoked.
+
+**Consequences:**
+
+- A test failure means the application is wrong, not that the machine was
+  slow; the browser suite is a gate that can be trusted.
+- The warm-up list cannot rot: a new route that is not compiled before the
+  first test fails the unit suite.
+- The cleanup tolerates the race that the background beacons create, which is
+  the race the product itself has to tolerate.
+
+---
+
 

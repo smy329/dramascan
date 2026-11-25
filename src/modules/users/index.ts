@@ -50,6 +50,12 @@ export type {
 export { isBookmarked, listUserBookmarks, toggleBookmark } from './bookmarks';
 export type { BookmarkTarget, UserBookmark } from './bookmarks';
 
+export {
+  DEFAULT_BOOKMARK_AUDIENCE_LIMIT,
+  MAX_BOOKMARK_AUDIENCE_LIMIT,
+  listBookmarkOwnerIds,
+} from './bookmark-audience';
+
 export { listWatchHistoryItems } from './watch-history';
 export type { WatchHistoryItem } from './watch-history';
 
@@ -73,7 +79,6 @@ export type {
   PlaybackProgressInput,
 } from './validation';
 
-export { submitReport } from '@/workflows/users/report-action';
 export type {
   ReportReason,
   ReportReasonLabel,

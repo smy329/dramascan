@@ -4,6 +4,109 @@ All notable changes to the DramaScan project will be documented in this file.
 
 ## [Unreleased] - 2026-11-24
 
+### fix: resolve the second Phase 11 review round (Prompts 139–154)
+
+A second fresh review of the Phase 11 work found five Important and three Minor
+findings. Each was checked against the code before any fix. This pass fixes
+them and adds the regression coverage that proves the fixes.
+
+#### Security
+
+- **A push endpoint is validated before it is stored and again before it is
+  contacted.** The rules live in one shared module
+  (`modules/notifications/push-transport.ts`): HTTPS only, no credentials and no
+  fragment, no local or private host name, no private or reserved IP literal
+  (IPv4 and IPv6, including the IPv4-mapped, NAT64, and 6to4 forms), an
+  optional `PUSH_ALLOWED_HOSTS` allowlist, a DNS check at send time whose
+  answer is pinned for the connection, and an outbound timeout (D-070).
+- **The push configuration is part of `ServerConfig`.** A half-configured VAPID
+  key pair fails at startup, the contact address must be a `mailto:` address or
+  an HTTPS URL, and the host allowlist is validated as a list of host names.
+
+#### Analytics
+
+- **A public playback beacon cannot claim an arbitrary watch time.** The watch
+  duration is clamped to the time that passed since the previous stored event
+  of the same visitor and the same content, plus thirty seconds of tolerance,
+  and to an absolute maximum; an impossible media position is dropped (D-070).
+- **Only a completion event may claim a completion.** The browser sends the
+  flag on every event, so the field is honoured on a `completion` event only and
+  forced to `false` everywhere else — at the validation boundary and again at
+  the write, so no caller of the module can record a completion the event type
+  does not support (D-070).
+- **The daily aggregate has a database-level key.** Migration `0021` adds the
+  two partial unique indexes that state the logical keys of
+  `analytics_daily_aggregates`; the refresh takes a transaction-scoped advisory
+  lock and inserts with `ON CONFLICT DO NOTHING` (D-070).
+- **The average watch time of a range is divided by the viewers of the range.**
+  The range-level playback viewers are counted over the raw playback events, so
+  a viewer who played on three days is one viewer (D-070).
+
+#### Notifications
+
+- **The maintenance command exists.** `scripts/notification-maintenance.mjs` and
+  `npm run db:notifications:maintenance` share the delivery rule and the push
+  transport with the application and report a structured result (D-070).
+- **Turning browser push off releases the browser subscription.** The opt-in
+  island calls `PushSubscription.unsubscribe()` for the subscription whose
+  endpoint matches the one that was turned off.
+- **The notification module reads other modules through their public APIs.**
+  The bookmark audience comes from `users.listBookmarkOwnerIds`, the
+  active-account audience from `auth.listActiveAccountIds`, and the content
+  resolution moved into the publication workflow: the notification module does
+  not import `content` at all. The administrator viewer adapter moved from
+  `src/lib/` to `src/workflows/admin/admin-notification-viewer.ts`.
+
+#### Testing
+
+- **The integration suite is deterministic.** The files share one PostgreSQL
+  database, and a production broadcast reaches every active account, so two
+  files running at the same time interfered with each other. The integration
+  files now run one after another, and a notification assertion is scoped to
+  its event (D-071).
+- **The browser suite warms up every route, and the invariant is enforced.** The
+  warm-up list was written by hand and had fallen behind: the public ranking
+  pages and roughly twenty administration pages and API routes were missing
+  from it. A test that reached an un-warmed route paid the cold Turbopack
+  compile inside its own assertion window, so a correct application was
+  reported as a broken one. The list now covers every route module under
+  `src/app`, and `tests/unit/e2e/warmup-coverage.test.ts` derives the routes
+  from the source tree and fails when one escapes the list.
+- **The fixture deletes the drama hierarchy inside the retry.** A late
+  playback beacon can land while the cleanup runs, and the restrictive foreign
+  key then refuses the deletion of the *episode* row, not only the deletion of
+  the drama row. The dependent deletions now run inside the same savepoint as
+  the content deletion, so the whole hierarchy is deleted again on the next
+  attempt.
+- **The retry watches the right SQLSTATE.** PostgreSQL reports two codes for
+  the same refusal: `23001` (`restrict_violation`) for an `ON DELETE RESTRICT`
+  foreign key and `23503` (`foreign_key_violation`) for an `ON DELETE NO
+  ACTION` one. The analytics tables use `RESTRICT`, so the retry was watching
+  the code that never occurs, and every late beacon was reported as a broken
+  fixture. Both codes are retried now, and the failure message names the
+  statement and the constraint that were refused.
+- **The browser budgets cover a cold compile.** The expectation timeout is 20
+  seconds, the navigation timeout 60 seconds, the test budget 90 seconds, and
+  the action timeout 20 seconds.
+
+#### Schema
+
+- `drizzle/0021_phase11_review_fixes_round2.sql`: the two partial unique
+  indexes of `analytics_daily_aggregates`, after removing the duplicates the
+  old application could create.
+
+#### Verification
+
+- Typecheck: **PASS** (`npm run typecheck`)
+- Lint: **PASS** (`npm run lint`)
+- Unit tests: **PASS** — 1241/1241, 120 files (`npm test`)
+- Integration tests: **PASS** — 776/776, 54 files (`npm run test:integration`)
+- Playwright E2E: **PASS** — 93/93 (`npm run test:e2e`)
+- Production build: **PASS** (`npm run build` with HTTPS `APP_URL` and
+  `TRUSTED_ORIGINS`) — "Compiled successfully", exit code 0
+
+---
+
 ### fix: resolve the Phase 11 review findings (Prompts 139–154)
 
 A fresh review of the Phase 11 commit found ten defects, all confirmed against

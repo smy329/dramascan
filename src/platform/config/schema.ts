@@ -39,6 +39,26 @@ export type ServerConfig = Readonly<{
    * divergent rules (requirements §7.3).
    */
   playbackCompletionThresholdPercent: number;
+  /** The VAPID public key the browser needs to create a subscription. */
+  webPushPublicKey: string | null;
+  /** The VAPID private key. It never leaves the server. */
+  webPushPrivateKey: string | null;
+  /** The contact address the push service shows the viewer. */
+  webPushSubject: string | null;
+  /** How long the push service may hold an undelivered message, in seconds. */
+  webPushTtlSeconds: number;
+  /**
+   * The hosts a browser push endpoint may point at.
+   *
+   * Empty means "any public HTTPS host". A non-empty list pins the deployment
+   * to the push services it trusts, so a viewer cannot point the server at an
+   * address of their choosing (D-070).
+   */
+  pushAllowedHosts: readonly string[];
+  /** The Firebase Cloud Messaging server key. The adapter is retained, not selected. */
+  fcmServerKey: string | null;
+  /** The Firebase Cloud Messaging project id. The adapter is retained, not selected. */
+  fcmProjectId: string | null;
 }>;
 
 /** Global empty-drama visibility modes (requirements §4.7). */
@@ -51,6 +71,12 @@ export const DEFAULT_TRASH_RETENTION_DAYS = 30;
 
 /** Default playback completion threshold in percent (requirements §7.3). */
 export const DEFAULT_PLAYBACK_COMPLETION_THRESHOLD_PERCENT = 90;
+
+/** Default lifetime of a queued browser push message, in seconds. */
+export const DEFAULT_PUSH_TTL_SECONDS = 3600;
+
+/** The longest lifetime a push service accepts, in seconds (four weeks). */
+export const MAX_PUSH_TTL_SECONDS = 2_419_200;
 
 export class ConfigurationError extends Error {
   readonly issues: readonly string[];
@@ -134,6 +160,18 @@ const rawServerConfigSchema = z
       .min(1, 'TRASH_RETENTION_DAYS must be at least 1.')
       .max(365, 'TRASH_RETENTION_DAYS must be at most 365.')
       .optional(),
+    WEB_PUSH_PUBLIC_KEY: z.string().min(1).optional(),
+    WEB_PUSH_PRIVATE_KEY: z.string().min(1).optional(),
+    WEB_PUSH_SUBJECT: z.string().min(1).optional(),
+    WEB_PUSH_TTL_SECONDS: z.coerce
+      .number()
+      .int('WEB_PUSH_TTL_SECONDS must be a whole number.')
+      .min(0, 'WEB_PUSH_TTL_SECONDS must not be negative.')
+      .max(MAX_PUSH_TTL_SECONDS, 'WEB_PUSH_TTL_SECONDS must be at most 2419200.')
+      .optional(),
+    PUSH_ALLOWED_HOSTS: z.string().optional(),
+    FCM_SERVER_KEY: z.string().min(1).optional(),
+    FCM_PROJECT_ID: z.string().min(1).optional(),
   })
   .superRefine((value, ctx) => {
     const isProduction = value.NODE_ENV === 'production';
@@ -173,6 +211,7 @@ const rawServerConfigSchema = z
     validateTestDatabase(value.TEST_DATABASE_URL, value.DATABASE_URL, ctx);
     validateImageStorageDir(value.IMAGE_STORAGE_DIR, isProduction, ctx);
     validateAllowedMediaOrigins(value.MEDIA_ALLOWED_HOSTS, ctx);
+    validatePushConfiguration(value, ctx);
   })
   .transform(value => toServerConfig(value));
 
@@ -209,6 +248,13 @@ type RawEnvironment = Readonly<{
   MEDIA_ALLOWED_HOSTS?: string | undefined;
   PLAYBACK_COMPLETION_THRESHOLD_PERCENT?: number | undefined;
   TRASH_RETENTION_DAYS?: number | undefined;
+  WEB_PUSH_PUBLIC_KEY?: string | undefined;
+  WEB_PUSH_PRIVATE_KEY?: string | undefined;
+  WEB_PUSH_SUBJECT?: string | undefined;
+  WEB_PUSH_TTL_SECONDS?: number | undefined;
+  PUSH_ALLOWED_HOSTS?: string | undefined;
+  FCM_SERVER_KEY?: string | undefined;
+  FCM_PROJECT_ID?: string | undefined;
 }>;
 
 function toServerConfig(value: RawEnvironment): ServerConfig {
@@ -242,6 +288,15 @@ function toServerConfig(value: RawEnvironment): ServerConfig {
     playbackCompletionThresholdPercent:
       value.PLAYBACK_COMPLETION_THRESHOLD_PERCENT ??
       DEFAULT_PLAYBACK_COMPLETION_THRESHOLD_PERCENT,
+    webPushPublicKey: value.WEB_PUSH_PUBLIC_KEY ?? null,
+    webPushPrivateKey: value.WEB_PUSH_PRIVATE_KEY ?? null,
+    webPushSubject: value.WEB_PUSH_SUBJECT ?? null,
+    webPushTtlSeconds: value.WEB_PUSH_TTL_SECONDS ?? DEFAULT_PUSH_TTL_SECONDS,
+    pushAllowedHosts: Object.freeze(
+      splitOrigins(value.PUSH_ALLOWED_HOSTS).map(host => host.toLowerCase())
+    ),
+    fcmServerKey: value.FCM_SERVER_KEY ?? null,
+    fcmProjectId: value.FCM_PROJECT_ID ?? null,
   });
 }
 
@@ -486,6 +541,88 @@ function validateAllowedMediaOrigins(
         code: 'custom',
         path: ['MEDIA_ALLOWED_HOSTS'],
         message: 'MEDIA_ALLOWED_HOSTS entries must be an origin without a path, query, or fragment.',
+      });
+    }
+  }
+}
+
+/**
+ * Validate the browser push configuration.
+ *
+ * The VAPID key pair is all or nothing: a deployment with only the public key
+ * could accept a subscription it can never deliver to, so a half-configured
+ * pair is a configuration error rather than a silent partial setup.
+ *
+ * The contact address is what the push service shows the viewer, so it must
+ * be a `mailto:` address or an HTTPS URL.
+ *
+ * The host allowlist names the push services the deployment trusts. Each entry
+ * is a plain host name: a scheme, a path, or a port would never match the
+ * host of an endpoint, and a silently ineffective allowlist is worse than
+ * none.
+ */
+function validatePushConfiguration(
+  value: {
+    WEB_PUSH_PUBLIC_KEY?: string | undefined;
+    WEB_PUSH_PRIVATE_KEY?: string | undefined;
+    WEB_PUSH_SUBJECT?: string | undefined;
+    PUSH_ALLOWED_HOSTS?: string | undefined;
+  },
+  ctx: z.RefinementCtx
+): void {
+  const hasPublicKey = value.WEB_PUSH_PUBLIC_KEY !== undefined;
+  const hasPrivateKey = value.WEB_PUSH_PRIVATE_KEY !== undefined;
+
+  if (hasPublicKey !== hasPrivateKey) {
+    ctx.addIssue({
+      code: 'custom',
+      path: [hasPublicKey ? 'WEB_PUSH_PRIVATE_KEY' : 'WEB_PUSH_PUBLIC_KEY'],
+      message: 'WEB_PUSH_PUBLIC_KEY and WEB_PUSH_PRIVATE_KEY must be set together.',
+    });
+  }
+
+  if (value.WEB_PUSH_SUBJECT !== undefined) {
+    const subject = value.WEB_PUSH_SUBJECT.trim();
+    const isMailto = subject.toLowerCase().startsWith('mailto:');
+
+    let isHttps = false;
+
+    try {
+      isHttps = new URL(subject).protocol === 'https:';
+    } catch {
+      isHttps = false;
+    }
+
+    if (!isMailto && !isHttps) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['WEB_PUSH_SUBJECT'],
+        message: 'WEB_PUSH_SUBJECT must be a mailto: address or an HTTPS URL.',
+      });
+    }
+  }
+
+  if (value.PUSH_ALLOWED_HOSTS === undefined || value.PUSH_ALLOWED_HOSTS.trim().length === 0) {
+    return;
+  }
+
+  const hosts = splitOrigins(value.PUSH_ALLOWED_HOSTS);
+
+  if (hosts.length === 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['PUSH_ALLOWED_HOSTS'],
+      message: 'PUSH_ALLOWED_HOSTS must contain at least one host when set.',
+    });
+    return;
+  }
+
+  for (const host of hosts) {
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(host)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['PUSH_ALLOWED_HOSTS'],
+        message: `PUSH_ALLOWED_HOSTS contains an invalid host: ${host}.`,
       });
     }
   }

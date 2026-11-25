@@ -21,7 +21,7 @@ Prompts 139-154 implement the privacy-conscious analytics layer (anonymous guest
 - **Browser push (Prompt 151).** The selected transport is native Web Push (VAPID) through the `web-push` package, with the VAPID key pair read from the environment. FCM remains an isolated adapter but is not selected: its browser SDK yields a registration token, not the `endpoint` + `p256dh` + `auth` subscription the browser hands the application (D-066). A deployment without a key pair reports an explicit failure; it never claims a delivery it did not perform. A `404`/`410` from the push service retires the subscription. The permission is requested inside the click handler of the opt-in island — a browser asked for a permission without a gesture answers "denied", and the viewer never sees the choice again. The service worker (`public/sw.js`) handles `push` and `notificationclick` only (D-063).
 - **Notification events (Prompt 152).** A newly published drama, season, or episode notifies the eligible viewers — the bookmarks of the parent drama for an episode, the whole audience for a drama or a season — after the publication transaction has committed. Only content that is published *and* publicly available is announced, the round is idempotent, and the audience is read in three bulk queries with a bound of 5000 (D-062). Account deactivation, reactivation, role changes, and session termination produce mandatory account/security notifications (D-064).
 - **Announcements and the administrator alert centre (Prompt 153).** `/admin/notifications` creates a draft announcement and publishes it by hand; the published list is bounded to 50 rows. The same page holds the administrator alert centre: a new content report writes a `content` alert to the moderators, and a failed publication announcement writes a `high` `system` alert to the Super Admin. Every alert read is filtered by the alert's audience on the server (`all`, `super_admin`, or named roles), read state is per administrator, and an alert outside the viewer's audience answers 404 (D-067).
-- **Delivery safety and cleanup (Prompt 154).** A notification is written at most once: a partial unique index on `(user_id, event_type, content_id)` plus `ON CONFLICT DO NOTHING` decides, and the writer distinguishes `created`, `duplicate`, and `not_wanted` (D-069). A short-lived maintenance command retries a notification from the last seven days that has no successful push and fewer than three attempts, never re-sends one that already reached a browser, and removes old, orphaned, and structurally invalid records in bounded batches. There is no persistent worker, no queue, and no email fallback.
+- **Delivery safety and cleanup (Prompt 154).** A notification is written at most once: a partial unique index on `(user_id, event_type, content_id)` plus `ON CONFLICT DO NOTHING` decides, and the writer distinguishes `created`, `duplicate`, and `not_wanted` (D-069). A short-lived maintenance command retries a notification from the last seven days that has no successful push and fewer than three attempts, never re-sends one that already reached a browser, and removes old, orphaned, and structurally invalid records in bounded batches. There is no persistent worker, no queue, and no email fallback. The command exists as `scripts/notification-maintenance.mjs` (`npm run db:notifications:maintenance`); it shares the delivery rule and the push transport with the application and reports a structured result (D-070).
 
 #### Permissions
 
@@ -41,7 +41,7 @@ surface.
 #### Module boundaries
 
 - `analytics` owns the guest sessions, the view events, the playback events, and the daily aggregates; the four dashboard read models live in `analytics/read-models/`, the only directory where a read-only join across modules is allowed.
-- `notifications` owns the preferences, the notification rows, the push subscriptions, the delivery records, and the announcements. It may read `users` and `content`; it never imports `content`.
+- `notifications` owns the preferences, the notification rows, the push subscriptions, the delivery records, and the announcements. It reads `users` (the bookmark audience) and `auth` (the active-account audience) through their public APIs, and it never imports `content`: the publication workflow resolves the title and the deep link and hands them over as a payload snapshot.
 - `content` does not import `notifications`, and `authorization` does not import `notifications`. The publication workflow (`workflows/admin/publication.ts`) and the user-administration workflow (`workflows/admin/users.ts`) are the places that coordinate the two, because the dependency matrix forbids the module-level edges.
 - The view tracker and the playback reporter are client islands; they talk to the server only through the two analytics route handlers.
 
@@ -51,6 +51,10 @@ surface.
 - **The analytics fixtures left 97 dramas and 97 movies behind in the shared test database.** The leftovers appeared in the public list queries and broke `public-dramas` and `conversion`. The cleanup now removes the seeded rows as well, and the backlog was purged.
 - **The end-to-end fixtures could not delete the content they had seeded.** The new analytics rows point at the drama and its episodes with a `RESTRICT` foreign key, so the content deletion was refused. The fixtures remove the analytics and notification rows before the content.
 - **A late analytics beacon could still break that cleanup.** The details page reports its view in the background, and the beacon can reach the server after the fixture has already deleted the dependent rows. The deletion now rolls back to a savepoint, waits for the beacons that are still on their way, removes the rows that arrived, and tries again; only a foreign-key violation is retried. The shared helper (`tests/e2e/support/late-analytics.mjs`) serves the drama and the movie fixtures, so both have the same tolerance.
+- **The end-to-end warm-up did not cover every route.** The warm-up list was written by hand and had fallen behind: the public ranking pages (`/search`, `/popular`, `/highest-rated`, `/recently-added`) and roughly twenty administration pages and API routes were missing from it. A development server compiles a route the first time it is requested, so a test that reached an un-warmed route paid the cold compile inside its own assertion window, and a correct application was reported as a broken one. The list now covers every route module under `src/app`, and `tests/unit/e2e/warmup-coverage.test.ts` derives the route addresses from the source tree and fails when one escapes the list — a route added later cannot silently escape the warm-up.
+- **The end-to-end fixture deleted the drama hierarchy outside the retry.** A late *playback* beacon can land while the cleanup runs, and the restrictive foreign key from `playback_analytics_events.episode_id` then refuses the deletion of the *episode* row, not only the deletion of the drama row. The dependent deletions now run inside the same savepoint as the content deletion, so the whole hierarchy is deleted again on the next attempt.
+- **The end-to-end retry watched the wrong SQLSTATE.** PostgreSQL reports two codes for the same refusal: `23001` (`restrict_violation`) for an `ON DELETE RESTRICT` foreign key, and `23503` (`foreign_key_violation`) for an `ON DELETE NO ACTION` one. The analytics tables use `RESTRICT`, so the retry was watching the code that never occurs, and every late beacon was reported as a broken fixture instead of being retried. Both codes are retried now, and the failure message names the statement and the constraint that were refused — the message used to hide everything, which made the defect undiagnosable.
+- **The browser budgets were smaller than a cold compile.** The expectation timeout is now 20 seconds, the navigation timeout 60 seconds, the test budget 90 seconds, and the action timeout 20 seconds. The warm-up pays the compile cost before the first test runs, so the budget only has to cover what the warm-up cannot pre-compile: the module of a server action, which the browser loads when the action is invoked.
 - **A late analytics beacon answered HTTP 500.** The view and playback handlers inserted the event without checking whether the title had been deleted in the meantime, so the `RESTRICT` foreign key turned a fire-and-forget beacon into a server error. Both workflows now recognise the foreign-key violation (`isForeignKeyViolation`, SQLSTATE 23503) and drop the event: a view of a deleted title is not an error.
 - **The watch time was carried as a cumulative session total.** Several events of the same hour bucket each carried the whole session total, so the reported watch time was a multiple of the real watching time. The value is now the per-event delta, and the browser keeps the unconfirmed delta pending until the server confirms the row was stored.
 - **The date-range resolver had no fallback branch.** An unvalidated preset that reached it by a cast produced an unbounded range. It now falls back to `last_7_days`, and the URL resolver validates a custom range before it reaches a query.
@@ -101,6 +105,61 @@ maintenance, and the per-administrator audience/read state; a unit test pins
 the pure audience rule; and the browser suite exercises the alert list, the
 persisted read state, the detail page, and the new dashboard labels.
 
+#### Phase 11 review round 2 (2026-11-25)
+
+A second fresh reviewer reviewed `9c421ed..8507b2c` and requested changes:
+0 Critical, 5 Important, 3 Minor. Each finding was checked against the code
+before any fix.
+
+- **A signed-in viewer could make the server contact an address of their
+  choosing.** The push endpoint came from the browser and was stored as it
+  arrived. The endpoint is now validated before it is stored and again before
+  it is contacted: HTTPS only, no credentials or fragment, no local or private
+  host name, no private or reserved IP literal (IPv4 and IPv6, including the
+  IPv4-mapped, NAT64, and 6to4 forms), an optional `PUSH_ALLOWED_HOSTS`
+  allowlist, a DNS check at send time whose answer is pinned for the
+  connection, and an outbound timeout (D-070).
+- **The push configuration bypassed `ServerConfig`.** The key pair, the
+  contact address, the message lifetime, and the host allowlist are part of
+  `ServerConfig` now: a half-configured key pair fails at startup, and the
+  subject must be a `mailto:` address or an HTTPS URL.
+- **A public playback beacon could claim anything.** The watch duration is
+  clamped to the time that passed since the previous stored event of the same
+  visitor and the same content, plus thirty seconds of tolerance, and to an
+  absolute maximum; an impossible media position is dropped; and the
+  completion flag is honoured on a `completion` event only, at the validation
+  boundary and again at the write (D-070).
+- **Two overlapping aggregate refreshes could write the same day twice.**
+  Migration `0021` adds the two partial unique indexes that state the logical
+  keys of `analytics_daily_aggregates`; the refresh takes a transaction-scoped
+  advisory lock and inserts with `ON CONFLICT DO NOTHING` (D-070).
+- **The average watch time of a range was divided by viewer-days.** The
+  range-level playback viewers are counted over the raw playback events now, so
+  a viewer who played on three days is one viewer of the range (D-070).
+- **The documented notification-maintenance command did not exist.**
+  `scripts/notification-maintenance.mjs` and `npm run db:notifications:maintenance`
+  now exist, share the delivery rule and the push transport with the
+  application, and report a structured result (D-070).
+- **Turning browser push off left the browser subscribed.** The opt-in island
+  now releases the browser subscription whose endpoint matches the one that
+  was turned off.
+- **The notification module read other modules' private schemas, and a server
+  adapter sat in `src/lib/`.** The audience reads moved behind the `users`
+  and `auth` public APIs, the content resolution moved into the publication
+  workflow, and the adapter moved to
+  `src/workflows/admin/admin-notification-viewer.ts`.
+- **The integration suite could fail depending on timing.** A broadcast
+  reaches every active account, so two files running at the same time
+  interfered with each other. The integration files now run one after another
+  and the notification assertions are scoped to their event (D-071).
+
+Regression coverage added: the push-endpoint rules and the push configuration
+are pinned by unit tests, the playback plausibility rule and the completion
+flag by unit tests, the clamp and the dropped position by integration tests,
+the concurrent aggregation by an integration test, the distinct range viewers
+by an integration test, the maintenance command by a unit test, and the
+browser unsubscribe by a component test.
+
 #### Changed files
 
 - `drizzle/0018_analytics_and_notifications.sql` (new), `drizzle/0019_analytics_retention_indexes.sql` (new), `drizzle/meta/_journal.json`
@@ -140,23 +199,58 @@ persisted read state, the detail page, and the new dashboard labels.
   `tests/integration/analytics/dashboard.integration.test.ts`,
   `tests/e2e/{admin-notifications,admin-analytics}.spec.ts`,
   `tests/e2e/support/admin-notification-fixture.mjs` (new)
+- **Review round 2:** `drizzle/0021_phase11_review_fixes_round2.sql` (new),
+  `drizzle/meta/_journal.json`,
+  `src/modules/notifications/push-transport.ts` (new),
+  `src/modules/notifications/push-provider.ts`,
+  `src/modules/analytics/playback-plausibility.ts` (new),
+  `src/modules/analytics/analytics-targets.ts` (new),
+  `src/modules/analytics/{analytics-inputs,playback-analytics-workflow,aggregation-workflow}.ts`,
+  `src/modules/analytics/read-models/dashboard.ts`,
+  `src/modules/auth/audience.ts` (new), `src/modules/auth/index.ts`,
+  `src/modules/users/bookmark-audience.ts` (new), `src/modules/users/index.ts`,
+  `src/modules/notifications/{events,announcements,index}.ts`,
+  `src/platform/config/schema.ts`,
+  `src/workflows/admin/publication.ts`,
+  `src/workflows/admin/admin-notification-viewer.ts` (new),
+  `src/workflows/admin/admin-notifications.ts`,
+  `src/workflows/notifications/subscriptions.ts`,
+  `src/components/notifications/push-notification-opt-in.tsx`,
+  `src/app/admin/notifications/page.tsx`, `src/app/admin/notifications/[id]/page.tsx`,
+  `src/lib/admin-notification-viewer.ts` (deleted),
+  `scripts/notification-maintenance.mjs` (new), `package.json`,
+  `.env.example`,
+  `vitest.integration.config.ts`,
+  `tests/unit/modules/notifications/push-endpoint.test.ts` (new),
+  `tests/unit/platform/config/push-configuration.test.ts` (new),
+  `tests/unit/modules/analytics/playback-plausibility.test.ts` (new),
+  `tests/unit/modules/analytics/analytics-inputs.test.ts` (new),
+  `tests/unit/scripts/notification-maintenance.test.ts` (new),
+  `tests/unit/components/push-notification-opt-in.test.tsx` (new),
+  `tests/unit/e2e/warmup-coverage.test.ts` (new),
+  `tests/unit/e2e/late-analytics.test.ts` (new),
+  `tests/e2e/support/{warmup,late-analytics,drama-fixture}.mjs`,
+  `playwright.config.ts`,
+  `tests/integration/analytics/{playback-analytics,dashboard}.integration.test.ts`,
+  `tests/integration/notifications/notifications.integration.test.ts`,
+  `tests/integration/content/movie-conversion.integration.test.ts`
 
 #### Verification
 
 - Typecheck: **PASS** (`npm run typecheck`)
 - Lint: **PASS** (`npm run lint`)
-- Unit tests: **PASS** — 1180/1180, 112 files (`npm test`)
-- Integration tests: **PASS** — 770/770, 54 files (`npm run test:integration`)
-- Playwright E2E: **PASS** — 93/93 (`npx playwright test`), including the new `admin-analytics`, `admin-notifications`, and `notifications` specs
+- Unit tests: **PASS** — 1241/1241, 120 files (`npm test`)
+- Integration tests: **PASS** — 776/776, 54 files (`npm run test:integration`)
+- Playwright E2E: **PASS** — 93/93 (`npm run test:e2e`), including the new `admin-analytics`, `admin-notifications`, and `notifications` specs
 - Production build: **PASS** (`npm run build` with HTTPS `APP_URL` and
   `TRUSTED_ORIGINS`; the local `.env.local` uses `http://localhost`, which the
-  production configuration rejects)
+  production configuration rejects) — "Compiled successfully", exit code 0
 
 #### Known limitations
 
 - **Browser push is not verified against a live provider.** No VAPID key pair is configured in this environment, so the provider reports an explicit failure. The abstraction, the opt-in, the subscription storage, the delivery records, the retry path, and the expired-subscription retirement are exercised; the transport itself is not verified against a real push service.
 - **The historical aggregates are written on demand.** There is no worker, no queue, and no recurring schedule. Today's aggregate is refreshed by the dashboard's 60-second visible-tab refresh; a historical range is refreshed by the manual button. The dashboard shows when the numbers were last written.
-- **The delivery maintenance command is not scheduled by the platform.** It is a short-lived command that an operator or a `systemd` timer runs; the platform itself has no scheduler.
+- **The delivery maintenance command is not scheduled by the platform.** It is a short-lived command that an operator or a `systemd` timer runs; the platform itself has no scheduler. The command is `npm run db:notifications:maintenance` (D-070).
 - **The search events table is indexed but not yet written.** The table, its soft-delete column, and its deduplication index exist; the search page does not record a search event yet.
 
 ---

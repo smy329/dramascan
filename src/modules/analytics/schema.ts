@@ -129,8 +129,10 @@ export const analytics_daily_aggregates = pgTable(
     created_at: createdAt(),
     updated_at: updatedAt(),
     deleted_at: deletedAt(),
-    // One aggregate row per date + content_type (for content-level) or date only (site-wide)
-    // Uniqueness enforced at application level and via partial unique index in migrations.
+    // The logical key of a row is its day plus its target: the site-wide row
+    // of a day, or the row of one title. The partial unique indexes that
+    // enforce it live in `drizzle/0021_phase11_review_fixes_round2.sql`
+    // (D-070).
   },
   table => [
     checkConstraint(

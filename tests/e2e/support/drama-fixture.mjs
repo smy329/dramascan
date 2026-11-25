@@ -79,6 +79,21 @@ async function run(client, operation, target, query, params) {
 }
 
 /**
+ * The hierarchy deletions that run before the drama row, addressed by id.
+ *
+ * They run inside the savepoint of the late-analytics retry: a playback
+ * beacon that lands while the cleanup is running blocks the episode deletion
+ * with a restrictive foreign key, and the whole hierarchy has to be deleted
+ * again.
+ */
+const DRAMA_HIERARCHY_BY_ID = [
+  'DELETE FROM episodes WHERE drama_id = $1',
+  'DELETE FROM seasons WHERE drama_id = $1',
+  'DELETE FROM structure_conversion_snapshots WHERE drama_id = $1',
+  'DELETE FROM similar_dramas WHERE drama_id = $1 OR similar_drama_id = $1',
+];
+
+/**
  * Delete a drama, tolerating an analytics beacon that lands during cleanup.
  *
  * The public details page reports its view in the background. That beacon can
@@ -88,13 +103,23 @@ async function run(client, operation, target, query, params) {
  * beacons that are still on their way, removes the rows that arrived, and
  * tries again.
  *
+ * The hierarchy of the drama is deleted inside that savepoint as well: the
+ * episodes are removed before the drama row, and a beacon that lands in
+ * between blocks the episode deletion just as it blocks the drama deletion.
+ *
  * @param {import('pg').Client} client
  * @param {{ name: string }} target
  * @param {string} dramaId
  * @returns {Promise<void>}
  */
 async function deleteDramaWithLateAnalyticsRetry(client, target, dramaId) {
-  await deleteContentWithLateAnalyticsRetry(client, target, 'drama', dramaId);
+  await deleteContentWithLateAnalyticsRetry(
+    client,
+    target,
+    'drama',
+    dramaId,
+    DRAMA_HIERARCHY_BY_ID
+  );
 }
 
 /**
@@ -311,30 +336,11 @@ export async function removeDramaBySlug(slug) {
             OR content_id IN (SELECT id FROM episodes WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1))`,
         [slug]
       );
-      await run(
-        client,
-        'delete the created episodes',
-        target,
-        'DELETE FROM episodes WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1)',
-        [slug]
-      );
-      await run(
-        client,
-        'delete the created seasons',
-        target,
-        'DELETE FROM seasons WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1)',
-        [slug]
-      );
-      await run(
-        client,
-        'delete the created snapshots',
-        target,
-        'DELETE FROM structure_conversion_snapshots WHERE drama_id IN (SELECT id FROM dramas WHERE slug = $1)',
-        [slug]
-      );
       const created = await client.query('SELECT id FROM dramas WHERE slug = $1', [slug]);
 
       for (const row of created.rows) {
+        // The hierarchy is deleted inside the late-analytics retry, so a
+        // beacon that lands during the cleanup rolls the whole attempt back.
         await deleteDramaWithLateAnalyticsRetry(client, target, row.id);
       }
 
@@ -399,7 +405,8 @@ export async function removeTaxonomyBySlug(resource, slug) {
  * @param {DramaFixture} fixture
  * @returns {Promise<void>}
  */
-export async function removeDrama(fixture) {  const { target, client } = requireTestClient();
+export async function removeDrama(fixture) {
+  const { target, client } = requireTestClient();
 
   try {
     try {
@@ -525,37 +532,10 @@ export async function removeDrama(fixture) {  const { target, client } = require
              OR content_id IN (SELECT id FROM episodes WHERE drama_id = $1)`,
         [fixture.id]
       );
-      await run(
-        client,
-        'delete the seeded episodes',
-        target,
-        'DELETE FROM episodes WHERE drama_id = $1',
-        [fixture.id]
-      );
-      await run(
-        client,
-        'delete the seeded seasons',
-        target,
-        'DELETE FROM seasons WHERE drama_id = $1',
-        [fixture.id]
-      );
-      await run(
-        client,
-        'delete the seeded snapshots',
-        target,
-        'DELETE FROM structure_conversion_snapshots WHERE drama_id = $1',
-        [fixture.id]
-      );
-      // Recommendation links are written by the admin workflow, not by this
-      // helper, but they belong to the seeded dramas and would otherwise
-      // survive the cleanup as orphans.
-      await run(
-        client,
-        'delete the seeded similar-drama links',
-        target,
-        'DELETE FROM similar_dramas WHERE drama_id = $1 OR similar_drama_id = $1',
-        [fixture.id]
-      );
+      // The hierarchy and the drama row are deleted inside the late-analytics
+      // retry: a beacon that lands during the cleanup blocks the episode
+      // deletion and the drama deletion alike, and the retry has to run the
+      // whole hierarchy again.
       await deleteDramaWithLateAnalyticsRetry(client, target, fixture.id);
 
       await run(client, 'commit the transaction', target, 'COMMIT');

@@ -2,12 +2,13 @@
 
 import { z } from 'zod';
 
-import { toAdminNotificationViewer } from '@/lib/admin-notification-viewer';
 import type { ActionResult } from '@/lib/contracts/common';
 import { resolveActor } from '@/modules/authorization';
 import { setAdminNotificationRead } from '@/modules/notifications';
 import { NotFoundError } from '@/platform/errors';
 import { toActionError } from '@/workflows/action-errors';
+
+import { toAdminNotificationViewer } from './admin-notification-viewer';
 
 /**
  * The administrator notification-centre actions (D-067).

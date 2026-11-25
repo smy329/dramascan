@@ -3,8 +3,8 @@ import 'server-only';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
+import { listActiveAccountIds } from '@/modules/auth';
 import type { DbExecutor } from '@/platform/db/executor';
-import { users } from '@/modules/auth/schema';
 
 import { announcements } from './schema';
 import { writeNotificationOnce } from './notifications';
@@ -209,17 +209,11 @@ export async function publishAnnouncement(
     return result;
   }
 
-  const candidates = await executor
-    .select({ userId: users.id })
-    .from(users)
-    .where(and(isNull(users.deletedAt), eq(users.isActive, true)))
-    .limit(MAX_AUDIENCE_SIZE);
+  const userIds = await listActiveAccountIds(MAX_AUDIENCE_SIZE, executor);
 
-  if (candidates.length === 0) {
+  if (userIds.length === 0) {
     return result;
   }
-
-  const userIds = candidates.map(row => row.userId);
 
   const [alreadyNotified, preferences, pushRecipients] = await Promise.all([
     listAlreadyNotifiedUsers(userIds, 'website_announcement', announcementId, executor),

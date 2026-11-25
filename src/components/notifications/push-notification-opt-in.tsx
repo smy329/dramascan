@@ -58,6 +58,46 @@ function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
   return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+/**
+ * Release the browser's own push subscription when it is the one that was
+ * turned off.
+ *
+ * The server row and the browser subscription are two different things: the
+ * push service keeps delivering to a browser subscription until the browser
+ * releases it. Only the subscription whose endpoint matches is released — a
+ * viewer may hold several, and turning one off must not turn off the others.
+ *
+ * A browser that refuses, or a page with no service worker, leaves the
+ * subscription in place: the server row is already gone, so the notification
+ * is not delivered any more.
+ *
+ * @param endpoint the endpoint of the subscription that was turned off
+ */
+async function releaseBrowserSubscription(endpoint: string): Promise<void> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    return;
+  }
+
+  try {
+    // `getRegistration` resolves straight away when no service worker is
+    // registered, unlike `ready`, which would wait for ever.
+    const registration = await navigator.serviceWorker.getRegistration();
+
+    if (!registration?.pushManager) {
+      return;
+    }
+
+    const current = await registration.pushManager.getSubscription();
+
+    if (current && current.endpoint === endpoint) {
+      await current.unsubscribe();
+    }
+  } catch {
+    // The browser may refuse to release the subscription. The server row is
+    // gone, so nothing is delivered through it any more.
+  }
+}
+
 export function PushNotificationOptIn({
   publicKey,
   subscriptions: initialSubscriptions,
@@ -171,6 +211,8 @@ export function PushNotificationOptIn({
         setMessage(result.error.message);
         return;
       }
+
+      await releaseBrowserSubscription(subscription.endpoint);
 
       setSubscriptions(current => current.filter(row => row.id !== subscription.id));
       setState('idle');

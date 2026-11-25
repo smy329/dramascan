@@ -41,12 +41,18 @@ export default defineConfig({
   // The test budget has to be larger than the navigation timeout below:
   // otherwise a route that is still compiling when the navigation timeout
   // expires could never finish the assertions that follow it.
-  timeout: 60_000,
+  timeout: 90_000,
   // Development servers compile routes on first request. A cold `/drama`
   // compile under load can exceed the default 5s expectation, so allow the
   // route transition to finish without masking genuine failures.
+  //
+  // The measured compile cost on a network filesystem is 4–12 seconds per
+  // route. The warm-up pays that cost before the first test runs, so the
+  // budget below only has to cover what the warm-up cannot pre-compile: the
+  // module of a server action, which the browser loads when the action is
+  // invoked.
   expect: {
-    timeout: 10_000,
+    timeout: 20_000,
   },
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
@@ -54,12 +60,12 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
-    actionTimeout: 10_000,
+    actionTimeout: 20_000,
     // Development servers compile a route the first time it is requested. A
     // cold admin route on a slow filesystem can take longer than the
     // navigation timeout even though the response itself is fast, so the
     // first request to a route is allowed to finish.
-    navigationTimeout: 45_000,
+    navigationTimeout: 60_000,
   },
   projects: [
     {

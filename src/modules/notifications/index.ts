@@ -74,6 +74,7 @@ export {
   createFcmProvider,
   createWebPushProvider,
   getBrowserPushPublicKey,
+  isAcceptablePushEndpoint,
   isBrowserPushAvailable,
   resolvePushProvider,
 } from './push-provider';
@@ -85,6 +86,18 @@ export type {
   PushProviderName,
   PushSubscriptionPayload,
 } from './push-provider';
+
+export {
+  DEFAULT_PUSH_TIMEOUT_MS,
+  isBlockedIpAddress,
+  validatePushEndpoint,
+} from './push-transport';
+
+export type {
+  PushEndpointValidation,
+  PushTransportConfig,
+  PushTransportResult,
+} from './push-transport';
 
 export {
   DELIVERY_RETENTION_DAYS,
@@ -120,10 +133,9 @@ export {
   notifyNewDrama,
   notifyNewEpisode,
   notifyNewSeason,
-  notifyPublishedContent,
 } from './events';
 
-export type { NotificationRoundResult, PublishableContentType } from './events';
+export type { NotificationRoundResult } from './events';
 
 export {
   ANNOUNCEMENT_CONTENT_MAX_LENGTH,

@@ -1,8 +1,5 @@
-import 'server-only';
-
 import { z } from 'zod';
 
-import { getPublicContentTarget } from '@/modules/content';
 import { ValidationError } from '@/platform/errors';
 
 /**
@@ -11,6 +8,11 @@ import { ValidationError } from '@/platform/errors';
  * The payloads are validated on the server, before any write. A client can
  * never assert a visitor, a content id it did not receive, or a watch
  * duration it did not earn.
+ *
+ * The contracts are pure: they hold no database and no content lookup, so
+ * they can be imported by a unit test and by a server module alike. The
+ * availability check of a content target lives beside them in
+ * `analytics-targets.ts`.
  */
 
 /** The content types a view can be counted for. */
@@ -50,7 +52,16 @@ export const analyticsPlaybackInputSchema = z
       message:
         'A playback event names either an episode with its drama, or a movie.',
     }
-  );
+  )
+  .transform(value => ({
+    ...value,
+    // A completion may only be asserted by a completion event. The player
+    // sends the field on every event, so the field is honoured only where it
+    // means something: a beacon that claims "the viewer finished" on a pause
+    // is a claim the server refuses to record (D-070).
+    completionThresholdMet:
+      value.eventType === 'completion' ? value.completionThresholdMet === true : false,
+  }));
 
 /** A validated view report. */
 export type AnalyticsViewInput = z.infer<typeof analyticsViewInputSchema>;
@@ -92,23 +103,4 @@ export function parseAnalyticsPlaybackInput(input: unknown): AnalyticsPlaybackIn
   }
 
   return parsed.data;
-}
-
-/**
- * Check that a content item is publicly available.
- *
- * A view may only be counted for a title the public can actually open. Without
- * this check a caller could inflate the count of a draft by posting its id.
- *
- * @param type the content type
- * @param contentId the content id
- * @returns whether the content is publicly available
- */
-export async function isPublicAnalyticsTarget(
-  type: 'drama' | 'movie',
-  contentId: string
-): Promise<boolean> {
-  const target = await getPublicContentTarget(type, contentId);
-
-  return target !== null;
 }

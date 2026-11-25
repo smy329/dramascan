@@ -168,7 +168,9 @@ describe('analytics dashboard', () => {
       completionThresholdMet: true,
       userId: null,
       sessionId: playbackSession,
-      now,
+      // The watch time of an event is the time that passed since the previous
+      // one, so the completion comes five minutes after the start.
+      now: new Date('2026-11-24T10:05:00.000Z'),
     });
 
     await aggregateDailyAnalytics(DAY, null, null);
@@ -216,7 +218,7 @@ describe('analytics dashboard', () => {
       watchDurationSeconds: 30,
       userId: null,
       sessionId: completingSession,
-      now,
+      now: new Date('2026-11-24T10:01:00.000Z'),
     });
     await recordPlaybackEvent({
       target,
@@ -224,7 +226,7 @@ describe('analytics dashboard', () => {
       watchDurationSeconds: 10,
       userId: null,
       sessionId: completingSession,
-      now,
+      now: new Date('2026-11-24T10:02:00.000Z'),
     });
     await recordPlaybackEvent({
       target,
@@ -233,7 +235,7 @@ describe('analytics dashboard', () => {
       completionThresholdMet: true,
       userId: null,
       sessionId: completingSession,
-      now,
+      now: new Date('2026-11-24T10:06:00.000Z'),
     });
     // A second viewer starts and leaves without finishing.
     await recordPlaybackEvent({
@@ -267,6 +269,49 @@ describe('analytics dashboard', () => {
     expect(overview.averageWatchDurationSeconds).toBe(150);
     expect(activity[0]?.playbackViewers).toBe(2);
     expect(activity[0]?.averageWatchDurationSeconds).toBe(150);
+  });
+
+  it('counts a viewer who played on several days as one viewer of the range', async () => {
+    const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
+    const target = {
+      type: 'drama' as const,
+      episodeId: seeded.episodeId,
+      dramaId: seeded.dramaId,
+    };
+
+    // The same viewer plays on two days of the range.
+    for (const day of ['2026-11-23', '2026-11-24']) {
+      await recordPlaybackEvent({
+        target,
+        eventType: 'play',
+        watchDurationSeconds: 0,
+        userId: null,
+        sessionId,
+        now: new Date(`${day}T10:00:00.000Z`),
+      });
+      await recordPlaybackEvent({
+        target,
+        eventType: 'play_pause',
+        watchDurationSeconds: 300,
+        userId: null,
+        sessionId,
+        now: new Date(`${day}T10:05:00.000Z`),
+      });
+    }
+
+    await aggregateDailyAnalytics('2026-11-23', null, null);
+    await aggregateDailyAnalytics('2026-11-24', null, null);
+
+    const range = buildDateRange('2026-11-23', '2026-11-24');
+    const overview = await getAnalyticsOverview(range);
+    const activity = await listViewerActivity(range);
+
+    // One viewer, not one viewer per day: the daily table keeps its own
+    // per-day count, but the range counts the distinct viewers.
+    expect(overview.playbackViewers).toBe(1);
+    expect(overview.totalWatchDurationSeconds).toBe(600);
+    expect(overview.averageWatchDurationSeconds).toBe(600);
+    expect(activity.map(row => row.playbackViewers)).toEqual([1, 1]);
   });
 
   it('lists the content performance rows with their titles', async () => {

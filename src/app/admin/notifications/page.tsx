@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 
 import { AdminNotificationList } from '@/components/admin/notifications/admin-notification-list';
 import { AnnouncementAdmin } from '@/components/admin/notifications/announcement-admin';
-import { toAdminNotificationViewer } from '@/lib/admin-notification-viewer';
 import { hasPermission, toPermissionKey } from '@/modules/authorization';
 import {
   ADMIN_NOTIFICATION_CATEGORIES,
@@ -11,6 +10,7 @@ import {
   listAdminNotifications,
   listAnnouncements,
 } from '@/modules/notifications';
+import { toAdminNotificationViewer } from '@/workflows/admin/admin-notification-viewer';
 
 import { requireAdminPageAccess } from '../_access';
 

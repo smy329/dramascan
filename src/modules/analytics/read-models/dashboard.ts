@@ -114,7 +114,6 @@ export async function getAnalyticsOverview(range: DateRange): Promise<AnalyticsO
       totalViews: sql<number>`coalesce(sum(${analytics_daily_aggregates.total_views}), 0)`,
       totalPlaybackEvents: sql<number>`coalesce(sum(${analytics_daily_aggregates.total_playback_events}), 0)`,
       playbackStarts: sql<number>`coalesce(sum(${analytics_daily_aggregates.playback_starts}), 0)`,
-      playbackViewers: sql<number>`coalesce(sum(${analytics_daily_aggregates.playback_viewers}), 0)`,
       completionEvents: sql<number>`coalesce(sum(${analytics_daily_aggregates.completion_events}), 0)`,
       totalWatchDurationSeconds: sql<number>`coalesce(sum(${analytics_daily_aggregates.total_watch_duration_seconds}), 0)`,
     })
@@ -131,10 +130,13 @@ export async function getAnalyticsOverview(range: DateRange): Promise<AnalyticsO
   const totalViews = Number(row?.totalViews ?? 0);
   const totalPlaybackEvents = Number(row?.totalPlaybackEvents ?? 0);
   const playbackStarts = Number(row?.playbackStarts ?? 0);
-  const playbackViewers = Number(row?.playbackViewers ?? 0);
   const completionEvents = Number(row?.completionEvents ?? 0);
   const totalWatchDurationSeconds = Number(row?.totalWatchDurationSeconds ?? 0);
   const uniqueVisitors = await countDistinctVisitors(range);
+  // The playback viewers of a range are the distinct viewers of the range, not
+  // the sum of the daily counts: a viewer who played on three days is one
+  // viewer, and dividing the watch time by three would understate it (D-070).
+  const playbackViewers = await countDistinctPlaybackViewers(range);
 
   return {
     uniqueVisitors,
@@ -435,6 +437,26 @@ async function countDistinctVisitors(range: DateRange): Promise<number> {
   `);
 
   return Number(rows[0]?.unique_visitors ?? 0);
+}
+
+/**
+ * The number of distinct viewers who played something in a range.
+ *
+ * The count is taken over the raw playback events, not over the daily
+ * aggregates: the daily count is a viewer *per day*, and summing it over a
+ * range would count a viewer who played on three days three times (D-070).
+ */
+async function countDistinctPlaybackViewers(range: DateRange): Promise<number> {
+  const rows = await runQuery(sql`
+    select count(distinct ${playback_analytics_events.guest_session_id})::int as playback_viewers
+      from ${playback_analytics_events}
+     where ${playback_analytics_events.deleted_at} is null
+       and ${playback_analytics_events.event_at} >= ${range.startInstant}
+       and ${playback_analytics_events.event_at} < ${range.endInstant}
+       and ${playback_analytics_events.guest_session_id} is not null
+  `);
+
+  return Number(rows[0]?.playback_viewers ?? 0);
 }
 
 /**

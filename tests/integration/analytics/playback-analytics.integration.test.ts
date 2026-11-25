@@ -262,6 +262,51 @@ describe('playback analytics', () => {
     ]);
   });
 
+  it('records a completion only on a completion event', async () => {
+    const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
+    const now = new Date('2026-11-26T11:00:00.000Z');
+
+    // A caller that bypasses the validation contract still cannot record a
+    // completion on an event type that does not mean one (D-070).
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play_pause',
+      watchDurationSeconds: 30,
+      completionThresholdMet: true,
+      userId: null,
+      sessionId,
+      now,
+    });
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'completion',
+      watchDurationSeconds: 30,
+      completionThresholdMet: true,
+      userId: null,
+      sessionId,
+      now: new Date(now.getTime() + 30_000),
+    });
+
+    const rows = await db
+      .select({
+        eventType: playback_analytics_events.event_type,
+        completionThresholdMet: playback_analytics_events.completion_threshold_met,
+      })
+      .from(playback_analytics_events)
+      .where(eq(playback_analytics_events.content_id, seeded.episodeId))
+      .orderBy(playback_analytics_events.event_at);
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      eventType: 'play_pause',
+      completionThresholdMet: false,
+    });
+    expect(rows[1]).toMatchObject({
+      eventType: 'completion',
+      completionThresholdMet: true,
+    });
+  });
+
   it('summarises the events and the watch time of a title', async () => {
     const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
     const now = new Date('2026-11-26T10:00:00.000Z');
@@ -281,7 +326,9 @@ describe('playback analytics', () => {
       completionThresholdMet: true,
       userId: null,
       sessionId,
-      now,
+      // Three minutes later: the watch time of the second event is the time
+      // that passed since the first one.
+      now: new Date('2026-11-26T10:03:00.000Z'),
     });
 
     const summary = await getPlaybackAnalyticsSummary('drama', seeded.dramaId);
@@ -289,6 +336,63 @@ describe('playback analytics', () => {
     expect(summary.totalPlaybackEvents).toBe(2);
     expect(summary.completionEvents).toBe(1);
     expect(summary.totalWatchDurationSeconds).toBe(300);
+  });
+
+  it('clamps a watch duration that exceeds the time since the previous event', async () => {
+    const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
+
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play',
+      watchDurationSeconds: 0,
+      userId: null,
+      sessionId,
+      now: new Date('2026-11-26T10:00:00.000Z'),
+    });
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play_pause',
+      // A beacon that claims a day of watching one minute after the first
+      // event is a fabricated claim.
+      watchDurationSeconds: 86_400,
+      userId: null,
+      sessionId,
+      now: new Date('2026-11-26T10:01:00.000Z'),
+    });
+
+    const [row] = await db
+      .select({ watchDurationSeconds: playback_analytics_events.watch_duration_seconds })
+      .from(playback_analytics_events)
+      .where(
+        and(
+          eq(playback_analytics_events.content_id, seeded.episodeId),
+          eq(playback_analytics_events.event_type, 'play_pause')
+        )
+      );
+
+    // 60 seconds elapsed, plus the tolerance.
+    expect(row?.watchDurationSeconds).toBe(90);
+  });
+
+  it('drops a media position that no title can reach', async () => {
+    const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
+
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play',
+      positionSeconds: 999_999_999,
+      watchDurationSeconds: 10,
+      userId: null,
+      sessionId,
+      now: new Date('2026-11-26T10:00:00.000Z'),
+    });
+
+    const [row] = await db
+      .select({ positionSeconds: playback_analytics_events.position_seconds })
+      .from(playback_analytics_events)
+      .where(eq(playback_analytics_events.content_id, seeded.episodeId));
+
+    expect(row?.positionSeconds).toBeNull();
   });
 });
 
@@ -508,7 +612,79 @@ describe('analytics aggregation', () => {
         )
       );
 
-    expect(rows.map(row => row.date)).toEqual([NEXT_DAY]);  });
+    expect(rows.map(row => row.date)).toEqual([NEXT_DAY]);
+  });
+
+  it('writes one row per day when two refreshes run at the same time', async () => {
+    const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
+
+    await recordContentView({
+      type: 'drama',
+      contentId: seeded.dramaId,
+      userId: null,
+      sessionId,
+      now: new Date('2026-11-26T10:00:00.000Z'),
+    });
+
+    // The dashboard refreshes the current day every minute and an
+    // administrator may press the refresh button as well, so two refreshes of
+    // the same scope may overlap. The result must still be one row per day.
+    await Promise.all([
+      aggregateDailyAnalytics(DAY, null, null),
+      aggregateDailyAnalytics(DAY, null, null),
+    ]);
+
+    const rows = await db
+      .select({ id: analytics_daily_aggregates.id })
+      .from(analytics_daily_aggregates)
+      .where(
+        and(
+          eq(analytics_daily_aggregates.date, DAY),
+          isNull(analytics_daily_aggregates.content_type),
+          isNull(analytics_daily_aggregates.deleted_at)
+        )
+      );
+
+    expect(rows).toHaveLength(1);
+  });
+
+  it('refuses a second row for the same day and target', async () => {
+    const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
+
+    await recordContentView({
+      type: 'drama',
+      contentId: seeded.dramaId,
+      userId: null,
+      sessionId,
+      now: new Date('2026-11-26T10:00:00.000Z'),
+    });
+
+    await aggregateDailyAnalytics(DAY, null, null);
+
+    // The database is the authority that makes a duplicate row impossible.
+    await expect(
+      db.insert(analytics_daily_aggregates).values({
+        date: DAY,
+        content_type: null,
+        content_id: null,
+        unique_visitors: 1,
+        total_views: 1,
+      })
+    ).rejects.toThrow();
+
+    const rows = await db
+      .select({ id: analytics_daily_aggregates.id })
+      .from(analytics_daily_aggregates)
+      .where(
+        and(
+          eq(analytics_daily_aggregates.date, DAY),
+          isNull(analytics_daily_aggregates.content_type),
+          isNull(analytics_daily_aggregates.deleted_at)
+        )
+      );
+
+    expect(rows).toHaveLength(1);
+  });
 });
 
 afterAll(async () => {

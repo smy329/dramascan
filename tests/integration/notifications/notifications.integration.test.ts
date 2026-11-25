@@ -175,6 +175,35 @@ async function countNotifications(userId: string): Promise<number> {
   return rows.length;
 }
 
+/**
+ * The notifications one recipient holds for one event.
+ *
+ * The count is scoped to the event, because a broadcast reaches *every* active
+ * account: a new drama, a new season, or a website announcement legitimately
+ * notifies an account that another test file created in the same shared test
+ * database. The assertion of a test is about its own event, not about every
+ * notification the recipient happens to hold.
+ */
+async function countEventNotifications(
+  userId: string,
+  eventType: string,
+  contentId: string
+): Promise<number> {
+  const rows = await db
+    .select({ id: notifications.id })
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.user_id, userId),
+        eq(notifications.event_type, eventType),
+        eq(notifications.content_id, contentId),
+        isNull(notifications.deleted_at)
+      )
+    );
+
+  return rows.length;
+}
+
 describe('notification preferences', () => {
   let seeded: Seed;
 
@@ -444,8 +473,12 @@ describe('notification events', () => {
     });
 
     expect(result.notified).toBeGreaterThanOrEqual(1);
-    expect(await countNotifications(seeded.userId)).toBe(1);
-    expect(await countNotifications(seeded.otherUserId)).toBe(0);
+    expect(
+      await countEventNotifications(seeded.userId, 'new_episode', seeded.episodeId)
+    ).toBe(1);
+    expect(
+      await countEventNotifications(seeded.otherUserId, 'new_episode', seeded.episodeId)
+    ).toBe(0);
   });
 
   it('does not notify a viewer who switched the event off', async () => {
@@ -459,7 +492,9 @@ describe('notification events', () => {
       link: `/drama/${seeded.dramaId}/notification-drama`,
     });
 
-    expect(await countNotifications(seeded.userId)).toBe(0);
+    expect(
+      await countEventNotifications(seeded.userId, 'new_episode', seeded.episodeId)
+    ).toBe(0);
     expect(result.skippedByPreference).toBeGreaterThanOrEqual(1);
   });
 
@@ -477,7 +512,9 @@ describe('notification events', () => {
 
     expect(second.notified).toBe(0);
     expect(second.skippedAsDuplicate).toBeGreaterThanOrEqual(1);
-    expect(await countNotifications(seeded.userId)).toBe(1);
+    expect(
+      await countEventNotifications(seeded.userId, 'new_episode', seeded.episodeId)
+    ).toBe(1);
   });
 });
 
@@ -500,7 +537,9 @@ describe('website announcements', () => {
     });
 
     expect(announcement.status).toBe('draft');
-    expect(await countNotifications(seeded.userId)).toBe(0);
+    expect(
+      await countEventNotifications(seeded.userId, 'website_announcement', announcement.id)
+    ).toBe(0);
   });
 
   it('notifies the eligible viewers when the announcement is published', async () => {
@@ -512,8 +551,12 @@ describe('website announcements', () => {
 
     await publishAnnouncement(announcement.id);
 
-    expect(await countNotifications(seeded.userId)).toBe(1);
-    expect(await countNotifications(seeded.otherUserId)).toBe(1);
+    expect(
+      await countEventNotifications(seeded.userId, 'website_announcement', announcement.id)
+    ).toBe(1);
+    expect(
+      await countEventNotifications(seeded.otherUserId, 'website_announcement', announcement.id)
+    ).toBe(1);
   });
 
   it('does not notify twice when the publication is repeated', async () => {
@@ -527,7 +570,9 @@ describe('website announcements', () => {
     const second = await publishAnnouncement(announcement.id);
 
     expect(second.notified).toBe(0);
-    expect(await countNotifications(seeded.userId)).toBe(1);
+    expect(
+      await countEventNotifications(seeded.userId, 'website_announcement', announcement.id)
+    ).toBe(1);
   });
 
   it('respects the announcement preference', async () => {
@@ -541,8 +586,12 @@ describe('website announcements', () => {
 
     await publishAnnouncement(announcement.id);
 
-    expect(await countNotifications(seeded.userId)).toBe(0);
-    expect(await countNotifications(seeded.otherUserId)).toBe(1);
+    expect(
+      await countEventNotifications(seeded.userId, 'website_announcement', announcement.id)
+    ).toBe(0);
+    expect(
+      await countEventNotifications(seeded.otherUserId, 'website_announcement', announcement.id)
+    ).toBe(1);
   });
 
   it('lists the published announcements', async () => {

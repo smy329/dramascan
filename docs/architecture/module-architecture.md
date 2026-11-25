@@ -109,9 +109,11 @@ Modules are assigned to fixed layers. See `ARCHITECTURE.md` §3 for the layer ma
 - **Purpose:** notification preferences, in-app notifications, browser push subscriptions and delivery, announcements, admin notification center, unread counts, delivery records.
 - **Owns:** `notification_preferences`, `notifications`, `push_subscriptions`, `notification_deliveries`, `announcements`, `admin_notifications`.
 - **Public API:** `createContentPublishedNotifications`, `createSeasonNotifications`, `createAnnouncementNotifications`, `notifyAccountSecurity`, `notifyReporter`, `listNotifications`, `markRead`, `markUnread`, `getUnreadCount`, `upsertPushSubscription`, `removePushSubscription`, `publishAnnouncement`, `listAdminNotifications`.
-- **Depends on:** `users` (bookmark-based recipient resolution), `authorization`, `auth`, platform.
+- **Depends on:** `users` (the bookmark audience), `auth` (the active-account audience), platform.
 - **Not responsible for:** deciding when content is published, content metadata ownership, admin authorization, analytics.
 - **Boundary notes:** callers pass validated payload snapshots (content id, type, title, deep link). `notifications` does not import `content`. Push providers sit behind an internal provider interface so the provider can change without touching notification rules.
+- **Audiences and adapters (D-070):** the bookmark audience comes from `users.listBookmarkOwnerIds` and the broadcast audience from `auth.listActiveAccountIds`; the module imports no other module's `schema.ts`. The content resolution of a publication lives in the publication workflow, and the administrator alert viewer is a workflow-layer adapter (`workflows/admin/admin-notification-viewer.ts`), because `lib` holds isomorphic code only.
+- **Push endpoint validation (D-070):** a push endpoint is validated before it is stored and again before it is contacted — HTTPS only, no credentials or fragment, no local or private host name, no private or reserved IP literal, an optional `PUSH_ALLOWED_HOSTS` allowlist, and a DNS check whose answer is pinned for the connection. The rules live in `modules/notifications/push-transport.ts` and are shared with the maintenance command. The push configuration is part of `ServerConfig`.
 
 ### 6.9 `analytics` — Product analytics and reporting
 
@@ -122,6 +124,7 @@ Modules are assigned to fixed layers. See `ARCHITECTURE.md` §3 for the layer ma
 - **Not responsible for:** personal watch history or progress (owned by `playback`), operational system metrics and errors (owned by `maintenance`), notifications.
 - **Boundary notes:** this is the reporting module. Cross-module joins are allowed only in `analytics/read-models/` and only for read-only reporting. It is **not** a mandatory intermediary for the watch page or admin operational summaries.
 - **Retention (D-065):** the raw events are kept for 400 days, and a guest-session row for the same window; a session row linked to an account is never removed. `purgeExpiredGuestData` is the application-side implementation, and `scripts/analytics-retention.mjs` is the short-lived maintenance command that mirrors it.
+- **Plausibility and concurrency (D-070):** the watch duration of a public beacon is clamped to the time that passed since the previous stored event of the same visitor and the same content, plus thirty seconds of tolerance, and to an absolute maximum; an impossible media position is dropped; the completion flag is honoured on a `completion` event only. A refresh takes a transaction-scoped advisory lock and inserts with `ON CONFLICT DO NOTHING`, and two partial unique indexes state the two logical keys of `analytics_daily_aggregates`. The range-level playback viewers are counted over the raw playback events.
 
 ### 6.10 `administration` — Admin operations and system configuration
 

@@ -1678,31 +1678,23 @@ describe('typed targets follow the conversion', () => {
     });
   });
 
-  it('merges the daily aggregates of one date into one movie row', async () => {
+  it('carries the daily aggregates of one date to the new movie', async () => {
     const drama = await insertDrama('typed-aggregate');
     await insertEpisode(drama.id);
 
-    await db.insert(analyticsDailyAggregates).values([
-      {
-        date: '2026-01-05',
-        content_type: 'drama',
-        content_id: drama.id,
-        drama_id: drama.id,
-        unique_visitors: 4,
-        total_views: 6,
-        total_playback_events: 2,
-      },
-      {
-        date: '2026-01-05',
-        content_type: 'drama',
-        content_id: drama.id,
-        drama_id: drama.id,
-        unique_visitors: 7,
-        total_views: 3,
-        completion_events: 1,
-        total_watch_duration_seconds: 900,
-      },
-    ]);
+    // The database holds one live row per day and target (D-070), so the
+    // aggregate of the drama follows the content into the movie row.
+    await db.insert(analyticsDailyAggregates).values({
+      date: '2026-01-05',
+      content_type: 'drama',
+      content_id: drama.id,
+      drama_id: drama.id,
+      unique_visitors: 4,
+      total_views: 6,
+      total_playback_events: 2,
+      completion_events: 1,
+      total_watch_duration_seconds: 900,
+    });
 
     const plan = await previewMovieConversion(managerActor, {
       dramaId: drama.id,
@@ -1717,25 +1709,26 @@ describe('typed targets follow the conversion', () => {
     const rows = await db
       .select()
       .from(analyticsDailyAggregates)
-      .where(eq(analyticsDailyAggregates.date, '2026-01-05'));
+      .where(eq(analyticsDailyAggregates.content_id, result.movieId));
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
+      date: '2026-01-05',
       drama_id: null,
       movie_id: result.movieId,
       content_type: 'movie',
       content_id: result.movieId,
-      // The counters add up; the visitor count cannot, because the overlap
-      // between the two rows is unknown.
-      unique_visitors: 7,
-      total_views: 9,
+      // The counters of the day are carried over unchanged: the aggregate was
+      // rewritten, not recounted.
+      unique_visitors: 4,
+      total_views: 6,
       total_playback_events: 2,
       completion_events: 1,
       total_watch_duration_seconds: 900,
     });
   });
 
-  it('merges every row of one date, including several rows of the target', async () => {
+  it('merges the rows of one date into the row of the target', async () => {
     const drama = await insertDrama('typed-aggregate-multi');
     const movie = await insertMovie('typed-aggregate-multi');
 
@@ -1756,14 +1749,6 @@ describe('typed targets follow the conversion', () => {
         unique_visitors: 7,
         total_views: 3,
       },
-      {
-        date: '2026-01-06',
-        content_type: 'movie',
-        content_id: movie.id,
-        movie_id: movie.id,
-        unique_visitors: 2,
-        total_views: 5,
-      },
     ]);
 
     await db.transaction(async tx => moveContentReferences(tx, drama.id, movie.id));
@@ -1773,16 +1758,19 @@ describe('typed targets follow the conversion', () => {
       .from(analyticsDailyAggregates)
       .where(eq(analyticsDailyAggregates.date, '2026-01-06'));
 
-    // Every row of the date is merged, not only the first target row: two
-    // target rows for one date are two halves of the same aggregate.
+    // Every row of the date is merged, not only the first target row: the
+    // drama row and the row of the target are two halves of the same
+    // aggregate.
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       drama_id: null,
       movie_id: movie.id,
       content_type: 'movie',
       content_id: movie.id,
+      // The counters add up; the visitor count cannot, because the overlap
+      // between the two rows is unknown.
       unique_visitors: 7,
-      total_views: 14,
+      total_views: 9,
     });
   });
 });

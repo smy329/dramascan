@@ -3,8 +3,8 @@ import { notFound } from 'next/navigation';
 import { z } from 'zod';
 
 import { AdminNotificationDetail } from '@/components/admin/notifications/admin-notification-detail';
-import { toAdminNotificationViewer } from '@/lib/admin-notification-viewer';
 import { getAdminNotification } from '@/modules/notifications';
+import { toAdminNotificationViewer } from '@/workflows/admin/admin-notification-viewer';
 
 import { requireAdminPageAccess } from '../../_access';
 

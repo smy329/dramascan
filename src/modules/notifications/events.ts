@@ -1,13 +1,9 @@
 import 'server-only';
 
-import { and, eq, inArray, isNull } from 'drizzle-orm';
-
 import { db } from '@/db/client';
+import { listActiveAccountIds } from '@/modules/auth';
+import { listBookmarkOwnerIds } from '@/modules/users';
 import type { DbExecutor } from '@/platform/db/executor';
-import { bookmarks } from '@/modules/users/schema';
-import { users } from '@/modules/auth/schema';
-import { dramas, episodes, seasons } from '@/modules/content/schema';
-import { publicDramaHref, publicEpisodeHref } from '@/modules/content';
 
 import { writeNotificationOnce, type NotificationEventType } from './notifications';
 import {
@@ -51,9 +47,6 @@ import { deliverPush } from './delivery';
 /** The maximum number of viewers one event may notify. */
 export const MAX_AUDIENCE_SIZE = 5000;
 
-/** The content types a publication can announce. */
-export type PublishableContentType = 'drama' | 'season' | 'episode';
-
 /** What one notification round did. */
 export type NotificationRoundResult = {
   /** How many viewers received an in-app notification. */
@@ -83,17 +76,11 @@ export async function notifyNewEpisode(
   },
   executor: DbExecutor = db
 ): Promise<NotificationRoundResult> {
-  const audience = await executor
-    .select({ userId: bookmarks.user_id })
-    .from(bookmarks)
-    .where(eq(bookmarks.drama_id, input.dramaId))
-    .limit(MAX_AUDIENCE_SIZE);
+  const userIds = await listBookmarkOwnerIds(input.dramaId, MAX_AUDIENCE_SIZE, executor);
 
-  if (audience.length === 0) {
+  if (userIds.length === 0) {
     return emptyRoundResult();
   }
-
-  const userIds = audience.map(row => row.userId);
 
   return deliverToAudience({
     eventType: 'new_episode',
@@ -176,20 +163,16 @@ async function runBroadcast(
   },
   executor: DbExecutor
 ): Promise<NotificationRoundResult> {
-  const candidates = await executor
-    .select({ userId: users.id })
-    .from(users)
-    .where(and(isNull(users.deletedAt), eq(users.isActive, true)))
-    .limit(MAX_AUDIENCE_SIZE);
+  const userIds = await listActiveAccountIds(MAX_AUDIENCE_SIZE, executor);
 
-  if (candidates.length === 0) {
+  if (userIds.length === 0) {
     return emptyRoundResult();
   }
 
   return deliverToAudience({
     eventType,
     contentId,
-    userIds: candidates.map(row => row.userId),
+    userIds,
     message,
     executor,
   });
@@ -291,129 +274,4 @@ function emptyRoundResult(): NotificationRoundResult {
     skippedByPreference: 0,
     pushAttempts: 0,
   };
-}
-
-/**
- * Announce the content that has just been published.
- *
- * The publication workflow calls this after the transaction that published the
- * content has committed, so a notification never claims something that was
- * rolled back. Only content that is publicly available is announced: a
- * published episode under an unpublished drama is not something a viewer can
- * open, and a notification for it would be a broken promise.
- *
- * The event is idempotent. The audience is checked against the notifications
- * that already exist, so a repeated publication request produces no second
- * notification.
- *
- * @param contentType what was published
- * @param ids the ids that became publicly available
- * @param executor the database executor
- * @returns what the round did
- */
-export async function notifyPublishedContent(
-  contentType: PublishableContentType,
-  ids: readonly string[],
-  executor: DbExecutor = db
-): Promise<NotificationRoundResult> {
-  if (ids.length === 0) {
-    return emptyRoundResult();
-  }
-
-  const result = emptyRoundResult();
-
-  if (contentType === 'drama') {
-    const rows = await executor
-      .select({ id: dramas.id, title: dramas.title, slug: dramas.slug })
-      .from(dramas)
-      .where(and(inArray(dramas.id, [...ids]), isNull(dramas.deleted_at)));
-
-    for (const row of rows) {
-      mergeRoundResult(
-        result,
-        await notifyNewDrama(
-          {
-            dramaId: row.id,
-            dramaTitle: row.title,
-            link: publicDramaHref(row.id, row.slug),
-          },
-          executor
-        )
-      );
-    }
-
-    return result;
-  }
-
-  if (contentType === 'season') {
-    const rows = await executor
-      .select({
-        id: seasons.id,
-        title: seasons.title,
-        dramaId: seasons.drama_id,
-        dramaTitle: dramas.title,
-        dramaSlug: dramas.slug,
-      })
-      .from(seasons)
-      .innerJoin(dramas, eq(seasons.drama_id, dramas.id))
-      .where(and(inArray(seasons.id, [...ids]), isNull(seasons.deleted_at)));
-
-    for (const row of rows) {
-      mergeRoundResult(
-        result,
-        await notifyNewSeason(
-          {
-            seasonId: row.id,
-            seasonTitle: row.title,
-            dramaTitle: row.dramaTitle,
-            link: publicDramaHref(row.dramaId, row.dramaSlug),
-          },
-          executor
-        )
-      );
-    }
-
-    return result;
-  }
-
-  const rows = await executor
-    .select({
-      id: episodes.id,
-      title: episodes.title,
-      dramaId: episodes.drama_id,
-      dramaTitle: dramas.title,
-      dramaSlug: dramas.slug,
-    })
-    .from(episodes)
-    .innerJoin(dramas, eq(episodes.drama_id, dramas.id))
-    .where(and(inArray(episodes.id, [...ids]), isNull(episodes.deleted_at)));
-
-  for (const row of rows) {
-    mergeRoundResult(
-      result,
-      await notifyNewEpisode(
-        {
-          episodeId: row.id,
-          episodeTitle: row.title,
-          dramaId: row.dramaId,
-          dramaTitle: row.dramaTitle,
-          link: publicEpisodeHref(row.dramaId, row.dramaSlug, row.id),
-        },
-        executor
-      )
-    );
-  }
-
-  return result;
-}
-
-/** Fold one round's counters into the round of the whole publication. */
-function mergeRoundResult(
-  target: NotificationRoundResult,
-  round: NotificationRoundResult
-): void {
-  target.notified += round.notified;
-  target.skippedAsDuplicate += round.skippedAsDuplicate;
-  target.skippedByPreference += round.skippedByPreference;
-  target.pushAttempts += round.pushAttempts;
 }

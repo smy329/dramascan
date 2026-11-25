@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { ActionResult } from '@/lib/contracts/common';
 import { requireUserId, resolveActor } from '@/modules/authorization';
 import {
+  isAcceptablePushEndpoint,
   listSubscriptions,
   removeSubscription,
   saveSubscription,
@@ -19,6 +20,10 @@ import { toActionError } from '@/workflows/action-errors';
  * action stores them against the signed-in viewer and nothing else: a client
  * cannot subscribe another viewer, and the endpoint is never exposed to
  * another viewer.
+ *
+ * The endpoint is a capability *and* an address the server will contact. It
+ * is therefore validated before it is stored: only a public HTTPS endpoint
+ * that the deployment accepts is kept (D-070).
  */
 
 const subscriptionInputSchema = z.object({
@@ -49,6 +54,19 @@ export async function subscribeToPush(input: unknown): Promise<ActionResult<Push
           message: 'The push subscription is not valid.',
           fieldErrors: {
             body: parsed.error.issues.map(issue => issue.message),
+          },
+        },
+      };
+    }
+
+    if (!isAcceptablePushEndpoint(parsed.data.endpoint)) {
+      return {
+        ok: false,
+        error: {
+          code: 'validation_error',
+          message: 'The push subscription endpoint is not an accepted push address.',
+          fieldErrors: {
+            body: ['The push endpoint must be a public HTTPS address.'],
           },
         },
       };
