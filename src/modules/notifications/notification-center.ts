@@ -6,6 +6,7 @@ import { db } from '@/db/client';
 import type { DbExecutor } from '@/platform/db/executor';
 
 import { MANDATORY_EVENT_TYPES } from './delivery-rules';
+import type { NotificationCenter } from './notification-center.shared';
 import { getNotificationPreferences } from './preferences';
 import { notifications } from './schema';
 
@@ -21,29 +22,7 @@ import { notifications } from './schema';
 /** The maximum number of notifications one page may return. */
 export const NOTIFICATION_PAGE_SIZE = 50;
 
-/** One notification as the viewer sees it. */
-export type NotificationView = {
-  id: string;
-  title: string;
-  content: string;
-  eventType: string;
-  contentId: string | null;
-  contentType: string | null;
-  link: string | null;
-  priority: string;
-  isRead: boolean;
-  readAt: Date | null;
-  createdAt: Date;
-};
-
-/** The viewer's notification center. */
-export type NotificationCenter = {
-  notifications: NotificationView[];
-  /** How many notifications the viewer has not read. */
-  unreadCount: number;
-  /** How many notifications the center holds in total. */
-  totalCount: number;
-};
+export type { NotificationCenter, NotificationView } from './notification-center.shared';
 
 /**
  * Read a viewer's notification center.

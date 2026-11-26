@@ -6,7 +6,6 @@ import { db } from '@/db/client';
 import type { DbExecutor } from '@/platform/db/executor';
 
 import {
-  DEFAULT_NOTIFICATION_PREFERENCES,
   MANDATORY_EVENT_TYPES,
   NOTIFICATION_CHANNELS,
   NOTIFICATION_EVENT_PREFERENCES,
@@ -16,9 +15,15 @@ import {
   isMandatoryEvent,
   type NotificationChannel,
   type NotificationEventPreference,
-  type NotificationPreferenceSet,
 } from './delivery-rules';
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  type NotificationPreferenceSet,
+} from './preferences.shared';
 import { notification_preferences } from './schema';
+
+export { DEFAULT_NOTIFICATION_PREFERENCES } from './preferences.shared';
+export type { NotificationPreferenceSet } from './preferences.shared';
 
 /**
  * The notification preferences (Prompt 150).
@@ -215,7 +220,6 @@ export async function updateNotificationPreferences(
 }
 
 export {
-  DEFAULT_NOTIFICATION_PREFERENCES,
   MANDATORY_EVENT_TYPES,
   NOTIFICATION_CHANNELS,
   NOTIFICATION_EVENT_PREFERENCES,
@@ -228,5 +232,4 @@ export {
 export type {
   NotificationChannel,
   NotificationEventPreference,
-  NotificationPreferenceSet,
 };

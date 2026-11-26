@@ -175,6 +175,81 @@ describe('playback analytics', () => {
     expect(row?.bucket).toBe('2026-11-26T10');
   });
 
+  it('records the viewer classification of the request', async () => {
+    const now = new Date('2026-11-26T10:00:00.000Z');
+
+    // A signed-in viewer.
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play',
+      userId: seeded.userId,
+      sessionId: `session-${TEST_PREFIX}${randomUUID()}`,
+      now,
+    });
+
+    // An anonymous viewer.
+    await recordPlaybackEvent({
+      target: { type: 'movie', movieId: seeded.movieId },
+      eventType: 'play',
+      userId: null,
+      sessionId: `session-${TEST_PREFIX}${randomUUID()}`,
+      now,
+    });
+
+    const rows = await db
+      .select({
+        contentId: playback_analytics_events.content_id,
+        viewerType: playback_analytics_events.viewer_type,
+      })
+      .from(playback_analytics_events)
+      .where(
+        inArray(playback_analytics_events.content_id, [seeded.episodeId, seeded.movieId])
+      );
+
+    const episode = rows.find(row => row.contentId === seeded.episodeId);
+    const movie = rows.find(row => row.contentId === seeded.movieId);
+
+    expect(episode?.viewerType).toBe('authenticated');
+    expect(movie?.viewerType).toBe('guest');
+  });
+
+  it('keeps the classification of the request, not of the session row', async () => {
+    const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
+    const now = new Date('2026-11-26T10:00:00.000Z');
+
+    // The viewer watches as a guest, then signs in with the same browser. The
+    // session row is linked to the account, but the first event was recorded
+    // before the sign-in, so it stays a guest event (D-074).
+    await recordContentView({
+      type: 'drama',
+      contentId: seeded.dramaId,
+      userId: null,
+      sessionId,
+      now,
+    });
+    await recordContentView({
+      type: 'movie',
+      contentId: seeded.movieId,
+      userId: seeded.userId,
+      sessionId,
+      now,
+    });
+
+    const rows = await db
+      .select({
+        contentId: content_view_events.content_id,
+        viewerType: content_view_events.viewer_type,
+      })
+      .from(content_view_events)
+      .where(inArray(content_view_events.content_id, [seeded.dramaId, seeded.movieId]));
+
+    const asGuest = rows.find(row => row.contentId === seeded.dramaId);
+    const asAccount = rows.find(row => row.contentId === seeded.movieId);
+
+    expect(asGuest?.viewerType).toBe('guest');
+    expect(asAccount?.viewerType).toBe('authenticated');
+  });
+
   it('drops a playback event of an episode that was deleted while the beacon was in flight', async () => {
     // The episode is gone and the beacon arrives late: the insert hits the
     // foreign key. The event is dropped and the request still succeeds, because
@@ -279,12 +354,20 @@ describe('playback analytics', () => {
     });
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play',
+      watchDurationSeconds: 0,
+      userId: null,
+      sessionId,
+      now,
+    });
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'completion',
-      watchDurationSeconds: 30,
+      watchDurationSeconds: 120,
       completionThresholdMet: true,
       userId: null,
       sessionId,
-      now: new Date(now.getTime() + 30_000),
+      now: new Date(now.getTime() + 120_000),
     });
 
     const rows = await db
@@ -296,15 +379,118 @@ describe('playback analytics', () => {
       .where(eq(playback_analytics_events.content_id, seeded.episodeId))
       .orderBy(playback_analytics_events.event_at);
 
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     expect(rows[0]).toMatchObject({
       eventType: 'play_pause',
       completionThresholdMet: false,
     });
-    expect(rows[1]).toMatchObject({
+    expect(rows[2]).toMatchObject({
       eventType: 'completion',
       completionThresholdMet: true,
     });
+  });
+
+  it('refuses a completion the watch history does not support', async () => {
+    const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
+    const now = new Date('2026-11-26T12:00:00.000Z');
+
+    // A forged beacon: it claims a completion without a viewing and without a
+    // single second of watch time. The server stores the event, because the
+    // viewer really did send something, but it is not counted as a completion
+    // (D-073).
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'completion',
+      watchDurationSeconds: 0,
+      completionThresholdMet: true,
+      userId: null,
+      sessionId,
+      now,
+    });
+
+    const [forged] = await db
+      .select({ completionThresholdMet: playback_analytics_events.completion_threshold_met })
+      .from(playback_analytics_events)
+      .where(
+        and(
+          eq(playback_analytics_events.content_id, seeded.episodeId),
+          eq(playback_analytics_events.event_type, 'completion')
+        )
+      );
+
+    expect(forged?.completionThresholdMet).toBe(false);
+  });
+
+  it('refuses a completion whose viewing never began', async () => {
+    const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
+    const now = new Date('2026-11-26T12:00:00.000Z');
+
+    // The watch time is real, but there is no playback start behind it: there
+    // is no viewing to complete.
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play_pause',
+      watchDurationSeconds: 600,
+      userId: null,
+      sessionId,
+      now,
+    });
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'completion',
+      watchDurationSeconds: 0,
+      completionThresholdMet: true,
+      userId: null,
+      sessionId,
+      now: new Date(now.getTime() + 600_000),
+    });
+
+    const [refused] = await db
+      .select({ completionThresholdMet: playback_analytics_events.completion_threshold_met })
+      .from(playback_analytics_events)
+      .where(
+        and(
+          eq(playback_analytics_events.content_id, seeded.episodeId),
+          eq(playback_analytics_events.event_type, 'completion')
+        )
+      );
+
+    expect(refused?.completionThresholdMet).toBe(false);
+  });
+
+  it('counts a completion the watch history supports', async () => {
+    const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
+    const now = new Date('2026-11-26T12:00:00.000Z');
+
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play',
+      watchDurationSeconds: 0,
+      userId: null,
+      sessionId,
+      now,
+    });
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'completion',
+      watchDurationSeconds: 600,
+      completionThresholdMet: true,
+      userId: null,
+      sessionId,
+      now: new Date(now.getTime() + 600_000),
+    });
+
+    const [counted] = await db
+      .select({ completionThresholdMet: playback_analytics_events.completion_threshold_met })
+      .from(playback_analytics_events)
+      .where(
+        and(
+          eq(playback_analytics_events.content_id, seeded.episodeId),
+          eq(playback_analytics_events.event_type, 'completion')
+        )
+      );
+
+    expect(counted?.completionThresholdMet).toBe(true);
   });
 
   it('summarises the events and the watch time of a title', async () => {
@@ -313,11 +499,19 @@ describe('playback analytics', () => {
 
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play',
+      watchDurationSeconds: 0,
+      userId: null,
+      sessionId,
+      now,
+    });
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play_pause',
       watchDurationSeconds: 120,
       userId: null,
       sessionId,
-      now,
+      now: new Date('2026-11-26T10:02:00.000Z'),
     });
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
@@ -326,14 +520,14 @@ describe('playback analytics', () => {
       completionThresholdMet: true,
       userId: null,
       sessionId,
-      // Three minutes later: the watch time of the second event is the time
-      // that passed since the first one.
-      now: new Date('2026-11-26T10:03:00.000Z'),
+      // Three minutes after the pause: the watch time of the completion is the
+      // time that passed since the previous stored event.
+      now: new Date('2026-11-26T10:05:00.000Z'),
     });
 
     const summary = await getPlaybackAnalyticsSummary('drama', seeded.dramaId);
 
-    expect(summary.totalPlaybackEvents).toBe(2);
+    expect(summary.totalPlaybackEvents).toBe(3);
     expect(summary.completionEvents).toBe(1);
     expect(summary.totalWatchDurationSeconds).toBe(300);
   });
@@ -429,12 +623,20 @@ describe('analytics aggregation', () => {
     });
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play',
+      watchDurationSeconds: 0,
+      userId: null,
+      sessionId,
+      now,
+    });
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'completion',
       watchDurationSeconds: 90,
       completionThresholdMet: true,
       userId: null,
       sessionId,
-      now,
+      now: new Date(now.getTime() + 90_000),
     });
 
     await aggregateDailyAnalytics(DAY, null, null);
@@ -465,13 +667,13 @@ describe('analytics aggregation', () => {
 
     expect(site?.totalViews).toBe(2);
     expect(site?.uniqueVisitors).toBe(1);
-    expect(site?.totalPlaybackEvents).toBe(1);
+    expect(site?.totalPlaybackEvents).toBe(2);
     expect(site?.completionEvents).toBe(1);
     expect(site?.totalWatchDurationSeconds).toBe(90);
 
     expect(drama?.contentId).toBe(seeded.dramaId);
     expect(drama?.totalViews).toBe(1);
-    expect(drama?.totalPlaybackEvents).toBe(1);
+    expect(drama?.totalPlaybackEvents).toBe(2);
 
     expect(movie?.contentId).toBe(seeded.movieId);
     expect(movie?.totalViews).toBe(1);

@@ -34,6 +34,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { users } from '@/modules/auth/schema';
+import { userActor } from '@/modules/authorization';
 import { dramas, episodes, seasons } from '@/modules/content/schema';
 import { bookmarks } from '@/modules/users/schema';
 import {
@@ -529,12 +530,51 @@ describe('website announcements', () => {
     await cleanup(seeded);
   });
 
+  it('refuses an actor without the settings permission', async () => {
+    // The service is the authority: it re-checks the permission the entrypoint
+    // checked, so a caller that reaches it without the guard cannot create or
+    // publish an announcement (ARCHITECTURE §11.3).
+    const actor = userActor(seeded.otherUserId);
+
+    await expect(
+      createAnnouncement(actor, {
+        title: 'Not allowed',
+        content: 'This viewer may not announce anything.',
+        authorId: seeded.otherUserId,
+      })
+    ).rejects.toThrow();
+
+    const announcement = await createAnnouncement(
+      userActor(seeded.userId, { isSuperAdmin: true }),
+      {
+        title: 'Allowed',
+        content: 'The administrator may announce this.',
+        authorId: seeded.userId,
+      }
+    );
+
+    await expect(publishAnnouncement(actor, announcement.id)).rejects.toThrow();
+
+    expect(
+      await countEventNotifications(seeded.userId, 'website_announcement', announcement.id)
+    ).toBe(0);
+  });
+
+  it('refuses a publication of an announcement that does not exist', async () => {
+    await expect(
+      publishAnnouncement(userActor(seeded.userId, { isSuperAdmin: true }), randomUUID())
+    ).rejects.toThrow();
+  });
+
   it('creates a draft that publishes nothing', async () => {
-    const announcement = await createAnnouncement({
-      title: 'Scheduled maintenance',
-      content: 'The site will be read-only for an hour.',
-      authorId: seeded.userId,
-    });
+    const announcement = await createAnnouncement(
+      userActor(seeded.userId, { isSuperAdmin: true }),
+      {
+        title: 'Scheduled maintenance',
+        content: 'The site will be read-only for an hour.',
+        authorId: seeded.userId,
+      }
+    );
 
     expect(announcement.status).toBe('draft');
     expect(
@@ -543,13 +583,14 @@ describe('website announcements', () => {
   });
 
   it('notifies the eligible viewers when the announcement is published', async () => {
-    const announcement = await createAnnouncement({
+    const actor = userActor(seeded.userId, { isSuperAdmin: true });
+    const announcement = await createAnnouncement(actor, {
       title: 'New features',
       content: 'The notification centre is live.',
       authorId: seeded.userId,
     });
 
-    await publishAnnouncement(announcement.id);
+    await publishAnnouncement(actor, announcement.id);
 
     expect(
       await countEventNotifications(seeded.userId, 'website_announcement', announcement.id)
@@ -560,14 +601,15 @@ describe('website announcements', () => {
   });
 
   it('does not notify twice when the publication is repeated', async () => {
-    const announcement = await createAnnouncement({
+    const actor = userActor(seeded.userId, { isSuperAdmin: true });
+    const announcement = await createAnnouncement(actor, {
       title: 'One shot',
       content: 'Only once.',
       authorId: seeded.userId,
     });
 
-    await publishAnnouncement(announcement.id);
-    const second = await publishAnnouncement(announcement.id);
+    await publishAnnouncement(actor, announcement.id);
+    const second = await publishAnnouncement(actor, announcement.id);
 
     expect(second.notified).toBe(0);
     expect(
@@ -578,13 +620,14 @@ describe('website announcements', () => {
   it('respects the announcement preference', async () => {
     await updateNotificationPreferences(seeded.userId, { websiteAnnouncement: false });
 
-    const announcement = await createAnnouncement({
+    const actor = userActor(seeded.userId, { isSuperAdmin: true });
+    const announcement = await createAnnouncement(actor, {
       title: 'Ignored',
       content: 'Not for this viewer.',
       authorId: seeded.userId,
     });
 
-    await publishAnnouncement(announcement.id);
+    await publishAnnouncement(actor, announcement.id);
 
     expect(
       await countEventNotifications(seeded.userId, 'website_announcement', announcement.id)
@@ -595,13 +638,14 @@ describe('website announcements', () => {
   });
 
   it('lists the published announcements', async () => {
-    const announcement = await createAnnouncement({
+    const actor = userActor(seeded.userId, { isSuperAdmin: true });
+    const announcement = await createAnnouncement(actor, {
       title: 'Visible',
       content: 'Everyone can read this.',
       authorId: seeded.userId,
     });
 
-    await publishAnnouncement(announcement.id);
+    await publishAnnouncement(actor, announcement.id);
 
     const all = await listAnnouncements();
 

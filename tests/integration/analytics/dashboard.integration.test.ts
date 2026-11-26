@@ -363,6 +363,76 @@ describe('analytics dashboard', () => {
     expect(activity).toHaveLength(3);
   });
 
+  it('splits the viewers into signed-in and guest (D-074)', async () => {
+    const now = new Date('2026-11-24T10:00:00.000Z');
+
+    // A signed-in viewer.
+    await recordContentView({
+      type: 'drama',
+      contentId: seeded.dramaId,
+      userId: seeded.userId,
+      sessionId: `session-${TEST_PREFIX}${randomUUID()}`,
+      now,
+    });
+
+    // A guest.
+    await recordContentView({
+      type: 'movie',
+      contentId: seeded.movieId,
+      userId: null,
+      sessionId: `session-${TEST_PREFIX}${randomUUID()}`,
+      now,
+    });
+
+    await aggregateDailyAnalytics(DAY, null, null);
+    await aggregateDailyAnalytics(DAY, 'drama', null);
+    await aggregateDailyAnalytics(DAY, 'movie', null);
+
+    const range = buildDateRange(DAY, DAY);
+    const overview = await getAnalyticsOverview(range);
+    const activity = await listViewerActivity(range);
+
+    expect(overview.uniqueVisitors).toBe(2);
+    expect(overview.authenticatedViewers).toBe(1);
+    expect(overview.guestViewers).toBe(1);
+    expect(activity[0]?.uniqueVisitors).toBe(2);
+    expect(activity[0]?.authenticatedViewers).toBe(1);
+    expect(activity[0]?.guestViewers).toBe(1);
+  });
+
+  it('keeps a guest event a guest event after the viewer signs in (D-074)', async () => {
+    const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
+    const now = new Date('2026-11-24T10:00:00.000Z');
+
+    // The viewer watches as a guest, then signs in with the same browser. The
+    // session row is linked to the account, but the first event happened
+    // before the sign-in, so it stays a guest event.
+    await recordContentView({
+      type: 'drama',
+      contentId: seeded.dramaId,
+      userId: null,
+      sessionId,
+      now,
+    });
+    await recordContentView({
+      type: 'movie',
+      contentId: seeded.movieId,
+      userId: seeded.userId,
+      sessionId,
+      now,
+    });
+
+    await aggregateDailyAnalytics(DAY, null, null);
+
+    const range = buildDateRange(DAY, DAY);
+    const overview = await getAnalyticsOverview(range);
+
+    // One viewer, who was signed in for one of the two events.
+    expect(overview.uniqueVisitors).toBe(1);
+    expect(overview.authenticatedViewers).toBe(1);
+    expect(overview.guestViewers).toBe(0);
+  });
+
   it('reads the range from a preset', () => {
     const range = resolveDateRange('last_7_days', new Date('2026-11-24T12:00:00.000Z'));
 

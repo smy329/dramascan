@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { BellOff, CheckCheck, ExternalLink } from 'lucide-react';
 
-import type { NotificationView } from '@/modules/notifications';
+import type { NotificationView } from '@/modules/notifications/notification-center.shared';
 import {
   dismissNotificationAction,
   markAllNotificationsReadAction,

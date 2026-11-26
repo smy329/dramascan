@@ -8,6 +8,7 @@ import { isForeignKeyViolation, isUniqueViolation } from '@/platform/db/errors';
 
 import { content_view_events } from './schema';
 import { utcHourBucket } from './date-filters';
+import { analyticsViewerType } from './viewer-types';
 import { resolveAnalyticsVisitor, type AnalyticsVisitor } from './visitor';
 
 /**
@@ -90,6 +91,7 @@ export async function recordContentView(
   try {
     await executor.insert(content_view_events).values({
       guest_session_id: visitor.guestSessionId,
+      viewer_type: analyticsViewerType(input.userId),
       content_id: input.contentId,
       content_type: input.type,
       drama_id: input.type === 'drama' ? input.contentId : null,

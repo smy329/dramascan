@@ -5,7 +5,7 @@ import {
   DELIVERY_RETENTION_DAYS,
   MAX_LIMIT,
   MAX_PUSH_RETRY_ATTEMPTS,
-  RETRY_WINDOW_DAYS,
+  PUSH_RETRY_WINDOW_DAYS,
   createLogger,
   parsePositiveInteger,
   readPushConfig,
@@ -189,7 +189,7 @@ describe('runNotificationMaintenance', () => {
 
     const candidateCall = calls.find(call => call.sql.includes('from notifications n'));
 
-    expect(candidateCall?.values?.[0]).toBe(RETRY_WINDOW_DAYS);
+    expect(candidateCall?.values?.[0]).toBe(PUSH_RETRY_WINDOW_DAYS);
     expect(candidateCall?.values?.[1]).toBe(MAX_PUSH_RETRY_ATTEMPTS);
   });
 

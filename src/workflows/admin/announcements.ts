@@ -61,7 +61,7 @@ export async function createAnnouncementAction(
       };
     }
 
-    const announcement = await createAnnouncement({
+    const announcement = await createAnnouncement(actor, {
       title: parsed.data.title,
       content: parsed.data.content,
       authorId: userId,
@@ -102,7 +102,7 @@ export async function publishAnnouncementAction(
       };
     }
 
-    return { ok: true, data: await publishAnnouncement(parsed.data) };
+    return { ok: true, data: await publishAnnouncement(actor, parsed.data) };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
   }

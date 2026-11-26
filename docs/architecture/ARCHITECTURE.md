@@ -361,6 +361,7 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 - **Boundary notes:** publication workflows are invoked through `workflows/publish-content`, not by other modules. Public queries never return unpublished or trashed content. Watch queries obtain the source URL through `playback`, not from a general details query. Drama structure conversion (season-based ↔ flat) is sequenced by `workflows/admin/conversion`, which owns the transaction, the `FOR UPDATE` lock, the preview fingerprint check, and the snapshot lifecycle; the `content` module supplies the pure ordering, plan, fingerprint, and snapshot-payload rules. Drama→movie conversion is sequenced by `workflows/admin/movie-conversion`; `content` supplies the plan, publication mapping, and fingerprint, while the `reviews`, `users`, `notifications`, and `analytics` modules move their own rows through transaction-scoped ownership services.
 - **Public discovery reads (Prompts 121–138):** `content/public-discovery.ts` owns the content-only public reads — the browse listings, the category and platform pages, the search suggestions, the hero candidates, and the public availability predicates `publicDramaAvailability` / `publicMovieAvailability`, which mirror `evaluatePublicAvailability` in SQL. `content/public-discovery.shared.ts` holds the pure parsers and DTO mappers that a client island may import directly (D-049). The *unified* ranked grid — which joins the rating rows and the daily aggregates — is owned by `analytics/read-models/discovery.ts` (§6.9); `content` does not import `reviews` or `analytics` to build it.
 - **Availability is the single authority:** a published item with no playable source is not publicly listed. The rule applies to the listings, the detail pages, the watch routes, the search results, and the bookmarks, so a viewer never reaches a page that leads nowhere.
+- **Publication references are a public API (S6, D-076):** `content/publication-references.ts` exposes `listPublishedDramaReferences`, `listPublishedSeasonReferences`, and `listPublishedEpisodeReferences`, which return the title and deep-link data of the named rows and never name a trashed row. The publication workflow calls them and hands the result to `notifications` as a payload snapshot, so a workflow never queries the content tables itself.
 
 ### 6.4 `users` — User profile and bookmarks
 
@@ -422,6 +423,8 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 - **A notification is written once, and delivery maintenance is bounded (D-069):** the database decides whether a notification is new — a partial unique index on `(user_id, event_type, content_id)` plus `ON CONFLICT DO NOTHING` — so two concurrent publication retries cannot both write it, and the writer reports `created`, `duplicate`, and `not_wanted` separately. A notification without a content id is never collapsed. A short-lived maintenance command retries a notification from the last seven days that has no successful push and fewer than three recorded attempts, and it never re-sends a notification that reached a browser once. Every cleanup removes at most one bounded batch, and the bound is inside the delete statement, so the reported number is the number actually removed.
 - **The server decides what a push endpoint may claim (D-070):** the endpoint of a subscription is an address the *server* contacts, so it is validated before it is stored and again before it is contacted. The rules live in one shared module (`modules/notifications/push-transport.ts`): HTTPS only, no credentials and no fragment, no local or private host name, no private or reserved IP literal (IPv4 and IPv6, including the IPv4-mapped, NAT64, and 6to4 forms), an optional `PUSH_ALLOWED_HOSTS` allowlist, and a DNS check at send time whose answer is pinned for the connection itself. The outbound request has a timeout. The push configuration — the VAPID key pair, the contact address, the message lifetime, the host allowlist — is part of `ServerConfig`, so a half-configured deployment fails at startup rather than at the first delivery. The maintenance command imports the same transport, so "may this endpoint be contacted?" has exactly one answer.
 - **The delivery maintenance command exists as a command (D-070):** `scripts/notification-maintenance.mjs`, run by `npm run db:notifications:maintenance`, mirrors the application-side delivery rule, reports a structured result, and exits non-zero on failure.
+- **One delivery primitive serves every audience (S2, D-070):** `notifications/audience.ts` is the only implementation of "write the notification, then deliver the push" for the episode, drama, season, and announcement rounds. It reads the whole audience in three queries, one after another, because a helper that receives a transaction handle must not run concurrent queries on one connection. `MAX_AUDIENCE_SIZE` lives there and nowhere else, so a new broadcast cannot grow an unbounded audience.
+- **The delivery limits live in one pure file (S3, D-078):** `notifications/delivery-limits.ts` holds `MAX_DELIVERY_ATTEMPTS`, `MAX_PUSH_RETRY_ATTEMPTS`, `PUSH_RETRY_WINDOW_DAYS`, and `DELIVERY_RETENTION_DAYS`; the application imports and re-exports them, and the maintenance command imports them directly. The command's direct SQL is the documented exception in §16.2.
 
 ### 6.9 `analytics` — Product analytics and reporting
 
@@ -437,7 +440,8 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 - **A calendar day is a Dhaka day, and the aggregates are written on demand (D-059):** the aggregate row's `date` is `to_char(timestamp at time zone 'UTC' + interval '6 hours','YYYY-MM-DD')`. The aggregation is a bounded, on-demand command — one pass per scope inside a transaction — so re-running it for the same day produces the same result. There is no worker, no queue, and no recurring job; the dashboard shows when the numbers were last written.
 - **The dashboard's ratios have matching denominators, and today is refreshed while the tab is open (D-068):** the player reports a `play` event once per viewing session, the daily aggregate stores `playback_starts` and `playback_viewers`, the completion rate is `completions / playback_starts`, and the average watch time is `watch seconds / playback_viewers`. A pause or a seek no longer lowers the rate, and a visitor who never played no longer dilutes the average. `OperationalRefresh` re-aggregates the current Dhaka day every 60 seconds while the dashboard tab is visible, through a bounded server action authorised by `analytics.read`; a hidden tab does not write, and rewriting a historical range still requires `analytics.manage`.
 - **The retention policy is 400 days, and it is applied by a bounded command (D-065):** the raw events are kept for 400 days, which is longer than the 366-day range the dashboard may query, so every number the dashboard can show can still be rebuilt. A guest-session row is kept for the same window as the events it identifies, because the unique-visitor counts are made of the visitor keys; a session row linked to an account is never removed, because it is that account's stable visitor key. `analytics.purgeExpiredGuestData` is the application-side implementation, and `scripts/analytics-retention.mjs` (`npm run db:analytics:retention`) is the short-lived maintenance command that mirrors it. One run removes at most one batch of rows per table, so the command is bounded and has to be run again to clear a large backlog.
-- **The server bounds what a public beacon may claim (D-070):** a playback beacon is public, so the watch duration is clamped to the time that passed since the previous stored event of the same visitor and the same content, plus thirty seconds of tolerance, and to an absolute maximum; an impossible media position is dropped. The completion flag is honoured on a `completion` event only and forced to `false` on every other event. The numbers are therefore lower bounds, which is what an untrusted signal can honestly support.
+- **The server bounds what a public beacon may claim (D-070, D-073):** a playback beacon is public, so the watch duration is clamped to the time that passed since the previous stored event of the same visitor and the same content, plus thirty seconds of tolerance, and to an absolute maximum; an impossible media position is dropped. The completion flag is honoured on a `completion` event only and forced to `false` on every other event. A `completion` additionally counts only when the visitor already has a stored `play` event for the same content and the cumulative server-verified watch time reaches sixty seconds; an unsupported completion is stored with `completion_threshold_met = false`, so it is visible for investigation but not counted. The numbers are therefore lower bounds, which is what an untrusted signal can honestly support.
+- **An event carries the viewer classification of its own moment (D-074):** `content_view_events` and `playback_analytics_events` carry `viewer_type` (`authenticated` / `guest`), written at request time from the resolved visitor. The dashboard counts a visitor as signed in when at least one of their events in the range (or the day) is authenticated, and the two buckets add up to the viewer count. Joining the events to `guest_sessions.user_id` instead would have reclassified the events a viewer produced before signing in, because that column is set when the account is linked.
 - **The daily aggregate has a database-level key (D-070):** a refresh takes a transaction-scoped advisory lock and inserts with `ON CONFLICT DO NOTHING`, and two partial unique indexes (`uq_analytics_daily_aggregates_site_date` and `uq_analytics_daily_aggregates_content_date`) state the two logical keys of the table. Two overlapping refreshes therefore produce one row, whatever the interleaving.
 - **The range-level playback viewers are counted over the raw events (D-070):** the daily aggregate keeps a viewer count per day, but the range counts the distinct visitors of the raw playback events, so a viewer who played on three days is one viewer of the range and not three. The average watch time of a range is divided by that number.
 
@@ -783,6 +787,7 @@ Modules may define domain errors that extend these classes (for example, `Conten
 - `components/**` may import only `lib`, `lib/contracts`, and third-party client libraries. It may not import a module, repository, DB client, or authorization code.
 - Client Components receive serializable DTOs as props. They never receive raw rows, DB handles, session secrets, or permission internals.
 - `lib/contracts/**` contains the client-safe DTO and form-schema definitions. It imports no server code.
+- A pure helper that belongs to a module may live in a `*.shared.ts` file beside it, and a client island imports that file directly rather than the module index (D-049, §5.1). The `*.shared.ts` file carries no `server-only` marker, no database import, and no `@/` module import; the notification islands use `notifications/{preferences,notification-center,subscriptions}.shared.ts` this way (S7, D-078).
 - Secrets are read only by `platform/config` in server code. No secret uses a `NEXT_PUBLIC_*` variable.
 
 ---
@@ -830,6 +835,38 @@ covered by `tests/unit/scripts/trash-cleanup.test.ts` and
 `tests/integration/content/trash-expiry.integration.test.ts` instead of by a
 module-level test. It introduces no worker, no queue, and no scheduler inside
 the application; the systemd timer owns the schedule.
+
+### 16.2 Implemented exception: the notification maintenance command (Prompt 154, D-078)
+
+`scripts/notification-maintenance.mjs` is the second standalone command. It
+retries undelivered browser pushes, and it removes old, orphaned, and
+structurally invalid notification records, in bounded batches. It runs outside
+the application process on bare Node, without a build step, so it cannot import
+the notification module index: that index is `server-only` and pulls in the
+database client and the `@/` path aliases.
+
+The command therefore mirrors the statements of
+`src/modules/notifications/delivery.ts` with direct SQL, which is the accepted
+exception to §17's "database access only in repositories and read models" rule
+for the same reason as the Trash expiry command. The exception is kept as small
+as the runtime allows:
+
+- The delivery rule (`isDeliveryAllowed`), the four delivery limits
+  (`MAX_DELIVERY_ATTEMPTS`, `MAX_PUSH_RETRY_ATTEMPTS`,
+  `PUSH_RETRY_WINDOW_DAYS`, `DELIVERY_RETENTION_DAYS`), and the push transport
+  are imported from pure, alias-free TypeScript files under
+  `src/modules/notifications/`. Node runs those sources directly.
+- `src/modules/notifications/delivery-limits.ts` is the single home of the four
+  numbers; `delivery.ts` imports and re-exports them.
+- `tests/unit/scripts/notification-maintenance.test.ts` and
+  `tests/unit/modules/notifications/delivery-limits.test.ts` pin the
+  synchronisation, so a limit that drifts between the two sides fails the unit
+  suite.
+
+The command is bounded, short-lived, and single-purpose: one batch per table
+per run, a hard `MAX_LIMIT`, a structured JSON result, and a non-zero exit on
+failure. It introduces no worker, no queue, and no scheduler inside the
+application; the operator or a systemd timer owns the schedule.
 
 ---
 

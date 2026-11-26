@@ -52,6 +52,8 @@ export const content_view_events = pgTable(
   {
     id: uuidPrimaryKey(),
     guest_session_id: uuid('guest_session_id'), // FK to guest_sessions, nullable
+    /** How the viewer was classified when the view happened (D-074). */
+    viewer_type: text('viewer_type').notNull().default('guest'),
     content_id: uuid('content_id').notNull(), // legacy target id
     content_type: text('content_type').notNull(), // legacy: drama | movie
     drama_id: uuid('drama_id'),
@@ -79,6 +81,8 @@ export const playback_analytics_events = pgTable(
   {
     id: uuidPrimaryKey(),
     guest_session_id: uuid('guest_session_id'), // FK to guest_sessions, nullable
+    /** How the viewer was classified when the event happened (D-074). */
+    viewer_type: text('viewer_type').notNull().default('guest'),
     content_id: uuid('content_id').notNull(), // the episode or movie the event describes
     content_type: text('content_type').notNull(), // drama | movie
     drama_id: uuid('drama_id'),

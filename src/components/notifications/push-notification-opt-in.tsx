@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { BellRing, Loader2, PowerOff } from 'lucide-react';
 
-import type { PushSubscription } from '@/modules/notifications';
+import type { PushSubscription } from '@/modules/notifications/subscriptions.shared';
 import { subscribeToPush, unsubscribeFromPush } from '@/workflows/notifications/subscriptions';
 
 /**

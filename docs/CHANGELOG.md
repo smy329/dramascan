@@ -4,6 +4,114 @@ All notable changes to the DramaScan project will be documented in this file.
 
 ## [Unreleased] - 2026-11-24
 
+### fix: resolve the third Phase 11 review round (Prompts 139–154)
+
+A third fresh review of the Phase 11 work found nine Standards findings and six
+Spec findings. Each was checked against the code before any fix, and each fix
+was written test-first.
+
+#### Analytics
+
+- **The aggregation reads its inputs inside the transaction.** `aggregateScope`
+  computed the rows before the advisory lock, so two overlapping refreshes could
+  read different inputs and write the same key. The seven reads now run inside
+  the transaction, after the lock, one after the other (S1).
+- **A completion must be supported by the server.** A completion counts only
+  when the visitor has a stored `play` event for the same content and the
+  cumulative server-verified watch time reaches 60 seconds; a forged zero-watch
+  completion is stored with `completion_threshold_met = false` and does not
+  count (P1, D-073).
+- **An event carries the viewer classification of the moment it was recorded.**
+  `content_view_events` and `playback_analytics_events` gain a request-time
+  `viewer_type`; the dashboard shows the signed-in/guest split at range and day
+  level, and signing in no longer reclassifies the earlier events (P2, D-074).
+- **The dashboard read model no longer imports another module's schema.** It
+  uses the raw table names (the `discovery.ts` precedent) and the content
+  module's public title query (S9/P6).
+
+#### Notifications
+
+- **The audience reads are serialised and shared.** `deliverToAudience` is the
+  one delivery primitive behind the event and announcement rounds; it runs its
+  three reads one after another and is the only home of `MAX_AUDIENCE_SIZE`
+  (S2).
+- **The delivery limits live in one file.**
+  `src/modules/notifications/delivery-limits.ts` holds the four numbers; the
+  application and `scripts/notification-maintenance.mjs` both import it, and a
+  unit test fails if they drift. The command's direct SQL is the documented
+  exception in ARCHITECTURE §16.2 (S3, D-078).
+- **The announcement services take an actor and throw typed errors.**
+  `createAnnouncement` / `publishAnnouncement` check `settings.manage`
+  themselves and throw `ValidationError` / `NotFoundError` instead of
+  `RangeError` (S8).
+- **A resolved content report tells the reporter.** The workflow emits
+  `content_report_resolved` with the report id as the content id, so a repeated
+  resolution cannot send a second notification (P3, D-075). The write happens
+  after the resolution has committed, so a failed notification is logged and
+  swallowed rather than failing the moderator's action (D-064).
+- **Reserved IPv6 literals are refused as push endpoints.** The IANA reserved
+  ranges are now blocked in addition to the private ones (P5).
+- **An unjustified `as never` is gone.** `createPinnedLookup` returns Node's
+  `LookupFunction` and the error path passes a real `Error` (S5).
+- **The client islands import the pure contracts, not the server barrel.** The
+  three `*.shared.ts` files hold the client-safe types (S7).
+
+#### Content
+
+- **The publication workflow announces through the content module's public
+  API.** `listPublishedDramaReferences`, `listPublishedSeasonReferences`, and
+  `listPublishedEpisodeReferences` replace the raw SQL in `announceContent()`,
+  and an architecture guard pins the boundary (S6, D-076).
+
+#### Dashboard
+
+- **The custom date range is reachable.** The dashboard has a plain GET form
+  with two date inputs and the `custom` preset, beside the preset links (P4,
+  D-077).
+
+#### Schema
+
+- `drizzle/0021_phase11_review_fixes_round2.sql` is now data only (the
+  duplicate cleanup).
+- `drizzle/0022_phase11_review_round3_schema.sql` (new): the two partial unique
+  indexes of `analytics_daily_aggregates` and the two `viewer_type` columns.
+- `drizzle/0023_phase11_review_round3_data.sql` (new): the best-effort
+  `viewer_type` backfill.
+
+#### Testing
+
+- New guards: aggregation transaction boundary, audience single connection,
+  delivery-limit synchronisation, client boundary, unsafe assertions,
+  publication-announcement boundary, end-to-end alert locator.
+- New behavioural coverage: the completion rule (unit + integration), the
+  request-time viewer classification (integration), the content-report
+  notification (unit), the publication references (integration), and the
+  dashboard custom range and viewer split (component).
+- A mapping defect was found and fixed while proving the dashboard split:
+  `countDistinctVisitorsByDay` read `record.guest_visitors` while the SQL
+  aliased the column `guest_viewers`, so the guest count was always zero.
+- The browser suite failed on a locator rather than on the application: Next.js
+  renders a route announcer that also carries `role="alert"` after hydration,
+  so `getByRole('alert')` resolved to two elements and the assertion failed
+  with a strict-mode violation. The locator is narrowed to the alert the test
+  means, and a unit guard fails when a spec uses an unnarrowed alert locator
+  (D-079).
+- A failed reporter notification failed the moderation action, even though the
+  report had already been resolved. The failure is now logged and swallowed
+  (D-064, D-075).
+
+#### Verification
+
+- Typecheck: **PASS** (`npm run typecheck`)
+- Lint: **PASS** (`npm run lint`)
+- Unit tests: **PASS** — 1274/1274, 131 files (`npm test`)
+- Integration tests: **PASS** — 790/790, 55 files (`npm run test:integration`)
+- Playwright E2E: **PASS** — 93/93 (`npm run test:e2e`)
+- Production build: **PASS** (`npm run build` with HTTPS `APP_URL` and
+  `TRUSTED_ORIGINS`) — "Compiled successfully", exit code 0
+
+---
+
 ### fix: resolve the second Phase 11 review round (Prompts 139–154)
 
 A second fresh review of the Phase 11 work found five Important and three Minor
@@ -36,8 +144,10 @@ them and adds the regression coverage that proves the fixes.
   does not support (D-070).
 - **The daily aggregate has a database-level key.** Migration `0021` adds the
   two partial unique indexes that state the logical keys of
-  `analytics_daily_aggregates`; the refresh takes a transaction-scoped advisory
-  lock and inserts with `ON CONFLICT DO NOTHING` (D-070).
+  `analytics_daily_aggregates` (the round-3 review later split it into `0021`
+  for the data cleanup and `0022` for the indexes); the refresh takes a
+  transaction-scoped advisory lock and inserts with `ON CONFLICT DO NOTHING`
+  (D-070).
 - **The average watch time of a range is divided by the viewers of the range.**
   The range-level playback viewers are counted over the raw playback events, so
   a viewer who played on three days is one viewer (D-070).
@@ -93,7 +203,8 @@ them and adds the regression coverage that proves the fixes.
 
 - `drizzle/0021_phase11_review_fixes_round2.sql`: the two partial unique
   indexes of `analytics_daily_aggregates`, after removing the duplicates the
-  old application could create.
+  old application could create. The round-3 review split this into `0021`
+  (data only) and `0022` (the indexes).
 
 #### Verification
 

@@ -7,6 +7,7 @@ import type { DbExecutor } from '@/platform/db/executor';
 
 import { push_subscriptions } from './schema';
 import type { PushSubscriptionPayload } from './push-provider';
+import type { PushSubscription } from './subscriptions.shared';
 
 /**
  * Browser push subscriptions (Prompt 148).
@@ -29,14 +30,7 @@ import type { PushSubscriptionPayload } from './push-provider';
 /** The maximum number of active subscriptions one viewer may hold. */
 export const MAX_SUBSCRIPTIONS_PER_USER = 5;
 
-/** One stored subscription. */
-export type PushSubscription = {
-  id: string;
-  userId: string;
-  endpoint: string;
-  browser: string | null;
-  createdAt: Date;
-};
+export type { PushSubscription } from './subscriptions.shared';
 
 /**
  * Store a browser push subscription for a viewer.

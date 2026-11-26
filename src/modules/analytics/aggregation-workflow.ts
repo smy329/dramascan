@@ -93,8 +93,9 @@ export async function aggregateDailyAnalytics(
  *
  * The whole range is computed in **one pass per scope**: the queries group by
  * the Dhaka day, so a range produces one row per day without a read per day.
- * The rows of the range are then replaced in one transaction, so a refresh
- * never doubles a number and never leaves a half-written range behind.
+ * The rows of the range are read, computed, and replaced in one transaction,
+ * so a refresh never doubles a number and never leaves a half-written range
+ * behind.
  *
  * Two refreshes of the same scope may run at the same time — the dashboard
  * refreshes the current day every minute, and an administrator may press the
@@ -110,10 +111,15 @@ async function aggregateScope(
   start: Date,
   end: Date
 ): Promise<void> {
-  const rows = await computeAggregateRows(scope, start, end, db);
-
   await db.transaction(async tx => {
     await lockScope(tx, scope);
+
+    // The read, the compute, and the replace happen on the transaction handle,
+    // after the scope lock is taken (D-059). A refresh that reads on the pool
+    // can compute its rows from a state another refresh is replacing, and then
+    // write a stale result.
+    const rows = await computeAggregateRows(scope, start, end, tx);
+
     await deleteScopedRange(scope, startDate, endDate, tx);
     await insertAggregateRows(rows, tx);
   });
@@ -220,96 +226,96 @@ async function computeAggregateRows(
   const viewFilter = buildViewFilter(scope);
   const playbackFilter = buildPlaybackFilter(scope);
 
-  const [
-    viewRows,
-    playbackRows,
-    visitorRows,
-    watchRows,
-    playbackViewerRows,
-    siteVisitorRows,
-    sitePlaybackViewerRows,
-  ] = await Promise.all([
-    runQuery(
-      executor,
-      sql`
-      select to_char(${content_view_events.viewed_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
-             ${content_view_events.content_type} as content_type,
-             ${content_view_events.content_id}::text as target_id,
-             count(*)::int as total_views
-        from ${content_view_events}
-       where ${content_view_events.deleted_at} is null
-         and ${content_view_events.viewed_at} >= ${start}
-         and ${content_view_events.viewed_at} < ${end}
-         ${viewFilter}
-       group by 1, 2, 3
-    `
-    ),
-    runQuery(
-      executor,
-      sql`
-      select to_char(${playback_analytics_events.event_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
-             ${playback_analytics_events.content_type} as content_type,
-             coalesce(${playback_analytics_events.drama_id}, ${playback_analytics_events.movie_id})::text as target_id,
-             count(*)::int as total_playback_events,
-             count(*) filter (where ${playback_analytics_events.event_type} = 'play')::int as playback_starts,
-             count(*) filter (where ${playback_analytics_events.completion_threshold_met})::int as completion_events
-        from ${playback_analytics_events}
-       where ${playback_analytics_events.deleted_at} is null
-         and ${playback_analytics_events.event_at} >= ${start}
-         and ${playback_analytics_events.event_at} < ${end}
-         ${playbackFilter}
-       group by 1, 2, 3
-    `
-    ),
-    runQuery(
-      executor,
-      sql`
-      select to_char(${content_view_events.viewed_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
-             ${content_view_events.content_type} as content_type,
-             ${content_view_events.content_id}::text as target_id,
-             count(distinct ${content_view_events.guest_session_id})::int as unique_visitors
-        from ${content_view_events}
-       where ${content_view_events.deleted_at} is null
-         and ${content_view_events.viewed_at} >= ${start}
-         and ${content_view_events.viewed_at} < ${end}
-         and ${content_view_events.guest_session_id} is not null
-         ${viewFilter}
-       group by 1, 2, 3
-    `
-    ),
-    runQuery(
-      executor,
-      sql`
-      select to_char(${playback_analytics_events.event_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
-             ${playback_analytics_events.content_type} as content_type,
-             coalesce(${playback_analytics_events.drama_id}, ${playback_analytics_events.movie_id})::text as target_id,
-             coalesce(sum(${playback_analytics_events.watch_duration_seconds}), 0)::int as total_watch_duration_seconds
-        from ${playback_analytics_events}
-       where ${playback_analytics_events.deleted_at} is null
-         and ${playback_analytics_events.event_at} >= ${start}
-         and ${playback_analytics_events.event_at} < ${end}
-         ${playbackFilter}
-       group by 1, 2, 3
-    `
-    ),
-    runQuery(
-      executor,
-      sql`
-      select to_char(${playback_analytics_events.event_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
-             ${playback_analytics_events.content_type} as content_type,
-             coalesce(${playback_analytics_events.drama_id}, ${playback_analytics_events.movie_id})::text as target_id,
-             count(distinct ${playback_analytics_events.guest_session_id})::int as playback_viewers
-        from ${playback_analytics_events}
-       where ${playback_analytics_events.deleted_at} is null
-         and ${playback_analytics_events.event_at} >= ${start}
-         and ${playback_analytics_events.event_at} < ${end}
-         and ${playback_analytics_events.guest_session_id} is not null
-         ${playbackFilter}
-       group by 1, 2, 3
-    `
-    ),
+  // The seven reads run one after the other: the executor is a transaction
+  // handle, and a transaction is bound to one PostgreSQL connection that may
+  // run one query at a time (CONVENTIONS §5.6).
+  const viewRows = await runQuery(
+    executor,
+    sql`
+    select to_char(${content_view_events.viewed_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
+           ${content_view_events.content_type} as content_type,
+           ${content_view_events.content_id}::text as target_id,
+           count(*)::int as total_views
+      from ${content_view_events}
+     where ${content_view_events.deleted_at} is null
+       and ${content_view_events.viewed_at} >= ${start}
+       and ${content_view_events.viewed_at} < ${end}
+       ${viewFilter}
+     group by 1, 2, 3
+  `
+  );
+
+  const playbackRows = await runQuery(
+    executor,
+    sql`
+    select to_char(${playback_analytics_events.event_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
+           ${playback_analytics_events.content_type} as content_type,
+           coalesce(${playback_analytics_events.drama_id}, ${playback_analytics_events.movie_id})::text as target_id,
+           count(*)::int as total_playback_events,
+           count(*) filter (where ${playback_analytics_events.event_type} = 'play')::int as playback_starts,
+           count(*) filter (where ${playback_analytics_events.completion_threshold_met})::int as completion_events
+      from ${playback_analytics_events}
+     where ${playback_analytics_events.deleted_at} is null
+       and ${playback_analytics_events.event_at} >= ${start}
+       and ${playback_analytics_events.event_at} < ${end}
+       ${playbackFilter}
+     group by 1, 2, 3
+  `
+  );
+
+  const visitorRows = await runQuery(
+    executor,
+    sql`
+    select to_char(${content_view_events.viewed_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
+           ${content_view_events.content_type} as content_type,
+           ${content_view_events.content_id}::text as target_id,
+           count(distinct ${content_view_events.guest_session_id})::int as unique_visitors
+      from ${content_view_events}
+     where ${content_view_events.deleted_at} is null
+       and ${content_view_events.viewed_at} >= ${start}
+       and ${content_view_events.viewed_at} < ${end}
+       and ${content_view_events.guest_session_id} is not null
+       ${viewFilter}
+     group by 1, 2, 3
+  `
+  );
+
+  const watchRows = await runQuery(
+    executor,
+    sql`
+    select to_char(${playback_analytics_events.event_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
+           ${playback_analytics_events.content_type} as content_type,
+           coalesce(${playback_analytics_events.drama_id}, ${playback_analytics_events.movie_id})::text as target_id,
+           coalesce(sum(${playback_analytics_events.watch_duration_seconds}), 0)::int as total_watch_duration_seconds
+      from ${playback_analytics_events}
+     where ${playback_analytics_events.deleted_at} is null
+       and ${playback_analytics_events.event_at} >= ${start}
+       and ${playback_analytics_events.event_at} < ${end}
+       ${playbackFilter}
+     group by 1, 2, 3
+  `
+  );
+
+  const playbackViewerRows = await runQuery(
+    executor,
+    sql`
+    select to_char(${playback_analytics_events.event_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
+           ${playback_analytics_events.content_type} as content_type,
+           coalesce(${playback_analytics_events.drama_id}, ${playback_analytics_events.movie_id})::text as target_id,
+           count(distinct ${playback_analytics_events.guest_session_id})::int as playback_viewers
+      from ${playback_analytics_events}
+     where ${playback_analytics_events.deleted_at} is null
+       and ${playback_analytics_events.event_at} >= ${start}
+       and ${playback_analytics_events.event_at} < ${end}
+       and ${playback_analytics_events.guest_session_id} is not null
+       ${playbackFilter}
+     group by 1, 2, 3
+  `
+  );
+
+  const siteVisitorRows =
     scope.kind === 'site'
-      ? runQuery(
+      ? await runQuery(
           executor,
           sql`
           select to_char(seen.day_at at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
@@ -332,9 +338,11 @@ async function computeAggregateRows(
            group by 1
         `
         )
-      : Promise.resolve([] as Record<string, unknown>[]),
+      : [];
+
+  const sitePlaybackViewerRows =
     scope.kind === 'site'
-      ? runQuery(
+      ? await runQuery(
           executor,
           sql`
           select to_char(${playback_analytics_events.event_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
@@ -347,8 +355,7 @@ async function computeAggregateRows(
            group by 1
         `
         )
-      : Promise.resolve([] as Record<string, unknown>[]),
-  ]);
+      : [];
 
   const rows = new Map<string, AggregateRow>();
 

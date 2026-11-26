@@ -130,6 +130,35 @@ describe('isBlockedIpAddress', () => {
     }
   });
 
+  it('blocks the reserved IPv6 ranges of the IANA registry', () => {
+    // D-070 refuses a private or reserved IP literal, IPv4 and IPv6 alike. The
+    // IANA special-purpose address registry names the IPv6 ranges that are
+    // reserved for a protocol, a documentation purpose, or a local mechanism:
+    // none of them can be a push endpoint.
+    for (const address of [
+      '64:ff9b:1::1', // 64:ff9b:1::/48 — local-use NAT64
+      '100::1', // 100::/64 — discard-only
+      '2001::1', // 2001::/23 — IETF protocol assignments
+      '2001:2::1', // 2001:2::/48 — benchmarking
+      '2001:20::1', // 2001:20::/28 — ORCHIDv2
+      '2001:30::1', // 2001:30::/28 — drone remote ID entity tags
+      '3fff::1', // 3fff::/20 — documentation
+      '5f00::1', // 5f00::/16 — segment routing
+    ]) {
+      expect(isBlockedIpAddress(address), address).toBe(true);
+    }
+  });
+
+  it('still allows the public IPv6 ranges', () => {
+    for (const address of [
+      '2001:4860:4860::8888',
+      '2001:500::1',
+      '2400:cb00::1',
+    ]) {
+      expect(isBlockedIpAddress(address), address).toBe(false);
+    }
+  });
+
   it('allows the public ranges', () => {
     for (const address of [
       '1.1.1.1',

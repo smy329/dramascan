@@ -5,7 +5,9 @@ import { revalidatePath } from 'next/cache';
 import type { ActionResult } from '@/lib/contracts/common';
 
 import { resolveActor } from '@/modules/authorization';
+import { notifyReporter } from '@/modules/notifications';
 import { resolveContentReport, type ContentReportStatus } from '@/modules/users';
+import { createRequestLogger } from '@/platform/logging';
 
 import { toActionError } from '../action-errors';
 
@@ -40,6 +42,35 @@ export async function resolveReportAction(input: unknown): Promise<
     const note = typeof payload.note === 'string' ? payload.note : null;
 
     const report = await resolveContentReport(actor, payload.reportId, status, note);
+
+    // The reporter is owed the outcome: the platform promised that a
+    // moderation outcome reaches the reporter, and the outcome is a mandatory
+    // event. The report id is the content id, so a repeated resolution cannot
+    // produce a second notification for the same report (D-075).
+    //
+    // The report has already been resolved when the notification is written,
+    // so a failed write must not fail the moderator's action: the report
+    // really was resolved, and reporting the action as failed would be a lie.
+    // The failure is logged instead, and the platform does not claim a
+    // delivery it did not make (D-064).
+    if (report.reporterId) {
+      try {
+        await notifyReporter({
+          reporterUserId: report.reporterId,
+          resolutionOutcome:
+            note?.trim() || `Your report was marked as ${report.status}.`,
+          eventType: 'content_report_resolved',
+          contentId: report.id,
+          contentType: 'content_report',
+        });
+      } catch (error) {
+        const { logger } = createRequestLogger({ module: 'notifications' });
+        logger.warn(
+          { err: error, event: 'content_report_notification_failed' },
+          'The report was resolved but the reporter was not notified'
+        );
+      }
+    }
 
     revalidatePath('/admin/reports', 'page');
 

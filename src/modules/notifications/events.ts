@@ -5,19 +5,13 @@ import { listActiveAccountIds } from '@/modules/auth';
 import { listBookmarkOwnerIds } from '@/modules/users';
 import type { DbExecutor } from '@/platform/db/executor';
 
-import { writeNotificationOnce, type NotificationEventType } from './notifications';
 import {
-  DEFAULT_NOTIFICATION_PREFERENCES,
-  isDeliveryAllowed,
-  isEventAllowed,
-} from './delivery-rules';
-import {
-  getNotificationPreferencesForUsers,
-  type NotificationPreferenceSet,
-} from './preferences';
-import { listAlreadyNotifiedUsers } from './notification-center';
-import { listUsersWithSubscriptions } from './subscriptions';
-import { deliverPush } from './delivery';
+  MAX_AUDIENCE_SIZE,
+  deliverToAudience,
+  emptyRoundResult,
+  type NotificationRoundResult,
+} from './audience';
+import type { NotificationEventType } from './notifications';
 
 /**
  * The notification events (Prompts 151, 152, 153).
@@ -43,21 +37,6 @@ import { deliverPush } from './delivery';
  * There is no scheduled publishing and no recurring episode schedule: every
  * notification here follows a manual publication that just happened.
  */
-
-/** The maximum number of viewers one event may notify. */
-export const MAX_AUDIENCE_SIZE = 5000;
-
-/** What one notification round did. */
-export type NotificationRoundResult = {
-  /** How many viewers received an in-app notification. */
-  notified: number;
-  /** How many viewers were skipped because they already had the notification. */
-  skippedAsDuplicate: number;
-  /** How many viewers were skipped because their preference did not allow it. */
-  skippedByPreference: number;
-  /** How many browser-push deliveries were attempted. */
-  pushAttempts: number;
-};
 
 /**
  * Notify the viewers who bookmarked a drama that a new episode is available.
@@ -176,102 +155,4 @@ async function runBroadcast(
     message,
     executor,
   });
-}
-
-/**
- * Write one notification per eligible viewer.
- *
- * The whole audience is read in three queries — the notifications that already
- * exist, the preferences, and the push subscriptions — so a broadcast does not
- * turn into thousands of round trips.
- *
- * @param input the event, the audience, and the message
- * @returns what the round did
- */
-async function deliverToAudience(input: {
-  eventType: NotificationEventType;
-  contentId: string;
-  userIds: readonly string[];
-  message: {
-    title: string;
-    content: string;
-    contentType: string;
-    link: string;
-  };
-  executor: DbExecutor;
-}): Promise<NotificationRoundResult> {
-  const result = emptyRoundResult();
-
-  const [alreadyNotified, preferences, pushRecipients] = await Promise.all([
-    listAlreadyNotifiedUsers(
-      input.userIds,
-      input.eventType,
-      input.contentId,
-      input.executor
-    ),
-    getNotificationPreferencesForUsers(input.userIds, input.executor),
-    listUsersWithSubscriptions(input.userIds, input.executor),
-  ]);
-
-  for (const userId of input.userIds) {
-    // The bulk read avoids a write attempt for an audience that has already
-    // been told. It is an optimisation, not the guarantee: the partial unique
-    // index behind `writeNotificationOnce` is what makes a concurrent retry
-    // safe.
-    if (alreadyNotified.has(userId)) {
-      result.skippedAsDuplicate += 1;
-      continue;
-    }
-
-    const set: NotificationPreferenceSet =
-      preferences.get(userId) ?? { ...DEFAULT_NOTIFICATION_PREFERENCES };
-
-    if (!isEventAllowed(set, input.eventType)) {
-      result.skippedByPreference += 1;
-      continue;
-    }
-
-    const notification = await writeNotificationOnce(
-      {
-        userId,
-        title: input.message.title,
-        content: input.message.content,
-        eventType: input.eventType,
-        contentId: input.contentId,
-        contentType: input.message.contentType,
-        link: input.message.link,
-      },
-      set,
-      input.executor
-    );
-
-    if (notification.status === 'duplicate') {
-      result.skippedAsDuplicate += 1;
-      continue;
-    }
-
-    if (notification.status !== 'created') {
-      result.skippedByPreference += 1;
-      continue;
-    }
-
-    result.notified += 1;
-
-    if (isDeliveryAllowed(set, input.eventType, 'push') && pushRecipients.has(userId)) {
-      result.pushAttempts += 1;
-      await deliverPush(notification.id, input.executor, set);
-    }
-  }
-
-  return result;
-}
-
-/** A round that notified nobody. */
-function emptyRoundResult(): NotificationRoundResult {
-  return {
-    notified: 0,
-    skippedAsDuplicate: 0,
-    skippedByPreference: 0,
-    pushAttempts: 0,
-  };
 }

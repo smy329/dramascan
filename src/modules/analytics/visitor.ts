@@ -8,6 +8,9 @@ import { isUniqueViolation } from '@/platform/db/errors';
 
 import { guest_sessions } from './schema';
 
+export { ANALYTICS_VIEWER_TYPES, analyticsViewerType } from './viewer-types';
+export type { AnalyticsViewerType } from './viewer-types';
+
 /**
  * The analytics visitor (Prompt 139).
  *

@@ -4,22 +4,20 @@ import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { listActiveAccountIds } from '@/modules/auth';
+import {
+  requirePermission,
+  toPermissionKey,
+  type ActorContext,
+} from '@/modules/authorization';
 import type { DbExecutor } from '@/platform/db/executor';
+import { NotFoundError, ValidationError } from '@/platform/errors';
 
 import { announcements } from './schema';
-import { writeNotificationOnce } from './notifications';
 import {
-  DEFAULT_NOTIFICATION_PREFERENCES,
-  isDeliveryAllowed,
-  isEventAllowed,
-} from './delivery-rules';
-import {
-  getNotificationPreferencesForUsers,
-  type NotificationPreferenceSet,
-} from './preferences';
-import { listAlreadyNotifiedUsers } from './notification-center';
-import { listUsersWithSubscriptions } from './subscriptions';
-import { deliverPush } from './delivery';
+  MAX_AUDIENCE_SIZE,
+  deliverToAudience,
+  type NotificationRoundResult,
+} from './audience';
 
 /**
  * Website announcements (Prompt 153).
@@ -39,9 +37,6 @@ export const ANNOUNCEMENT_TITLE_MAX_LENGTH = 200;
 
 /** The maximum length of an announcement body. */
 export const ANNOUNCEMENT_CONTENT_MAX_LENGTH = 5000;
-
-/** The maximum number of viewers one announcement may notify. */
-export const MAX_AUDIENCE_SIZE = 5000;
 
 /** The publication states an announcement can be in. */
 export const ANNOUNCEMENT_STATUSES = ['draft', 'published'] as const;
@@ -70,17 +65,9 @@ export type AnnouncementView = {
 };
 
 /** What one announcement publication did. */
-export type AnnouncementPublicationResult = {
+export type AnnouncementPublicationResult = NotificationRoundResult & {
   /** The announcement that was published. */
   announcementId: string;
-  /** How many viewers received a notification. */
-  notified: number;
-  /** How many viewers were skipped because their preference did not allow it. */
-  skippedByPreference: number;
-  /** How many viewers were skipped because they already had the notification. */
-  skippedAsDuplicate: number;
-  /** How many browser-push deliveries were attempted. */
-  pushAttempts: number;
 };
 
 /**
@@ -89,25 +76,33 @@ export type AnnouncementPublicationResult = {
  * The announcement starts as a draft: nothing is delivered until it is
  * published.
  *
+ * The service is the authority: it re-checks the permission the entrypoint
+ * checked, so a caller that reaches it without the guard cannot create an
+ * announcement (ARCHITECTURE §11.3).
+ *
+ * @param actor the administrator
  * @param input the announcement
  * @param executor the database executor
  * @returns the created announcement
  */
 export async function createAnnouncement(
+  actor: ActorContext,
   input: AnnouncementInput,
   executor: DbExecutor = db
 ): Promise<AnnouncementView> {
+  requirePermission(actor, toPermissionKey('settings', 'manage'));
+
   const title = input.title.trim();
   const content = input.content.trim();
 
   if (title.length === 0 || title.length > ANNOUNCEMENT_TITLE_MAX_LENGTH) {
-    throw new RangeError(
+    throw new ValidationError(
       `The announcement title must be between 1 and ${ANNOUNCEMENT_TITLE_MAX_LENGTH} characters.`
     );
   }
 
   if (content.length === 0 || content.length > ANNOUNCEMENT_CONTENT_MAX_LENGTH) {
-    throw new RangeError(
+    throw new ValidationError(
       `The announcement content must be between 1 and ${ANNOUNCEMENT_CONTENT_MAX_LENGTH} characters.`
     );
   }
@@ -149,14 +144,22 @@ export async function createAnnouncement(
  * published again, so a retried request produces no second round of
  * notifications.
  *
+ * The service is the authority: it re-checks the permission the entrypoint
+ * checked, so a caller that reaches it without the guard cannot publish an
+ * announcement (ARCHITECTURE §11.3).
+ *
+ * @param actor the administrator
  * @param announcementId the announcement
  * @param executor the database executor
  * @returns what the publication did
  */
 export async function publishAnnouncement(
+  actor: ActorContext,
   announcementId: string,
   executor: DbExecutor = db
 ): Promise<AnnouncementPublicationResult> {
+  requirePermission(actor, toPermissionKey('settings', 'manage'));
+
   const result: AnnouncementPublicationResult = {
     announcementId,
     notified: 0,
@@ -182,7 +185,7 @@ export async function publishAnnouncement(
     .limit(1);
 
   if (!announcement) {
-    throw new RangeError('The announcement was not found.');
+    throw new NotFoundError('The announcement was not found.');
   }
 
   if (announcement.status === 'published') {
@@ -215,59 +218,26 @@ export async function publishAnnouncement(
     return result;
   }
 
-  const [alreadyNotified, preferences, pushRecipients] = await Promise.all([
-    listAlreadyNotifiedUsers(userIds, 'website_announcement', announcementId, executor),
-    getNotificationPreferencesForUsers(userIds, executor),
-    listUsersWithSubscriptions(userIds, executor),
-  ]);
+  const round = await deliverToAudience({
+    eventType: 'website_announcement',
+    contentId: announcement.id,
+    userIds,
+    message: {
+      title: announcement.title,
+      content: announcement.content,
+      contentType: 'announcement',
+      link: '/notifications',
+    },
+    executor,
+  });
 
-  for (const userId of userIds) {
-    if (alreadyNotified.has(userId)) {
-      result.skippedAsDuplicate += 1;
-      continue;
-    }
-
-    const set: NotificationPreferenceSet =
-      preferences.get(userId) ?? { ...DEFAULT_NOTIFICATION_PREFERENCES };
-
-    if (!isEventAllowed(set, 'website_announcement')) {
-      result.skippedByPreference += 1;
-      continue;
-    }
-
-    const notification = await writeNotificationOnce(
-      {
-        userId,
-        title: announcement.title,
-        content: announcement.content,
-        eventType: 'website_announcement',
-        contentId: announcement.id,
-        contentType: 'announcement',
-        link: '/notifications',
-      },
-      set,
-      executor
-    );
-
-    if (notification.status === 'duplicate') {
-      result.skippedAsDuplicate += 1;
-      continue;
-    }
-
-    if (notification.status !== 'created') {
-      result.skippedByPreference += 1;
-      continue;
-    }
-
-    result.notified += 1;
-
-    if (isDeliveryAllowed(set, 'website_announcement', 'push') && pushRecipients.has(userId)) {
-      result.pushAttempts += 1;
-      await deliverPush(notification.id, executor, set);
-    }
-  }
-
-  return result;
+  return {
+    announcementId: result.announcementId,
+    notified: round.notified,
+    skippedByPreference: round.skippedByPreference,
+    skippedAsDuplicate: round.skippedAsDuplicate,
+    pushAttempts: round.pushAttempts,
+  };
 }
 
 /**

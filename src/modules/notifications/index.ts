@@ -130,12 +130,21 @@ export type { DeliveryChannel, DeliveryRecordInput } from './delivery-records';
 
 export {
   MAX_AUDIENCE_SIZE,
+  deliverToAudience,
+  emptyRoundResult,
+} from './audience';
+
+export type {
+  AudienceDeliveryInput,
+  AudienceNotificationMessage,
+  NotificationRoundResult,
+} from './audience';
+
+export {
   notifyNewDrama,
   notifyNewEpisode,
   notifyNewSeason,
 } from './events';
-
-export type { NotificationRoundResult } from './events';
 
 export {
   ANNOUNCEMENT_CONTENT_MAX_LENGTH,

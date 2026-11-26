@@ -131,8 +131,10 @@ before any fix.
   boundary and again at the write (D-070).
 - **Two overlapping aggregate refreshes could write the same day twice.**
   Migration `0021` adds the two partial unique indexes that state the logical
-  keys of `analytics_daily_aggregates`; the refresh takes a transaction-scoped
-  advisory lock and inserts with `ON CONFLICT DO NOTHING` (D-070).
+  keys of `analytics_daily_aggregates` (the round-3 review later split that
+  migration into `0021` for the data cleanup and `0022` for the indexes); the
+  refresh takes a transaction-scoped advisory lock and inserts with
+  `ON CONFLICT DO NOTHING` (D-070).
 - **The average watch time of a range was divided by viewer-days.** The
   range-level playback viewers are counted over the raw playback events now, so
   a viewer who played on three days is one viewer of the range (D-070).
@@ -159,6 +161,93 @@ flag by unit tests, the clamp and the dropped position by integration tests,
 the concurrent aggregation by an integration test, the distinct range viewers
 by an integration test, the maintenance command by a unit test, and the
 browser unsubscribe by a component test.
+
+#### Phase 11 review round 3 (2026-11-26)
+
+A third fresh reviewer reviewed `9c421ed..a319efa` and requested changes:
+0 Critical, 9 Standards findings and 6 Spec findings. Each finding was checked
+against the code before any fix, and each fix was written test-first.
+
+- **The aggregation read its inputs before the lock.** `aggregateScope`
+  computed the rows and only then opened the transaction, so two overlapping
+  refreshes could read different inputs and write the same key. The reads now
+  run inside the transaction, after the advisory lock, and are serialised
+  (CONVENTIONS §5.6 forbids concurrent queries on one connection) (S1).
+- **Two audience reads ran concurrently inside a transaction.**
+  `deliverToAudience` and `publishAnnouncement` used `Promise.all` over three
+  reads in helpers that may receive a transaction. One shared primitive
+  (`notifications/audience.ts`) now serves both, serialises the three reads,
+  and is the only home of `MAX_AUDIENCE_SIZE` (S2).
+- **The maintenance command had its own copy of the delivery limits.**
+  `src/modules/notifications/delivery-limits.ts` now holds the four numbers;
+  the application and the command both import it, and a unit test fails if
+  they drift. The direct-SQL exception is documented in ARCHITECTURE §16.2
+  (D-078) (S3).
+- **One migration mixed data and schema statements.** `0021` is data only
+  (the duplicate cleanup); `0022` is schema (the two partial unique indexes and
+  the `viewer_type` columns); `0023` is the backfill (S4, D-074).
+- **An `as never` assertion had no justification.** It is gone:
+  `createPinnedLookup` now returns Node's `LookupFunction` and the error path
+  passes a real `Error` (S5).
+- **The publication workflow queried the content tables itself.** The content
+  module now exposes the publishable references and the workflow only
+  coordinates; an architecture guard reads the helper and fails on a query
+  (S6, D-076).
+- **Three client islands imported the server-only module barrel.** The pure
+  contracts moved to `preferences.shared.ts`, `notification-center.shared.ts`,
+  and `subscriptions.shared.ts`; a boundary guard pins the imports (S7).
+- **The announcement services took no actor and threw `RangeError`.** Both now
+  take the actor first, check `settings.manage` themselves, and throw the typed
+  `ValidationError` / `NotFoundError` (S8).
+- **The dashboard read model imported another module's schema.** It uses the
+  raw table names (the `discovery.ts` precedent) and the content module's
+  public title query instead (S9/P6).
+- **A forged beacon could claim a completion.** A completion now requires a
+  stored `play` event for the same content and a cumulative server-verified
+  watch time of at least 60 seconds; an unsupported completion is stored with
+  `completion_threshold_met = false` and does not count (P1, D-073).
+- **Signing in reclassified earlier events.** The events now carry the
+  request-time `viewer_type`, and the dashboard shows the signed-in/guest split
+  at range and day level; the historical rows are backfilled best-effort (P2,
+  D-074).
+- **A resolved content report never told the reporter.** The workflow now
+  emits `content_report_resolved` with the report id as the content id, so a
+  repeated resolution cannot send a second notification (P3, D-075). The
+  notification is written after the resolution has committed, so a failed
+  write is logged and swallowed: the report really was resolved, and telling
+  the moderator otherwise would be a lie (D-064).
+- **The custom range was supported but unreachable.** The dashboard has a
+  plain GET form with two date inputs and the `custom` preset, and it renders
+  the viewer split (P4, D-077).
+- **Reserved IPv6 literals were accepted as push endpoints.** The IANA
+  reserved ranges (`2001::/23`, `2001:2::/48`, `3fff::/20`, `64:ff9b:1::/48`,
+  `100::/64`, `5f00::/16`) are now refused (P5).
+
+Two defects were found while the round-3 tree was being verified, and both
+were fixed test-first:
+
+- **The browser suite failed on a locator, not on the application.** The
+  drama-conversion test asserted on `getByRole('alert')`. Next.js renders a
+  route announcer that also carries `role="alert"` once the page has
+  hydrated, so the locator resolved to two elements and the assertion failed
+  with a strict-mode violation — depending on the hydration timing. The
+  locator is now narrowed to the alert the test means, and a unit guard
+  (`tests/unit/e2e/alert-locator.test.ts`) fails when a spec uses an alert
+  locator the framework can also satisfy (D-079).
+- **A failed notification failed the moderation action.** The reporter
+  notification of a content report is written after the report has been
+  resolved, so a failed write must not tell the moderator that the resolution
+  failed: it did not. The failure is logged and swallowed, exactly as D-064
+  requires for the account/security notifications (D-075).
+
+Regression coverage added: an aggregation transaction-boundary guard, a
+single-connection audience guard, a delivery-limit synchronisation test, a
+client-boundary guard, an unsafe-assertion guard, a publication-announcement
+boundary guard, the completion rule at unit and integration level, the
+request-time viewer classification at integration level, the content-report
+notification at unit level, the publication references at integration level,
+and the dashboard custom range and viewer split at component level.
+
 
 #### Changed files
 
@@ -234,13 +323,38 @@ browser unsubscribe by a component test.
   `tests/integration/analytics/{playback-analytics,dashboard}.integration.test.ts`,
   `tests/integration/notifications/notifications.integration.test.ts`,
   `tests/integration/content/movie-conversion.integration.test.ts`
+- **Review round 3:** `drizzle/0021_phase11_review_fixes_round2.sql` (data only),
+  `drizzle/0022_phase11_review_round3_schema.sql` (new),
+  `drizzle/0023_phase11_review_round3_data.sql` (new),
+  `drizzle/meta/_journal.json`,
+  `src/modules/analytics/{viewer-types.ts (new),visitor,schema,view-counting-workflow,playback-analytics-workflow,playback-plausibility,aggregation-workflow,index}.ts`,
+  `src/modules/analytics/read-models/dashboard.ts`,
+  `src/modules/content/{publication-references.ts (new),index.ts}`,
+  `src/modules/notifications/{audience.ts (new),delivery-limits.ts (new),preferences.shared.ts (new),notification-center.shared.ts (new),subscriptions.shared.ts (new)}`,
+  `src/modules/notifications/{announcements,events,delivery,delivery-rules,notifications,notification-center,preferences,subscriptions,push-transport,index}.ts`,
+  `src/workflows/admin/{announcements,publication,resolve-report-action}.ts`,
+  `src/components/admin/analytics/analytics-dashboard.tsx`,
+  `src/components/notifications/{notification-center-list,notification-preferences-form,push-notification-opt-in}.tsx`,
+  `scripts/notification-maintenance.mjs`,
+  `tests/unit/modules/analytics/{aggregation-transaction-boundary,playback-completion-rule,viewer-classification}.test.ts` (new),
+  `tests/unit/modules/notifications/{audience-single-connection,client-boundary,delivery-limits,unsafe-assertions}.test.ts` (new),
+  `tests/unit/architecture/publication-announcement-boundary.test.ts` (new),
+  `tests/unit/components/analytics-dashboard.test.tsx` (new),
+  `tests/unit/workflows/admin/resolve-report-action.test.ts` (new),
+  `tests/unit/e2e/alert-locator.test.ts` (new),
+  `tests/unit/scripts/notification-maintenance.test.ts`,
+  `tests/unit/modules/notifications/push-endpoint.test.ts`,
+  `tests/e2e/admin-dramas.spec.ts`,
+  `tests/integration/content/publication-references.integration.test.ts` (new),
+  `tests/integration/analytics/{dashboard,playback-analytics}.integration.test.ts`,
+  `tests/integration/notifications/notifications.integration.test.ts`
 
 #### Verification
 
 - Typecheck: **PASS** (`npm run typecheck`)
 - Lint: **PASS** (`npm run lint`)
-- Unit tests: **PASS** — 1241/1241, 120 files (`npm test`)
-- Integration tests: **PASS** — 776/776, 54 files (`npm run test:integration`)
+- Unit tests: **PASS** — 1274/1274, 131 files (`npm test`)
+- Integration tests: **PASS** — 790/790, 55 files (`npm run test:integration`)
 - Playwright E2E: **PASS** — 93/93 (`npm run test:e2e`), including the new `admin-analytics`, `admin-notifications`, and `notifications` specs
 - Production build: **PASS** (`npm run build` with HTTPS `APP_URL` and
   `TRUSTED_ORIGINS`; the local `.env.local` uses `http://localhost`, which the
@@ -252,6 +366,8 @@ browser unsubscribe by a component test.
 - **The historical aggregates are written on demand.** There is no worker, no queue, and no recurring schedule. Today's aggregate is refreshed by the dashboard's 60-second visible-tab refresh; a historical range is refreshed by the manual button. The dashboard shows when the numbers were last written.
 - **The delivery maintenance command is not scheduled by the platform.** It is a short-lived command that an operator or a `systemd` timer runs; the platform itself has no scheduler. The command is `npm run db:notifications:maintenance` (D-070).
 - **The search events table is indexed but not yet written.** The table, its soft-delete column, and its deduplication index exist; the search page does not record a search event yet.
+- **The historical viewer split is a best-effort backfill.** Migration `0023` classifies the pre-existing analytics rows from the current guest-session link. The request-time classification of the events recorded before the migration is unrecoverable, so the split of the historical aggregates is the closest available approximation (D-074).
+- **The completion threshold is a lower bound.** The content tables carry no media duration, so the server can require a stored start and a minimum watch time but cannot know the real duration. A very short clip completed inside the first minute is counted as a playback event without the completion flag (D-073).
 
 ---
 

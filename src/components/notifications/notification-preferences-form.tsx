@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { BellRing, Check } from 'lucide-react';
 
-import type { NotificationPreferenceSet } from '@/modules/notifications';
+import type { NotificationPreferenceSet } from '@/modules/notifications/preferences.shared';
 import { saveNotificationPreferences } from '@/workflows/notifications/preferences';
 import { cn } from '@/lib/utils';
 

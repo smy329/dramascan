@@ -34,6 +34,54 @@ export const MAX_PLAYBACK_WATCH_SECONDS = 86_400;
 /** The largest media position one event may report: one day. */
 export const MAX_PLAYBACK_POSITION_SECONDS = 86_400;
 
+/**
+ * The server-verified watch time a completion must be backed by.
+ *
+ * The media duration is not known to the server: no content row carries one,
+ * and the duration the browser reports belongs to the user-facing playback
+ * progress, which the requirements keep separate from the analytics. The
+ * server can therefore only support a **lower bound** — a completion counts
+ * when the viewer really watched something substantial (D-073).
+ *
+ * One minute is the smallest duration that separates a viewing from a beacon
+ * that was posted and forgotten.
+ */
+export const COMPLETION_MINIMUM_WATCH_SECONDS = 60;
+
+/** What the viewer's own watch history says about a completion claim. */
+export type CompletionSupport = Readonly<{
+  /** Whether the server stored a playback start for this visitor and content. */
+  hasPlaybackStart: boolean;
+  /** The cumulative watch duration the server accepted for this visitor. */
+  cumulativeWatchSeconds: number;
+}>;
+
+/**
+ * Does the viewer's own watch history support a completion claim?
+ *
+ * Two facts decide it, and both are server-derived:
+ *
+ *   - **The viewing began.** The server stored a `play` event for this visitor
+ *     and this content, so there is a viewing to complete.
+ *   - **The viewer watched.** The cumulative watch duration the server
+ *     accepted — the sum of every delta it stored, bounded by the time that
+ *     really passed — reaches the minimum.
+ *
+ * A forged beacon that claims a completion without a viewing, or without any
+ * watch time behind it, is refused: the event is still recorded, but it is not
+ * counted as a completion.
+ *
+ * @param input what the watch history says
+ * @returns whether the completion may be counted
+ */
+export function isCompletionSupported(input: CompletionSupport): boolean {
+  if (!input.hasPlaybackStart) {
+    return false;
+  }
+
+  return input.cumulativeWatchSeconds >= COMPLETION_MINIMUM_WATCH_SECONDS;
+}
+
 /** What a playback event claims. */
 export type PlaybackPlausibilityInput = Readonly<{
   /** The watch seconds the beacon claims. */

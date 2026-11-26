@@ -116,6 +116,70 @@ function NoRows(): JSX.Element {
   return <p className="text-sm text-muted-foreground">No data for this range yet.</p>;
 }
 
+/**
+ * The custom-range control.
+ *
+ * The presets are links; a custom range needs two explicit days, so the
+ * control is a form that submits the two days and the `custom` preset to the
+ * same page. It is a plain GET form, so it works without any client-side
+ * JavaScript and the selected range stays in the URL.
+ */
+function CustomRangeForm({ range }: Readonly<{ range: DateRange }>): JSX.Element {
+  const custom = range.preset === 'custom';
+
+  return (
+    <form
+      aria-label="Custom range"
+      method="get"
+      action="/admin/analytics"
+      className="flex flex-wrap items-end gap-2"
+    >
+      <input type="hidden" name="range" value="custom" />
+
+      <div className="flex flex-col gap-1">
+        <label
+          htmlFor="analytics-range-start"
+          className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
+        >
+          From
+        </label>
+        <input
+          id="analytics-range-start"
+          name="start"
+          type="date"
+          defaultValue={custom ? range.startDate : ''}
+          max={custom ? range.endDate : undefined}
+          className="min-h-11 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label
+          htmlFor="analytics-range-end"
+          className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
+        >
+          To
+        </label>
+        <input
+          id="analytics-range-end"
+          name="end"
+          type="date"
+          defaultValue={custom ? range.endDate : ''}
+          min={custom ? range.startDate : undefined}
+          className="min-h-11 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+        />
+      </div>
+
+      <button
+        type="submit"
+        className="inline-flex min-h-11 items-center rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+      >
+        Apply
+      </button>
+    </form>
+  );
+}
+
 export function AnalyticsDashboard({
   range,
   overview,
@@ -180,11 +244,18 @@ export function AnalyticsDashboard({
             </Link>
           );
         })}
+
+        <CustomRangeForm range={range} />
       </nav>
 
       <section aria-label="Overview" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="Total views" value={overview.totalViews.toLocaleString('en-GB')} />
         <Metric label="Unique viewers" value={overview.uniqueVisitors.toLocaleString('en-GB')} />
+        <Metric
+          label="Signed-in viewers"
+          value={overview.authenticatedViewers.toLocaleString('en-GB')}
+        />
+        <Metric label="Guest viewers" value={overview.guestViewers.toLocaleString('en-GB')} />
         <Metric label="Watch time" value={formatDuration(overview.totalWatchDurationSeconds)} />
         <Metric
           label="Playback starts"
@@ -205,7 +276,8 @@ export function AnalyticsDashboard({
 
       <p className="text-xs text-muted-foreground">
         Completion rate is completions divided by playback starts. Average watch time is divided by
-        the viewers who actually played, not by every visitor.
+        the viewers who actually played, not by every visitor. A viewer is counted as signed in
+        when at least one of their events in the range happened while they were signed in.
       </p>
 
       <Panel
@@ -263,11 +335,13 @@ export function AnalyticsDashboard({
         {activity.length === 0 ? (
           <NoRows />
         ) : (
-          <table className="w-full min-w-[36rem] text-left text-sm">
+          <table className="w-full min-w-[42rem] text-left text-sm">
             <thead className="border-b border-border text-xs uppercase tracking-[0.12em] text-muted-foreground">
               <tr>
                 <th scope="col" className="py-2 pr-4">Day</th>
                 <th scope="col" className="py-2 pr-4">Viewers</th>
+                <th scope="col" className="py-2 pr-4">Signed-in</th>
+                <th scope="col" className="py-2 pr-4">Guests</th>
                 <th scope="col" className="py-2 pr-4">Views</th>
                 <th scope="col" className="py-2 pr-4">Playback events</th>
                 <th scope="col" className="py-2">Average per playback viewer</th>
@@ -279,6 +353,12 @@ export function AnalyticsDashboard({
                   <td className="py-2 pr-4 font-medium text-foreground">{row.date}</td>
                   <td className="py-2 pr-4 tabular-nums">
                     {row.uniqueVisitors.toLocaleString('en-GB')}
+                  </td>
+                  <td className="py-2 pr-4 tabular-nums">
+                    {row.authenticatedViewers.toLocaleString('en-GB')}
+                  </td>
+                  <td className="py-2 pr-4 tabular-nums">
+                    {row.guestViewers.toLocaleString('en-GB')}
                   </td>
                   <td className="py-2 pr-4 tabular-nums">{row.totalViews.toLocaleString('en-GB')}</td>
                   <td className="py-2 pr-4 tabular-nums">

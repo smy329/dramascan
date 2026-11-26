@@ -77,6 +77,13 @@ export {
   readGuestSessionId,
 } from './guest-session';
 
+export {
+  ANALYTICS_VIEWER_TYPES,
+  analyticsViewerType,
+} from './viewer-types';
+
+export type { AnalyticsViewerType } from './viewer-types';
+
 export { resolveAnalyticsVisitor } from './visitor';
 
 export type { AnalyticsVisitor } from './visitor';
@@ -98,13 +105,16 @@ export type {
 } from './playback-analytics-workflow';
 
 export {
+  COMPLETION_MINIMUM_WATCH_SECONDS,
   MAX_PLAYBACK_POSITION_SECONDS,
   MAX_PLAYBACK_WATCH_SECONDS,
   PLAYBACK_WATCH_DURATION_TOLERANCE_SECONDS,
   clampPlaybackEvent,
+  isCompletionSupported,
 } from './playback-plausibility';
 
 export type {
+  CompletionSupport,
   PlaybackPlausibility,
   PlaybackPlausibilityInput,
 } from './playback-plausibility';

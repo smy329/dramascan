@@ -19,13 +19,16 @@
  *   WEB_PUSH_TTL_SECONDS            optional; the message lifetime in seconds.
  *   PUSH_ALLOWED_HOSTS              optional; the hosts a push endpoint may point at.
  *
- * The command shares the delivery rule and the push transport with the
- * application. It imports `src/modules/notifications/delivery-rules.ts` and
+ * The command shares the delivery rule, the delivery limits, and the push
+ * transport with the application. It imports
+ * `src/modules/notifications/delivery-rules.ts`,
+ * `src/modules/notifications/delivery-limits.ts`, and
  * `src/modules/notifications/push-transport.ts` directly — Node runs the
  * TypeScript sources with its built-in type stripping — so there is exactly
- * one implementation of "may this notification be pushed?" and of "is this
- * endpoint acceptable?". The command needs no build step and no dependency
- * beyond the ones the application already has.
+ * one implementation of "may this notification be pushed?", of "how many
+ * attempts may it receive?", and of "is this endpoint acceptable?". The
+ * command needs no build step and no dependency beyond the ones the
+ * application already has.
  *
  * The SQL mirrors `src/modules/notifications/delivery.ts`. Keep the two in
  * step: a rule that exists in only one of them is a rule the command and the
@@ -43,6 +46,12 @@ import {
   isDeliveryAllowed,
 } from '../src/modules/notifications/delivery-rules.ts';
 import {
+  DELIVERY_RETENTION_DAYS,
+  MAX_DELIVERY_ATTEMPTS,
+  MAX_PUSH_RETRY_ATTEMPTS,
+  PUSH_RETRY_WINDOW_DAYS,
+} from '../src/modules/notifications/delivery-limits.ts';
+import {
   DEFAULT_PUSH_TIMEOUT_MS,
   sendWebPush,
 } from '../src/modules/notifications/push-transport.ts';
@@ -53,17 +62,12 @@ export const DEFAULT_LIMIT = 1000;
 /** The largest bound one run may use. */
 export const MAX_LIMIT = 10_000;
 
-/** How far back the retry looks for an undelivered notification. */
-export const RETRY_WINDOW_DAYS = 7;
-
-/** The maximum number of push attempts one notification ever receives. */
-export const MAX_PUSH_RETRY_ATTEMPTS = 3;
-
-/** The maximum number of subscriptions one delivery round tries. */
-export const MAX_DELIVERY_ATTEMPTS = 10;
-
-/** The retention window of the delivery trail, in days. */
-export const DELIVERY_RETENTION_DAYS = 30;
+export {
+  DELIVERY_RETENTION_DAYS,
+  MAX_DELIVERY_ATTEMPTS,
+  MAX_PUSH_RETRY_ATTEMPTS,
+  PUSH_RETRY_WINDOW_DAYS,
+};
 
 /** The default lifetime of a queued push message, in seconds. */
 const DEFAULT_PUSH_TTL_SECONDS = 3600;
@@ -277,8 +281,8 @@ export async function runNotificationMaintenance(options = {}) {
  * Retry the push delivery of the notifications that never reached a browser.
  *
  * The same three rules the application applies: only the last
- * `RETRY_WINDOW_DAYS`, never a notification that already reached a browser,
- * and never more than `MAX_PUSH_RETRY_ATTEMPTS` recorded attempts.
+ * `PUSH_RETRY_WINDOW_DAYS`, never a notification that already reached a
+ * browser, and never more than `MAX_PUSH_RETRY_ATTEMPTS` recorded attempts.
  *
  * @param {any} client
  * @param {MaintenanceReport} report
@@ -315,7 +319,7 @@ async function retryFailedPushes(client, report, log, config, limit) {
         ) < $2
       order by n.created_at desc
       limit $3`,
-    [RETRY_WINDOW_DAYS, MAX_PUSH_RETRY_ATTEMPTS, bounded]
+    [PUSH_RETRY_WINDOW_DAYS, MAX_PUSH_RETRY_ATTEMPTS, bounded]
   );
 
   report.considered = candidates.rows.length;

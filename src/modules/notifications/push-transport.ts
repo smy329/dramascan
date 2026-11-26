@@ -31,6 +31,8 @@
  * Node HTTPS agent. It must never be imported from a Client Component.
  */
 
+import type { LookupFunction } from 'node:net';
+
 /** The configuration one transport needs. */
 export type PushTransportConfig = {
   /** The VAPID public key. */
@@ -285,20 +287,13 @@ export async function resolvePublicAddresses(
  * between the check and the request cannot redirect the request to an address
  * the check never saw.
  *
+ * The signature is the one Node's HTTPS agent expects, so the lookup can be
+ * handed to it without an unsafe assertion.
+ *
  * @param addresses the addresses the host resolved to
  * @returns a lookup function for the Node HTTPS agent
  */
-export function createPinnedLookup(
-  addresses: readonly ResolvedAddress[]
-): (
-  _hostname: string,
-  _options: { all?: boolean; family?: number; hints?: number },
-  _callback: (
-    _error: NodeJS.ErrnoException | null,
-    _address?: string | ResolvedAddress[],
-    _family?: number
-  ) => void
-) => void {
+export function createPinnedLookup(addresses: readonly ResolvedAddress[]): LookupFunction {
   return (_hostname, options, callback) => {
     if (options?.all) {
       callback(
@@ -311,7 +306,9 @@ export function createPinnedLookup(
     const first = addresses[0];
 
     if (!first) {
-      callback(new Error('The push host has no usable address.'));
+      // Node reads the error and ignores the address, so the empty string only
+      // satisfies the callback signature.
+      callback(new Error('The push host has no usable address.'), '');
       return;
     }
 
@@ -380,7 +377,7 @@ export async function sendWebPush(
     const https = await import('node:https');
 
     const agent = new https.Agent({
-      lookup: createPinnedLookup(addresses) as never,
+      lookup: createPinnedLookup(addresses),
     });
 
     await webpush.sendNotification(
@@ -683,6 +680,37 @@ function isBlockedIpv6(groups: readonly number[]): boolean {
 
   if ((first & 0xff00) === 0xff00) {
     // ff00::/8 — multicast.
+    return true;
+  }
+
+  // The ranges the IANA special-purpose address registry reserves. They are
+  // not reachable from the internet: they belong to a protocol, to a
+  // documentation purpose, or to a local mechanism, so none of them can be a
+  // push endpoint (D-070).
+
+  if (first === 0x0064 && second === 0xff9b && third === 0x0001) {
+    // 64:ff9b:1::/48 — the local-use NAT64 prefix.
+    return true;
+  }
+
+  if (first === 0x0100 && second === 0 && third === 0 && fourth === 0) {
+    // 100::/64 — the discard-only prefix.
+    return true;
+  }
+
+  if (first === 0x2001 && (second & 0xfe00) === 0) {
+    // 2001::/23 — the IETF protocol assignments: TEREDO, the benchmarking
+    // range, ORCHIDv2, and the drone remote-ID entity tags.
+    return true;
+  }
+
+  if (first === 0x3fff && (second & 0xf000) === 0) {
+    // 3fff::/20 — documentation.
+    return true;
+  }
+
+  if (first === 0x5f00) {
+    // 5f00::/16 — segment routing.
     return true;
   }
 

@@ -244,15 +244,28 @@ export async function notifyAccountSecurity(
 }
 
 /**
- * Tell a reporter what happened to the review they reported.
+ * Tell a reporter what happened to the report they filed.
  *
  * The outcome is written verbatim: a reporter learns what a moderator decided,
  * not a generic "your report was handled" message.
+ *
+ * A review report and a content report are two different promises, so they are
+ * two different events. The event type is part of the de-duplication key, so a
+ * report that is resolved twice cannot produce a second notification.
+ *
+ * @param input the reporter, the outcome, and the event
+ * @param executor the database executor
+ * @returns the created row, or `null` when nothing was written
  */
 export async function notifyReporter(
   input: {
     reporterUserId: string;
     resolutionOutcome: string;
+    /** Which promise the platform made: a review report or a content report. */
+    eventType?: Extract<
+      NotificationEventType,
+      'review_report_resolved' | 'content_report_resolved'
+    >;
     /** The deep link back to the reported item, when there is one. */
     link?: string | null;
     contentId?: string | null;
@@ -265,7 +278,7 @@ export async function notifyReporter(
       userId: input.reporterUserId,
       title: 'Your report was reviewed',
       content: input.resolutionOutcome,
-      eventType: 'review_report_resolved',
+      eventType: input.eventType ?? 'review_report_resolved',
       contentId: input.contentId ?? null,
       contentType: input.contentType ?? null,
       link: input.link ?? null,

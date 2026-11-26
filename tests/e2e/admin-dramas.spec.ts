@@ -302,7 +302,13 @@ test.describe('admin drama → movie conversion', () => {
     try {
       await page.goto(`/admin/dramas/${drama.id}/convert-to-movie`);
 
-      await expect(page.getByRole('alert')).toContainText('2 active episodes');
+      // The locator is narrowed to the message: Next.js renders a route
+      // announcer that also carries `role="alert"` once the page has
+      // hydrated, so an unnarrowed alert locator resolves to two elements and
+      // fails with a strict-mode violation (D-072).
+      await expect(
+        page.getByRole('alert').filter({ hasText: '2 active episodes' })
+      ).toBeVisible();
       await expect(page.getByRole('button', { name: 'Preview conversion' })).toHaveCount(0);
     } finally {
       await removeDrama(drama);

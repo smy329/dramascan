@@ -15,7 +15,13 @@ import {
   type PublicationStatus,
 } from '@/modules/content/publication';
 import { parsePublicationRequest } from '@/modules/content/validation';
-import { publicDramaHref, publicEpisodeHref } from '@/modules/content';
+import {
+  listPublishedDramaReferences,
+  listPublishedEpisodeReferences,
+  listPublishedSeasonReferences,
+  publicDramaHref,
+  publicEpisodeHref,
+} from '@/modules/content';
 import {
   createAdminNotification,
   notifyNewDrama,
@@ -482,6 +488,10 @@ async function announcePublishedContent(
  * given the title and the deep link of every announcement rather than a
  * content id it would have to look up itself (D-070).
  *
+ * The rows themselves are read through the content module's public API, which
+ * owns the titles and the hierarchy. The workflow coordinates the two modules;
+ * it does not query the content tables (ARCHITECTURE §5.2, D-076).
+ *
  * @param contentType what was published
  * @param ids the ids that became publicly available
  */
@@ -497,10 +507,7 @@ async function announceContent(
   };
 
   if (contentType === 'drama') {
-    const rows = await db
-      .select({ id: dramas.id, title: dramas.title, slug: dramas.slug })
-      .from(dramas)
-      .where(and(inArray(dramas.id, [...ids]), isNull(dramas.deleted_at)));
+    const rows = await listPublishedDramaReferences(ids);
 
     for (const row of rows) {
       mergeRoundResult(
@@ -517,17 +524,7 @@ async function announceContent(
   }
 
   if (contentType === 'season') {
-    const rows = await db
-      .select({
-        id: seasons.id,
-        title: seasons.title,
-        dramaId: seasons.drama_id,
-        dramaTitle: dramas.title,
-        dramaSlug: dramas.slug,
-      })
-      .from(seasons)
-      .innerJoin(dramas, eq(seasons.drama_id, dramas.id))
-      .where(and(inArray(seasons.id, [...ids]), isNull(seasons.deleted_at)));
+    const rows = await listPublishedSeasonReferences(ids);
 
     for (const row of rows) {
       mergeRoundResult(
@@ -544,17 +541,7 @@ async function announceContent(
     return result;
   }
 
-  const rows = await db
-    .select({
-      id: episodes.id,
-      title: episodes.title,
-      dramaId: episodes.drama_id,
-      dramaTitle: dramas.title,
-      dramaSlug: dramas.slug,
-    })
-    .from(episodes)
-    .innerJoin(dramas, eq(episodes.drama_id, dramas.id))
-    .where(and(inArray(episodes.id, [...ids]), isNull(episodes.deleted_at)));
+  const rows = await listPublishedEpisodeReferences(ids);
 
   for (const row of rows) {
     mergeRoundResult(

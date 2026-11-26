@@ -11,6 +11,8 @@
  * (D-005).
  */
 
+import type { NotificationPreferenceSet } from './preferences.shared';
+
 /** The delivery channels a notification can use. */
 export const NOTIFICATION_CHANNELS = ['in_app', 'push'] as const;
 
@@ -42,28 +44,10 @@ export const OPTIONAL_EVENT_PREFERENCES: readonly NotificationEventPreference[] 
   'website_announcement',
 ];
 
-/** A viewer's complete preference set. */
-export type NotificationPreferenceSet = {
-  newEpisode: boolean;
-  newDrama: boolean;
-  newDramaSeason: boolean;
-  websiteAnnouncement: boolean;
-  /** Always `true`: the column exists for completeness, but it cannot be switched off. */
-  accountSecurity: boolean;
-  globalInApp: boolean;
-  globalPush: boolean;
-};
+export type { NotificationPreferenceSet } from './preferences.shared';
 
 /** The default preference set: everything on. */
-export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferenceSet = {
-  newEpisode: true,
-  newDrama: true,
-  newDramaSeason: true,
-  websiteAnnouncement: true,
-  accountSecurity: true,
-  globalInApp: true,
-  globalPush: true,
-};
+export { DEFAULT_NOTIFICATION_PREFERENCES } from './preferences.shared';
 
 /** The events the rule understands. */
 export type DeliveryEventType =

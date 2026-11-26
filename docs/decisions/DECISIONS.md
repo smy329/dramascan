@@ -3128,4 +3128,272 @@ attempt. Two harness defects explain the whole pattern.
 
 ---
 
+## D-073 — A completion is counted only when the server can support it
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 3)
+**Extends:** D-060 (the playback beacon is bounded), D-070 (the server decides what a public beacon may claim), REQUIREMENTS §10.3
+
+**Context:** The browser reported `completion` and the server stored
+`completion_threshold_met` from the browser's own claim. The completion rate
+therefore measured what a client asserted, not what the platform could support:
+a forged beacon with a zero watch duration and the completion flag set counted
+as a completion.
+
+**Decision:**
+
+1. **A completion needs a stored playback start.** A `completion` event is
+   counted only when the same visitor already has a stored `play` event for the
+   same content item. Without a start there is nothing to complete.
+2. **A completion needs the minimum watch time.** The cumulative
+   server-verified watch duration of the visitor for that content item —
+   including the delta of the completion event itself — must reach
+   `COMPLETION_MINIMUM_WATCH_SECONDS` (60 seconds). The minimum is a lower
+   bound, not the media duration: the content tables carry no duration column,
+   and the media duration is known only to the browser and to the users
+   module's playback progress, which analytics must not read
+   (REQUIREMENTS §10.3).
+3. **An unsupported completion is still recorded.** The row is written with
+   `completion_threshold_met = false`, so the event is visible for
+   investigation and the bounded deduplication index still applies. It simply
+   does not count toward `completion_events`.
+4. **The rule is enforced at the parse boundary and again at the write.** The
+   Zod transform rejects the flag on a non-completion event, and
+   `recordPlaybackEvent` recomputes the support from the database. A caller
+   cannot bypass the rule by constructing the input itself.
+
+**Consequences:**
+
+- The completion rate can only be inflated by watching, not by asserting.
+- A viewer who genuinely completes a short clip inside the first minute is
+  recorded as a completion event without the threshold flag; the dashboard
+  under-counts rather than over-counts, which is the safe direction for a
+  metric an administrator uses to judge content.
+
+---
+
+## D-074 — An analytics event carries the viewer classification of the moment it was recorded
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 3)
+**Extends:** D-057 (the anonymous guest session), D-058 (view counting)
+
+**Context:** The dashboard split its viewers by joining the events to
+`guest_sessions.user_id`. That column is set when a guest signs in, so the join
+reclassified the events a viewer produced *before* the sign-in as
+authenticated. The historical split was therefore a statement about the
+current account link, not about how the visitor was watching at the time.
+
+**Decision:**
+
+1. **The classification is written at request time.** `content_view_events`
+   and `playback_analytics_events` gain a `viewer_type` column
+   (`authenticated` or `guest`), set from the resolved visitor of the request:
+   a signed-in account is `authenticated`, an anonymous session is `guest`.
+2. **The column is classification only.** The event rows still carry no
+   account id; the visitor key remains `guest_sessions.id`, and the account
+   link stays in `guest_sessions`.
+3. **The dashboard reads the column.** The range-level and per-day viewer
+   splits count a visitor as authenticated when at least one of their events in
+   the range (or the day) is authenticated. The two buckets never overlap, so
+   they add up to the viewer count.
+4. **The backfill is best effort and says so.** Migration `0023` classifies the
+   existing rows from the current `guest_sessions.user_id` link. The
+   request-time truth of the pre-migration rows is unrecoverable; the backfill
+   is the closest available approximation, and it is documented rather than
+   presented as exact.
+
+**Consequences:**
+
+- Signing in no longer rewrites the history of how a viewer watched.
+- A viewer who browsed anonymously and then signed in is counted once in each
+  bucket only for the events of each kind, and the per-day split can differ
+  from the range split — which is the truth, not an inconsistency.
+
+---
+
+## D-075 — A content-report resolution is its own notification event
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 3)
+**Extends:** D-064 (mandatory moderation outcomes), D-069 (a notification is written once)
+
+**Context:** `content_report_resolved` existed as an event type but was never
+emitted. The reporter of a *content* report was notified through
+`notifyReporter`, which hard-coded `review_report_resolved`, so the platform
+told a viewer their content report was a review report — and the two promises
+shared one deduplication key.
+
+**Decision:**
+
+1. **The workflow emits the event that matches the promise.**
+   `resolveReportAction` calls `notifyReporter` with
+   `eventType: 'content_report_resolved'` after the users module resolves the
+   report; the review-moderation workflow keeps the default
+   `review_report_resolved`.
+2. **The report id is the content id.** The notification's `content_id` is the
+   report id, which is non-null, so the partial unique index
+   `(user_id, event_type, content_id)` deduplicates a repeated resolution.
+3. **The outcome is the moderator's note when there is one.** With no note, the
+   message names the new status; it never says "your report was handled"
+   without saying what happened.
+4. **A failed notification does not undo the resolution.** The report has
+   already been resolved when the notification is written, so a failed write is
+   logged and swallowed, exactly as D-064 requires for the account/security
+   notifications. The administrator is not told that the resolution failed when
+   it did not, and the platform does not claim a delivery it did not make.
+
+**Consequences:**
+
+- A reporter learns which promise was kept.
+- Resolving the same report twice cannot send two notifications.
+- A notification outage costs the platform the message, not the moderator's
+  work.
+
+---
+
+## D-076 — The publication workflow announces through the content module's public API
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 3)
+**Extends:** ARCHITECTURE §5.2 (workflows coordinate modules), D-070 (the notification module does not look up content)
+
+**Context:** `announceContent()` in `src/workflows/admin/publication.ts` read
+the drama, season, and episode rows with raw SQL. A workflow coordinates
+modules; querying another module's tables makes it break when that module's
+schema changes, and it bypasses the module's availability rules.
+
+**Decision:**
+
+1. **The content module answers the question.** `src/modules/content/publication-references.ts`
+   exposes `listPublishedDramaReferences`, `listPublishedSeasonReferences`, and
+   `listPublishedEpisodeReferences`, which return the title and the deep-link
+   data of the named rows and never name a trashed row.
+2. **The workflow only coordinates.** `announceContent()` calls those three
+   functions and hands the titles and links to the notification module, which
+   owns the notification rules and rows (D-070).
+3. **The boundary is enforced by a guard.**
+   `tests/unit/architecture/publication-announcement-boundary.test.ts` reads
+   the helper and fails if it contains a query builder call or stops using the
+   content module's references.
+
+**Consequences:**
+
+- The content module can change its tables without silently breaking the
+  announcement.
+- A trashed drama is never announced, because the reference queries filter it.
+
+---
+
+## D-077 — The dashboard offers the custom range as a plain GET form, and shows the signed-in/guest split
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 3)
+**Extends:** D-068 (the dashboard's measures), D-074 (viewer classification)
+
+**Context:** The page already resolved `?range=custom&start=…&end=…`, but the
+dashboard filtered `custom` out of the linked presets and had no way to enter
+the two days, so the supported range was unreachable. The new
+`authenticatedViewers`/`guestViewers` DTO fields were also not rendered.
+
+**Decision:**
+
+1. **The custom range is a plain GET form.** Two `<input type="date">` fields,
+   a hidden `range=custom`, and a submit button, all inside a Server Component.
+   No client JavaScript is needed, the range stays in the URL, and the form
+   keeps the selected days.
+2. **The presets remain links.** The custom control sits beside them; the
+   preset links still carry `?range=<preset>`.
+3. **The viewer split is shown.** The overview shows the signed-in and guest
+   viewer counts, and the daily activity table shows the two buckets per day.
+   The note under the overview states that a viewer counts as signed in when at
+   least one of their events in the range happened while they were signed in.
+
+**Consequences:**
+
+- Every range the server supports is reachable from the page.
+- An administrator can see who is watching, not only how many.
+
+---
+
+## D-078 — The notification maintenance command shares the delivery limits with the application, and it is a documented exception to the module boundary
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 3)
+**Extends:** D-070 (the maintenance command exists and shares the delivery rule), ARCHITECTURE §16.1 (the Trash expiry exception)
+
+**Context:** `scripts/notification-maintenance.mjs` declares its own
+`RETRY_WINDOW_DAYS`, `MAX_PUSH_RETRY_ATTEMPTS`, `MAX_DELIVERY_ATTEMPTS`, and
+`DELIVERY_RETENTION_DAYS`, and writes the notification tables with SQL. The
+application has the same four numbers in `delivery.ts`. Two copies of a number
+that decides how often a viewer is contacted is a defect waiting for a change
+to one side only.
+
+**Decision:**
+
+1. **The numbers live in one pure file.**
+   `src/modules/notifications/delivery-limits.ts` holds the four constants. It
+   has no import, no `server-only` marker, and no `@/` alias, so plain Node can
+   run it directly. `delivery.ts` imports and re-exports them; the command
+   imports them directly.
+2. **The command's SQL is an accepted exception, not a second implementation
+   of the rules.** The command runs on bare Node without a build step and
+   cannot import the module index (which is `server-only` and pulls in the
+   database client), so it mirrors the statements of `delivery.ts` while
+   sharing the rule, the limits, and the push transport with it. The exception
+   is recorded in ARCHITECTURE §16.2, next to the Trash expiry precedent.
+3. **A unit test pins the synchronisation.** The test compares the command's
+   four numbers with the application's and fails if the command stops importing
+   the shared file.
+
+**Consequences:**
+
+- Changing a delivery limit in one place changes both the application and the
+  command, and forgetting to do so fails the unit suite.
+- The direct-SQL exception is documented where the next maintainer looks, and
+  it does not grow: the command imports the rules it can share.
+
+---
+
+## D-079 — An end-to-end locator names one element
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 3)
+**Extends:** D-072 (the browser suite is deterministic), ARCHITECTURE §14
+
+**Context:** Next.js renders a route announcer that carries `role="alert"` and
+an `aria-live="assertive"` region (`next/dist/client/route-announcer.js`). It
+is a client component: it is absent from the server-rendered HTML and appears
+when the page hydrates. A locator of `getByRole('alert')` therefore resolves to
+one element before hydration and to two elements after it, and the assertion
+fails with a strict-mode violation — depending on how fast the browser
+hydrates, not on what the application rendered.
+
+The measured failure was exactly that: the drama-conversion test passed in
+isolation (the assertion ran before hydration) and failed in the full suite
+(the assertion ran after it). A correct application was reported as a broken
+one, which is the failure mode D-072 exists to remove.
+
+**Decision:**
+
+1. **A locator in the browser suite names exactly one element.** A role
+   locator that the framework itself can satisfy has to be narrowed to the
+   element the test means — here with
+   `getByRole('alert').filter({ hasText: … })`.
+2. **The rule is enforced by a unit test.**
+   `tests/unit/e2e/alert-locator.test.ts` reads every spec file and fails when
+   an alert locator is not narrowed, so the ambiguity cannot be reintroduced by
+   a later test.
+3. **The invariant is about the locator, not about the application.** The
+   assertion is not weakened: it still requires an element with the `alert`
+   role that carries the expected text.
+
+**Consequences:**
+
+- The suite no longer depends on the hydration timing of the page under test.
+- A test that matches a framework element by accident fails loudly in the unit
+  suite instead of intermittently in the browser suite.
+
+---
+
 

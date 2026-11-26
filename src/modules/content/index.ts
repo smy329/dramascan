@@ -149,6 +149,17 @@ export {
 
 export type { EpisodeContentReference } from './episode-references';
 
+export {
+  listPublishedDramaReferences,
+  listPublishedEpisodeReferences,
+  listPublishedSeasonReferences,
+} from './publication-references';
+
+export type {
+  PublishedDramaReference,
+  PublishedHierarchyReference,
+} from './publication-references';
+
 export { isPubliclyPlayableEpisode } from './public-episodes.shared';
 
 export type {

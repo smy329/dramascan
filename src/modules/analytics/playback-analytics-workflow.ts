@@ -8,7 +8,8 @@ import { isForeignKeyViolation, isUniqueViolation } from '@/platform/db/errors';
 
 import { playback_analytics_events } from './schema';
 import { utcHourBucket } from './date-filters';
-import { clampPlaybackEvent } from './playback-plausibility';
+import { clampPlaybackEvent, isCompletionSupported } from './playback-plausibility';
+import { analyticsViewerType } from './viewer-types';
 import { resolveAnalyticsVisitor, type AnalyticsVisitor } from './visitor';
 
 /**
@@ -103,9 +104,23 @@ export async function recordPlaybackEvent(
     now,
   });
 
+  // A completion is a claim about a viewing, so the viewer's own watch history
+  // has to support it. The rule is only consulted for a completion claim, so
+  // the ordinary playback event pays nothing for it (D-073).
+  const completionSupported =
+    input.eventType === 'completion' && input.completionThresholdMet === true
+      ? await isCompletionSupportedByHistory(
+          visitor.guestSessionId,
+          contentId,
+          plausible.watchDurationSeconds ?? 0,
+          executor
+        )
+      : false;
+
   try {
     await executor.insert(playback_analytics_events).values({
       guest_session_id: visitor.guestSessionId,
+      viewer_type: analyticsViewerType(input.userId),
       content_id: contentId,
       content_type: input.target.type,
       drama_id: dramaId,
@@ -114,12 +129,12 @@ export async function recordPlaybackEvent(
       event_type: input.eventType,
       position_seconds: plausible.positionSeconds,
       watch_duration_seconds: plausible.watchDurationSeconds,
-      // The completion flag is honoured on a completion event only. The
-      // validation contract already enforces it, and the write enforces it
-      // again, so no caller of this module can record a completion that the
-      // event type does not support (D-070).
-      completion_threshold_met:
-        input.eventType === 'completion' && input.completionThresholdMet === true,
+      // The completion flag is honoured on a completion event only, and only
+      // when the viewer's own watch history supports the claim. The validation
+      // contract enforces the event type, and the write enforces the history,
+      // so no caller of this module can record a completion that did not
+      // happen (D-070, D-073).
+      completion_threshold_met: completionSupported,
       event_at: now,
       event_hour_bucket: utcHourBucket(now),
     });
@@ -174,6 +189,46 @@ async function findPreviousEventAt(
     .limit(1);
 
   return row?.eventAt ?? null;
+}
+
+/**
+ * Does the viewer's own watch history support a completion claim?
+ *
+ * The history is the server's own record: the playback starts it stored and
+ * the watch durations it accepted. The watch duration of the completion event
+ * itself is added, because that event carries the watch time the browser
+ * accumulated since the previous event the server stored.
+ *
+ * @param guestSessionId the visitor
+ * @param contentId the episode or movie
+ * @param currentWatchSeconds the accepted watch time of this event
+ * @param executor the database executor
+ * @returns whether the completion may be counted
+ */
+async function isCompletionSupportedByHistory(
+  guestSessionId: string,
+  contentId: string,
+  currentWatchSeconds: number,
+  executor: DbExecutor
+): Promise<boolean> {
+  const [row] = await executor
+    .select({
+      playbackStarts: sql<number>`count(*) filter (where ${playback_analytics_events.event_type} = 'play')::int`,
+      watchSeconds: sql<number>`coalesce(sum(${playback_analytics_events.watch_duration_seconds}), 0)::int`,
+    })
+    .from(playback_analytics_events)
+    .where(
+      and(
+        eq(playback_analytics_events.guest_session_id, guestSessionId),
+        eq(playback_analytics_events.content_id, contentId),
+        isNull(playback_analytics_events.deleted_at)
+      )
+    );
+
+  return isCompletionSupported({
+    hasPlaybackStart: Number(row?.playbackStarts ?? 0) > 0,
+    cumulativeWatchSeconds: Number(row?.watchSeconds ?? 0) + currentWatchSeconds,
+  });
 }
 
 /**

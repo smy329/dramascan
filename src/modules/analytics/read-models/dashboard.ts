@@ -3,7 +3,6 @@ import 'server-only';
 import { and, desc, gte, inArray, isNull, lt, sql, type SQL } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { dramas, movies } from '@/modules/content/schema';
 
 import { analytics_daily_aggregates, content_view_events, playback_analytics_events } from '../schema';
 import type { DateRange } from '../date-filters';
@@ -26,12 +25,21 @@ import type { DateRange } from '../date-filters';
  *
  * The dashboard's display timezone is `Asia/Dhaka`; the stored timestamps are
  * in UTC. The range is resolved to UTC instants before it reaches the query.
+ *
+ * The content rows are read with raw SQL, like `discovery.ts` does: a read
+ * model may join across modules, but it may not import another module's
+ * `schema.ts` — `src/db/schema.ts` is the only file that does that
+ * (DATABASE.md §2.4).
  */
 
 /** The dashboard's overview numbers. */
 export type AnalyticsOverview = {
   /** The number of distinct viewers in the range. */
   uniqueVisitors: number;
+  /** The distinct viewers that were signed in when the range began or ended. */
+  authenticatedViewers: number;
+  /** The distinct viewers that only ever browsed anonymously. */
+  guestViewers: number;
   /** The total number of views in the range. */
   totalViews: number;
   /** The total number of playback events in the range. */
@@ -89,6 +97,10 @@ export type ViewerActivityRow = {
   date: string;
   /** The number of distinct viewers that day. */
   uniqueVisitors: number;
+  /** The distinct viewers that were signed in that day. */
+  authenticatedViewers: number;
+  /** The distinct viewers that only ever browsed anonymously that day. */
+  guestViewers: number;
   /** The number of views that day. */
   totalViews: number;
   /** The number of playback events that day. */
@@ -132,14 +144,16 @@ export async function getAnalyticsOverview(range: DateRange): Promise<AnalyticsO
   const playbackStarts = Number(row?.playbackStarts ?? 0);
   const completionEvents = Number(row?.completionEvents ?? 0);
   const totalWatchDurationSeconds = Number(row?.totalWatchDurationSeconds ?? 0);
-  const uniqueVisitors = await countDistinctVisitors(range);
+  const uniqueViewers = await countDistinctVisitors(range);
   // The playback viewers of a range are the distinct viewers of the range, not
   // the sum of the daily counts: a viewer who played on three days is one
   // viewer, and dividing the watch time by three would understate it (D-070).
   const playbackViewers = await countDistinctPlaybackViewers(range);
 
   return {
-    uniqueVisitors,
+    uniqueVisitors: uniqueViewers.uniqueVisitors,
+    authenticatedViewers: uniqueViewers.authenticatedViewers,
+    guestViewers: uniqueViewers.guestViewers,
     totalViews,
     totalPlaybackEvents,
     playbackStarts,
@@ -210,29 +224,19 @@ export async function listContentPerformance(
     .filter((id): id is string => id !== null);
 
   const [dramaTitles, movieTitles, visitorsByContent] = await Promise.all([
-    dramaIds.length === 0
-      ? Promise.resolve([] as { id: string; title: string }[])
-      : db
-          .select({ id: dramas.id, title: dramas.title })
-          .from(dramas)
-          .where(inArray(dramas.id, dramaIds)),
-    movieIds.length === 0
-      ? Promise.resolve([] as { id: string; title: string }[])
-      : db
-          .select({ id: movies.id, title: movies.title })
-          .from(movies)
-          .where(inArray(movies.id, movieIds)),
+    readContentTitles('dramas', dramaIds),
+    readContentTitles('movies', movieIds),
     countDistinctVisitorsByContent(range),
   ]);
 
   const titles = new Map<string, string>();
 
-  for (const drama of dramaTitles) {
-    titles.set(`drama:${drama.id}`, drama.title);
+  for (const title of dramaTitles) {
+    titles.set(`drama:${title.id}`, title.title);
   }
 
-  for (const movie of movieTitles) {
-    titles.set(`movie:${movie.id}`, movie.title);
+  for (const title of movieTitles) {
+    titles.set(`movie:${title.id}`, title.title);
   }
 
   return rows.map(row => {
@@ -347,16 +351,22 @@ export async function listViewerActivity(range: DateRange): Promise<ViewerActivi
     )
     .orderBy(analytics_daily_aggregates.date);
 
+  const visitorsByDay = await countDistinctVisitorsByDay(range);
   const byDate = new Map<string, ViewerActivityRow>();
 
   for (const row of rows) {
-    const uniqueVisitors = Number(row.uniqueVisitors ?? 0);
     const playbackViewers = Number(row.playbackViewers ?? 0);
     const watchDurationSeconds = Number(row.watchDurationSeconds ?? 0);
+    const split = visitorsByDay.get(row.date);
 
+    // The viewer counts of a day come from the raw events, so the signed-in
+    // and guest buckets add up to the day's viewer count. The aggregate is the
+    // fallback for a day whose events are no longer there.
     byDate.set(row.date, {
       date: row.date,
-      uniqueVisitors,
+      uniqueVisitors: split?.uniqueVisitors ?? Number(row.uniqueVisitors ?? 0),
+      authenticatedViewers: split?.authenticatedViewers ?? 0,
+      guestViewers: split?.guestViewers ?? 0,
       totalViews: Number(row.totalViews ?? 0),
       playbackEvents: Number(row.playbackEvents ?? 0),
       playbackViewers,
@@ -373,6 +383,8 @@ export async function listViewerActivity(range: DateRange): Promise<ViewerActivi
       byDate.get(cursor) ?? {
         date: cursor,
         uniqueVisitors: 0,
+        authenticatedViewers: 0,
+        guestViewers: 0,
         totalViews: 0,
         playbackEvents: 0,
         playbackViewers: 0,
@@ -410,33 +422,130 @@ export async function getAnalyticsLastUpdated(): Promise<Date | null> {
 }
 
 /**
- * The number of distinct viewers in a range.
+ * The number of distinct viewers in a range, split by how they were classified.
  *
  * A viewer is the `guest_sessions` row the events were recorded under. The
  * count is taken over the union of the view events and the playback events,
  * so a viewer who only ever opened an episode is counted too.
+ *
+ * The two buckets do not overlap: a viewer who browsed anonymously and later
+ * signed in is counted as an authenticated viewer, because the dashboard
+ * answers "who is watching the platform", not "which requests were anonymous".
+ *
+ * @param range the resolved range
+ * @returns the viewer counts of the range
  */
-async function countDistinctVisitors(range: DateRange): Promise<number> {
+async function countDistinctVisitors(range: DateRange): Promise<{
+  uniqueVisitors: number;
+  authenticatedViewers: number;
+  guestViewers: number;
+}> {
   const rows = await runQuery(sql`
-    select count(distinct seen.visitor)::int as unique_visitors
-      from (
-        select ${content_view_events.guest_session_id} as visitor
-          from ${content_view_events}
-         where ${content_view_events.deleted_at} is null
-           and ${content_view_events.viewed_at} >= ${range.startInstant}
-           and ${content_view_events.viewed_at} < ${range.endInstant}
-           and ${content_view_events.guest_session_id} is not null
-        union all
-        select ${playback_analytics_events.guest_session_id} as visitor
-          from ${playback_analytics_events}
-         where ${playback_analytics_events.deleted_at} is null
-           and ${playback_analytics_events.event_at} >= ${range.startInstant}
-           and ${playback_analytics_events.event_at} < ${range.endInstant}
-           and ${playback_analytics_events.guest_session_id} is not null
-      ) seen
+    with seen as (
+      select ${content_view_events.guest_session_id} as visitor,
+             ${content_view_events.viewer_type} as viewer_type
+        from ${content_view_events}
+       where ${content_view_events.deleted_at} is null
+         and ${content_view_events.viewed_at} >= ${range.startInstant}
+         and ${content_view_events.viewed_at} < ${range.endInstant}
+         and ${content_view_events.guest_session_id} is not null
+      union all
+      select ${playback_analytics_events.guest_session_id} as visitor,
+             ${playback_analytics_events.viewer_type} as viewer_type
+        from ${playback_analytics_events}
+       where ${playback_analytics_events.deleted_at} is null
+         and ${playback_analytics_events.event_at} >= ${range.startInstant}
+         and ${playback_analytics_events.event_at} < ${range.endInstant}
+         and ${playback_analytics_events.guest_session_id} is not null
+    ),
+    visitors as (select distinct visitor from seen),
+    authenticated as (
+      select distinct visitor from seen where viewer_type = 'authenticated'
+    )
+    select (select count(*)::int from visitors) as unique_visitors,
+           (select count(*)::int from authenticated) as authenticated_viewers,
+           (
+             select count(*)::int
+               from visitors v
+              where not exists (select 1 from authenticated a where a.visitor = v.visitor)
+           ) as guest_viewers
   `);
 
-  return Number(rows[0]?.unique_visitors ?? 0);
+  return {
+    uniqueVisitors: Number(rows[0]?.unique_visitors ?? 0),
+    authenticatedViewers: Number(rows[0]?.authenticated_viewers ?? 0),
+    guestViewers: Number(rows[0]?.guest_viewers ?? 0),
+  };
+}
+
+/**
+ * The number of distinct viewers per day, split by how they were classified.
+ *
+ * The daily aggregate carries no classification, so the split is read from the
+ * raw events of the range. The two buckets do not overlap: a viewer who
+ * signed in during the day is counted as an authenticated viewer.
+ *
+ * @param range the resolved range
+ * @returns the viewer counts keyed by the `YYYY-MM-DD` day
+ */
+async function countDistinctVisitorsByDay(range: DateRange): Promise<Map<string, {
+  uniqueVisitors: number;
+  authenticatedViewers: number;
+  guestViewers: number;
+}>> {
+  const rows = await runQuery(sql`
+    with seen as (
+      select to_char(${content_view_events.viewed_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
+             ${content_view_events.guest_session_id} as visitor,
+             ${content_view_events.viewer_type} as viewer_type
+        from ${content_view_events}
+       where ${content_view_events.deleted_at} is null
+         and ${content_view_events.viewed_at} >= ${range.startInstant}
+         and ${content_view_events.viewed_at} < ${range.endInstant}
+         and ${content_view_events.guest_session_id} is not null
+      union all
+      select to_char(${playback_analytics_events.event_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
+             ${playback_analytics_events.guest_session_id} as visitor,
+             ${playback_analytics_events.viewer_type} as viewer_type
+        from ${playback_analytics_events}
+       where ${playback_analytics_events.deleted_at} is null
+         and ${playback_analytics_events.event_at} >= ${range.startInstant}
+         and ${playback_analytics_events.event_at} < ${range.endInstant}
+         and ${playback_analytics_events.guest_session_id} is not null
+    ),
+    visitors as (select distinct day, visitor from seen),
+    authenticated as (
+      select distinct day, visitor from seen where viewer_type = 'authenticated'
+    )
+    select visitors.day as day,
+           count(*)::int as unique_visitors,
+           count(authenticated.visitor)::int as authenticated_viewers,
+           (
+             count(*) filter (where authenticated.visitor is null)
+           )::int as guest_viewers
+      from visitors
+      left join authenticated on authenticated.day = visitors.day
+                                and authenticated.visitor = visitors.visitor
+     group by visitors.day
+  `);
+
+  const counts = new Map<string, {
+    uniqueVisitors: number;
+    authenticatedViewers: number;
+    guestViewers: number;
+  }>();
+
+  for (const row of rows) {
+    const record = row as Record<string, unknown>;
+
+    counts.set(String(record.day), {
+      uniqueVisitors: Number(record.unique_visitors ?? 0),
+      authenticatedViewers: Number(record.authenticated_viewers ?? 0),
+      guestViewers: Number(record.guest_viewers ?? 0),
+    });
+  }
+
+  return counts;
 }
 
 /**
@@ -502,6 +611,42 @@ async function countDistinctVisitorsByContent(
   }
 
   return counts;
+}
+
+/**
+ * The titles of the content items of one kind.
+ *
+ * The content rows belong to the content module, and a read model may read
+ * them — but it may not import the module's `schema.ts`, because
+ * `src/db/schema.ts` is the only file that does that (DATABASE.md §2.4).
+ * The table is therefore named directly, exactly as `discovery.ts` names it.
+ *
+ * @param table the content table: `dramas` or `movies`
+ * @param ids the ids to read
+ * @returns the titles, keyed by the content id
+ */
+async function readContentTitles(
+  table: 'dramas' | 'movies',
+  ids: readonly string[]
+): Promise<{ id: string; title: string }[]> {
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const rows = await runQuery(sql`
+    select id::text as id, title
+      from ${sql.raw(table)}
+     where id in (${sql.join(
+       ids.map(id => sql`${id}`),
+       sql`, `
+     )})
+  `);
+
+  return rows.map(row => {
+    const record = row as Record<string, unknown>;
+
+    return { id: String(record.id), title: String(record.title) };
+  });
 }
 
 /**

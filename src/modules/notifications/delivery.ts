@@ -16,6 +16,19 @@ import {
 } from './delivery-records';
 import type { NotificationEventType } from './notifications';
 import type { NotificationPreferenceSet } from './delivery-rules';
+import {
+  DELIVERY_RETENTION_DAYS,
+  MAX_DELIVERY_ATTEMPTS,
+  MAX_PUSH_RETRY_ATTEMPTS,
+  PUSH_RETRY_WINDOW_DAYS,
+} from './delivery-limits';
+
+export {
+  DELIVERY_RETENTION_DAYS,
+  MAX_DELIVERY_ATTEMPTS,
+  MAX_PUSH_RETRY_ATTEMPTS,
+  PUSH_RETRY_WINDOW_DAYS,
+} from './delivery-limits';
 
 /**
  * Notification delivery safety and cleanup (Prompt 154).
@@ -35,15 +48,6 @@ import type { NotificationPreferenceSet } from './delivery-rules';
  *     removes notifications with no recipient or no event type, and deliveries
  *     that point at a notification that no longer exists.
  */
-
-/** The maximum number of delivery attempts one call makes. */
-export const MAX_DELIVERY_ATTEMPTS = 10;
-
-/** The maximum number of push attempts one notification ever receives. */
-export const MAX_PUSH_RETRY_ATTEMPTS = 3;
-
-/** How far back the delivery maintenance looks for an undelivered notification. */
-export const PUSH_RETRY_WINDOW_DAYS = 7;
 
 /** The outcome of one delivery round. */
 export type DeliveryOutcome = {
@@ -489,9 +493,6 @@ export type NotificationMaintenanceResult = Readonly<{
   /** Delivery records older than the retention window. */
   oldDeliveries: number;
 }>;
-
-/** The retention window of the delivery trail, in days. */
-export const DELIVERY_RETENTION_DAYS = 30;
 
 /**
  * Run the notification maintenance once.
