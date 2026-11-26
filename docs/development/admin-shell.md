@@ -125,9 +125,11 @@ The same rule is enforced server-side by `requireSuperAdmin(actor)` from
   — every method;
 - `/admin/api/users/[id]/roles`, `/admin/api/users/[id]/roles/[roleId]` — every
   method;
+- `/admin/api/users/[id]/sessions` — every method: terminating the sessions of
+  an account signs it out of every device;
 - `src/workflows/admin/roles.ts` — all functions;
-- `src/workflows/admin/users.ts` — `assignUserRoleForAdmin` and
-  `revokeUserRoleForAdmin`.
+- `src/workflows/admin/users.ts` — `assignUserRoleForAdmin`,
+  `revokeUserRoleForAdmin`, and `terminateUserSessionsForAdmin`.
 
 Account status (`/admin/api/users/[id]/status`) keeps its canonical
 `admin.manage` requirement, but a Super Admin account can only be changed by a

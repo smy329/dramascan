@@ -1,5 +1,11 @@
 'use client';
 
+import {
+  PLAYBACK_EVENT_TYPES,
+  type PlaybackEventTarget,
+  type PlaybackEventType,
+} from '@/modules/analytics/playback-events.shared';
+
 /**
  * The playback analytics reporter (Prompts 141, 142).
  *
@@ -19,24 +25,19 @@
  * The reports are serialised. One report is in flight at a time, so the
  * confirmations arrive in the order the events were sent and the accumulator
  * is never cleared twice for the same watch time.
+ *
+ * The event catalogue and the target shape live in a shared file, so the
+ * browser reports exactly the events the server accepts (D-085).
  */
 
 /** The events the player reports. */
-export const PLAYBACK_ANALYTICS_EVENT_TYPES = [
-  'play',
-  'play_pause',
-  'seek',
-  'completion',
-  'exit',
-] as const;
+export { PLAYBACK_EVENT_TYPES };
 
 /** One playback analytics event type. */
-export type PlaybackAnalyticsEventType = (typeof PLAYBACK_ANALYTICS_EVENT_TYPES)[number];
+export type PlaybackAnalyticsEventType = PlaybackEventType;
 
 /** What the reporter sends. */
-export type PlaybackAnalyticsTarget =
-  | { type: 'drama'; episodeId: string; dramaId: string }
-  | { type: 'movie'; movieId: string };
+export type PlaybackAnalyticsTarget = PlaybackEventTarget;
 
 /** The reporter's handle. */
 export type PlaybackAnalyticsReporter = {

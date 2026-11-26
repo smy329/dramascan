@@ -3396,4 +3396,326 @@ one, which is the failure mode D-072 exists to remove.
 
 ---
 
+## D-080 — A security notification follows the change, not the request
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 4)
+**Extends:** D-064 (the account-security notification is mandatory), D-075
+
+**Context:** The account-security notification is mandatory: it cannot be
+switched off, and it is delivered whatever the viewer's preferences say. A
+review of Phase 11 found that the notification was sent when an administrator
+*requested* a change, not when the change *happened*.
+
+The difference is visible to the account owner. Requesting the role that is
+already assigned, or asking to deactivate an account that is already
+deactivated, produced a notification that said "Your account role was added" or
+"Your account was deactivated" although nothing had changed. The notification
+is evidence of an event, and an event that did not happen must not be
+announced.
+
+**Decision:**
+
+1. **A security notification is sent for a state transition, not for a
+   request.** The workflow reads the stored state before the write and sends
+   the notification only when the write changed something.
+2. **The rule applies to every account-security notification** the
+   administration workflows send: role assignment, role removal, and the
+   account status.
+3. **The notification still follows the change when the change is a reset.**
+   Terminating the sessions is idempotent in the database but is always an
+   administrative act, so it keeps its announcement.
+
+**Consequences:**
+
+- A repeated request cannot spam the account owner with a notification about a
+  state they were already in.
+- The workflows read one row more than before. The read is a primary-key
+  lookup on the account, so the cost is a single indexed read per request.
+
+---
+
+## D-081 — The dashboard freshness describes the selected range
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 4)
+**Extends:** D-077 (the dashboard offers the custom range)
+
+**Context:** The dashboard shows a "Last updated" line beside the selected
+range. The line was read from the aggregate table without a range filter, so
+it answered "when was the analytics table last written?" — an aggregate of a
+day outside the selected range made a range with no data look fresh.
+
+The line is read next to a range. It therefore has to describe that range.
+
+**Decision:**
+
+1. **The freshness is scoped to the selected range.** The read filters the
+   aggregate rows by the start and end of the range.
+2. **A range with no aggregate row has no freshness.** The line says so
+   instead of borrowing the freshness of another range.
+
+**Consequences:**
+
+- The line answers the question the administrator is asking: "is this range
+  up to date?"
+- The read is filtered on the indexed `date` column, so the cost does not grow
+  with the size of the table.
+
+---
+
+## D-082 — The typed target wins over the legacy pair
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 4)
+**Extends:** D-032 §4 (a typed target is authoritative)
+
+**Context:** Every analytics event row carries both a legacy
+`content_type`/`content_id` pair and a typed `drama_id`/`movie_id` pair. The
+typed pair was added in migration 0010, and D-032 §4 states that the typed
+target is the authoritative one. The aggregation workflow and the dashboard
+read model still grouped the rows by the legacy pair, so a row whose two pairs
+disagreed was counted under the legacy target.
+
+A row like that is not hypothetical: it is what a partially backfilled row
+looks like, and it is what the integrity report has to reconcile.
+
+**Decision:**
+
+1. **The typed target wins whenever the two pairs disagree.** The grouping and
+   the filter of a query use the same expression, so a row is counted under
+   the target it is filtered by.
+2. **The expression lives in one file.** `analytics/typed-targets.ts` holds
+   the four SQL expressions, so the grouping and the filter cannot drift
+   apart.
+3. **The legacy pair remains the fallback for a row that cannot be placed.**
+   A view row whose typed columns are empty falls back to the legacy type and
+   id: it is the only evidence the row carries. A playback row does not: its
+   legacy `content_id` may be an episode id, so an unplaced playback row names
+   no title and is reconciled through the integrity report.
+
+**Consequences:**
+
+- A row whose pairs disagree is counted under the target the typed columns
+  name, which is the target the foreign keys point at.
+- The unplaced rows are visible: the type scope no longer counts a playback
+  row that names no title, and the operator report still lists it.
+
+---
+
+## D-083 — The analytics route handler issues the anonymous session cookie
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 4)
+**Extends:** D-031 (the anonymous session is a cookie), D-057 §4
+
+**Context:** The anonymous guest session is an HTTP-only cookie that carries an
+opaque random identifier. The analytics module resolved the identifier and
+wrote the cookie itself, through `cookies()` from `next/headers`.
+
+Next.js forbids `cookies().set()` while a Server Component renders. The
+analytics workflows were Server Actions, so the write only worked when the
+action ran as a mutation; the same module could be called from a render, where
+the write throws. The cookie is the one identity an anonymous visitor has, and
+a write that sometimes fails silently counts every refresh as a new visitor.
+
+D-057 §4 already states the rule: the analytics route handler is the only
+place that may write the cookie.
+
+**Decision:**
+
+1. **The module resolves the identifier; the route handler issues it.**
+   `analytics/guest-session.ts` is a pure resolver that never touches the
+   cookie jar, and `app/api/analytics/_guest-session.ts` issues the cookie.
+2. **Both analytics routes issue the cookie**: the view beacon and the
+   playback beacon.
+3. **The workflow takes the identifier as an argument, and is not a Server
+   Action.** A Server Action argument arrives from the request body, so a
+   Server Action that accepted the identifier would let a caller attribute
+   its views to another visitor's session.
+
+**Consequences:**
+
+- The cookie is written exactly where a cookie may be written, and the write
+  is a deliberate step of the request instead of a side effect of a read.
+- The module has no cookie dependency, so it can be called from a Server
+  Component or a test without a request scope.
+
+---
+
+## D-084 — The new-drama preference is `NOT NULL DEFAULT true`
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 4)
+**Extends:** DATABASE.md §8.9
+
+**Context:** Requirements §11.1 asks for five independent event preferences.
+Migration 0018 added the fifth, `notification_preferences.new_drama`, as a
+nullable column with the default `true`. The data model documents it as
+`boolean NOT NULL DEFAULT true`.
+
+A nullable switch is a switch whose meaning depends on the reader: one query
+reads `null` as "off" and another reads it as "on".
+
+**Decision:**
+
+1. **The column is `NOT NULL DEFAULT true`.** Migration 0024 backfills the
+   nulls, sets the default, and sets the constraint.
+2. **The backfill is idempotent.** Running it twice writes the same values. A
+   null is a row that never made a choice, so the default — "on" — is the
+   value that matches the rest of the row.
+
+**Consequences:**
+
+- The column matches the documented data model, and every reader agrees on
+  what a row without an explicit choice means.
+- The change is forward-only in practice: the rollback can drop the NOT NULL
+  constraint, but it cannot restore the nulls the backfill replaced, because a
+  null and the default "on" are the same stored preference.
+
+---
+
+## D-085 — A client island reads its DTOs from a shared file, and the form and the action share one schema
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 4)
+**Extends:** D-049 (a `*.shared.ts` file is the client-safe exception), CONVENTIONS §6.3/§6.4
+
+**Context:** The administrator notification islands imported the notification
+module's public API for their DTO types. The module index is `server-only`: it
+pulls in the database client. A type-only import is erased at compile time, so
+the build passed, but the island pointed at a file it may not import, and the
+next value import would have broken the build.
+
+The notification preference form held its switches in component state and
+validated them nowhere, while the Server Action declared its own Zod schema.
+Two definitions of the same contract drift: the browser accepts a payload the
+server rejects.
+
+The playback event catalogue existed twice as well: once in the server
+workflow and once in the player reporter.
+
+**Decision:**
+
+1. **A client island reads a DTO from a `*.shared.ts` file, never from the
+   module index.** The administrator DTOs live in
+   `notifications/admin-notifications.shared.ts` and
+   `notifications/announcements.shared.ts`; the playback catalogue lives in
+   `analytics/playback-events.shared.ts`.
+2. **The form and the Server Action share one schema.** The schema lives in
+   `lib/contracts/notification-preferences.ts`, the form validates against it
+   with React Hook Form and `zodResolver`, and the action re-validates with the
+   same schema.
+3. **A catalogue has one owner.** The player and the server read the same
+   playback event list, and every timestamp the viewer reads is formatted by
+   the same helper.
+
+**Consequences:**
+
+- The client boundary is a property of the import graph, and a unit test
+  enforces it.
+- The browser and the server cannot disagree about what a valid switch set is.
+- A shared file is a contract: changing it changes the server and the browser
+  together.
+
+---
+
+## D-086 — The implemented module layout is the documented one
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 4)
+**Extends:** ARCHITECTURE §4, §9.1, §17
+
+**Context:** Two rules of ARCHITECTURE §17 did not describe the code that was
+written:
+
+- *DB access only in repositories/read-models.* The rule names a repository
+  layer that the project does not have: 76 files import `@/db/client`
+  directly, about 48 of them inside `src/modules/**`. There is no
+  repository/read-model split to enforce.
+- *Server Actions live in `app/actions/**`.* About 25 files in
+  `src/workflows/**` carry the `'use server'` directive, and
+  `src/app/actions/**` does not exist.
+
+Both were documentation defects rather than code defects: the code follows
+the conventions the rest of the repository documents, and the review round
+found no case where the rule prevented a real problem.
+
+**Decision:**
+
+1. **The documentation states the implemented layout.** Server Actions live in
+   `src/workflows/**`, beside the workflow they belong to; `src/app` holds
+   routing and entrypoint adaptation only.
+2. **The database rule is restated as it is implemented.** A module reaches
+   the database through its own files; the rule that still holds is that a
+   module never writes another module's tables.
+3. **The deviation is recorded, not hidden.** A future repository split is an
+   architectural change with its own decision, not a cleanup.
+
+**Consequences:**
+
+- A reviewer compares the code against a description of the code.
+- The boundary that actually matters — one module writes its own tables — is
+  stated explicitly and remains enforced by the integration suite.
+
+---
+
+## D-087 — A component file is kebab-case
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 4)
+**Extends:** CONVENTIONS §2.2
+
+**Context:** CONVENTIONS §2.2 asks for PascalCase component files. The
+repository uses kebab-case: `src/components/public/Layout.tsx` is one of the
+few exceptions, and the admin documentation already specifies kebab-case for
+the admin kits (`admin-data-tables.md` §…, `admin-forms.md` §2). A rule that
+the repository does not follow is a rule every reviewer has to re-litigate.
+
+**Decision:**
+
+1. **A component file is kebab-case**, like every other file:
+   `user-management-controls.tsx`, `notification-preferences-form.tsx`. The
+   component *inside* the file keeps its PascalCase name.
+2. **The existing exceptions are left alone.** Renaming a file is a change
+   with its own risk, and the naming of a component is not a behaviour.
+
+**Consequences:**
+
+- One naming rule covers every file, and the admin kits keep the convention
+  they already document.
+- The file name and the component name may differ, which is the norm in the
+  repository today.
+
+---
+
+## D-088 — The notification unread count is resolved on the server
+
+**Date:** 2026-11-26
+**Status:** Approved by user (Phase 11 review round 4)
+**Extends:** ARCHITECTURE §9.2/§9.3
+
+**Context:** ARCHITECTURE listed `GET /api/notifications/unread-count` as a
+REST endpoint. The endpoint does not exist: the unread count is resolved on
+the server, in `src/components/public/Layout.tsx`, and handed to the
+notification bell as a prop.
+
+An endpoint that nothing calls is a promise the platform does not keep.
+
+**Decision:**
+
+1. **The unread count is a server-resolved value.** The public layout reads it
+   while it renders and passes it to the bell.
+2. **There is no REST endpoint for it.** A client that needs a fresh count
+   reloads the page; the count is private, and the request would have to be
+   authorized like any other private read.
+
+**Consequences:**
+
+- The documented API matches the implemented API.
+- The count costs one indexed read per render of the public layout, which the
+   layout already pays for the signed-in viewer.
+
+---
+
 

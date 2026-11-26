@@ -1,8 +1,5 @@
-'use server';
-
 import { resolveActor } from '@/modules/authorization';
 import {
-  ensureGuestSessionId,
   isPublicAnalyticsTarget,
   parseAnalyticsViewInput,
   recordContentView,
@@ -14,17 +11,27 @@ import {
  *
  * The workflow is the only place that knows how a visitor is identified. The
  * account comes from the server-side session; the anonymous session comes
- * from the cookie, which is created here because a Route Handler — not a
- * Server Component — is the only place that may write a cookie.
+ * from the cookie, which the route handler issued before it called this
+ * workflow (D-057 §4).
  *
  * The content item is checked against the public availability rules before the
  * view is counted, so a caller cannot inflate the count of a draft by posting
  * its id.
  *
+ * This workflow must never carry the `'use server'` directive: the anonymous
+ * session identifier is an argument, and a Server Action argument arrives from
+ * the request body. A caller could then attribute its views to another
+ * visitor's session. Only the route handler calls this workflow, and the
+ * route handler resolves the identifier from the cookie itself (D-031, D-083).
+ *
  * @param input the raw payload
+ * @param sessionId the anonymous session identifier of the request
  * @returns what the view counting did
  */
-export async function recordContentViewWorkflow(input: unknown): Promise<ContentViewResult> {
+export async function recordContentViewWorkflow(
+  input: unknown,
+  sessionId: string
+): Promise<ContentViewResult> {
   const values = parseAnalyticsViewInput(input);
 
   const publicTarget = await isPublicAnalyticsTarget(values.type, values.contentId);
@@ -40,7 +47,6 @@ export async function recordContentViewWorkflow(input: unknown): Promise<Content
   }
 
   const actor = await resolveActor();
-  const sessionId = await ensureGuestSessionId();
 
   return recordContentView({
     type: values.type,

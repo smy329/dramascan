@@ -72,10 +72,11 @@ export type { DateRange, DateRangePreset } from './date-filters';
 export {
   GUEST_SESSION_COOKIE,
   GUEST_SESSION_MAX_AGE_SECONDS,
-  ensureGuestSessionId,
   generateGuestSessionId,
-  readGuestSessionId,
+  resolveGuestSessionId,
 } from './guest-session';
+
+export type { GuestSessionResolution } from './guest-session';
 
 export {
   ANALYTICS_VIEWER_TYPES,

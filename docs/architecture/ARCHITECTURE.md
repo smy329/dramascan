@@ -117,12 +117,14 @@ src/
       analytics/view/route.ts
       analytics/playback/route.ts
       playback/progress/route.ts
-      notifications/unread-count/route.ts
+      admin/api/users/[id]/status/route.ts
+      admin/api/users/[id]/roles/route.ts
+      admin/api/users/[id]/sessions/route.ts
       admin/exports/[dataset]/route.ts
       admin/backups/[id]/route.ts
       health/route.ts
       openapi/route.ts
-    actions/                      # Server Actions grouped by area (thin)
+    actions/                      # reserved for thin app-level Server Actions
     layout.tsx
     globals.css
   workflows/                      # cross-module orchestration; no UI, no HTTP
@@ -138,6 +140,9 @@ src/
     terminate-admin-session/
     export-dataset/
     import-dataset/
+    admin/                        # administration workflows; the Server Actions live here (D-086)
+    analytics/                    # analytics workflows; the Server Actions live here (D-086)
+    notifications/                # notification workflows; the Server Actions live here (D-086)
   modules/
     auth/
       index.ts                    # public API, server-only
@@ -200,6 +205,7 @@ src/
       validation.ts
       repository.ts
       providers/                  # push provider abstraction (isolated)
+      *.shared.ts                 # client-safe DTOs: preferences, notification centre, subscriptions, admin alerts, announcements (D-085)
     analytics/
       index.ts
       schema.ts                   # guest_sessions, view events, playback events, aggregates
@@ -208,6 +214,8 @@ src/
       validation.ts
       repository.ts
       read-models/                # approved cross-module read-only queries
+      typed-targets.ts            # the typed target expressions of D-082
+      playback-events.shared.ts   # the playback event catalogue of D-085
     administration/
       index.ts
       schema.ts                   # admin accounts, login attempts, settings, versions, layouts, audit
@@ -411,7 +419,7 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 
 - **Purpose:** notification preferences, in-app notifications, browser push subscriptions and delivery, announcements, admin notification center, unread counts, delivery records.
 - **Owns:** `notification_preferences`, `notifications`, `push_subscriptions`, `notification_deliveries`, `announcements`, `admin_notifications`, `admin_notification_reads`.
-- **Public API:** `createContentPublishedNotifications`, `createSeasonNotifications`, `createAnnouncementNotifications`, `notifyAccountSecurity`, `notifyReporter`, `listNotifications`, `markRead`, `markUnread`, `getUnreadCount`, `upsertPushSubscription`, `removePushSubscription`, `publishAnnouncement`, `listAdminNotifications`.
+- **Public API:** `createContentPublishedNotifications`, `createSeasonNotifications`, `createAnnouncementNotifications`, `notifyAccountSecurity`, `notifyReporter`, `listNotifications`, `markRead`, `markUnread`, `getUnreadNotificationCount`, `upsertPushSubscription`, `removePushSubscription`, `publishAnnouncement`, `listAdminNotifications`.
 - **Depends on:** `users` (the bookmark audience), `auth` (the active-account audience), platform.
 - **Not responsible for:** deciding when content is published, content metadata ownership, admin authorization, analytics.
 - **Boundary notes:** callers pass validated payload snapshots (content id, type, title, deep link). `notifications` does not import `content`. Push providers sit behind an internal provider interface so the provider can change without touching notification rules.
@@ -425,6 +433,7 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 - **The delivery maintenance command exists as a command (D-070):** `scripts/notification-maintenance.mjs`, run by `npm run db:notifications:maintenance`, mirrors the application-side delivery rule, reports a structured result, and exits non-zero on failure.
 - **One delivery primitive serves every audience (S2, D-070):** `notifications/audience.ts` is the only implementation of "write the notification, then deliver the push" for the episode, drama, season, and announcement rounds. It reads the whole audience in three queries, one after another, because a helper that receives a transaction handle must not run concurrent queries on one connection. `MAX_AUDIENCE_SIZE` lives there and nowhere else, so a new broadcast cannot grow an unbounded audience.
 - **The delivery limits live in one pure file (S3, D-078):** `notifications/delivery-limits.ts` holds `MAX_DELIVERY_ATTEMPTS`, `MAX_PUSH_RETRY_ATTEMPTS`, `PUSH_RETRY_WINDOW_DAYS`, and `DELIVERY_RETENTION_DAYS`; the application imports and re-exports them, and the maintenance command imports them directly. The command's direct SQL is the documented exception in §16.2.
+- **The client-safe DTOs live in shared files (D-085):** the administrator alert DTOs are in `admin-notifications.shared.ts` and the announcement DTO in `announcements.shared.ts`, beside the preference, notification-centre, and subscription contracts. A client island imports one of those files, never the module index: the index is `server-only` and pulls in the database client. The notification preference form and its Server Action share the schema of `lib/contracts/notification-preferences.ts`.
 
 ### 6.9 `analytics` — Product analytics and reporting
 
@@ -434,7 +443,7 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 - **Depends on:** `content`, `users`, `playback`, `reviews` (reporting reads only), `authorization`, `auth`, platform.
 - **Not responsible for:** personal watch history or progress (owned by `playback`), operational system metrics and errors (owned by `maintenance`), notifications.
 - **Boundary notes:** this is the reporting module. Cross-module joins are allowed only in `analytics/read-models/` and only for read-only reporting. It is **not** a mandatory intermediary for the watch page or admin operational summaries. The unified public discovery grid — Trending, Popular, Highest Rated, Most viewed, and the search results — lives in `analytics/read-models/discovery.ts`: it is the only place where the `content`, `reviews`, and `analytics` domains are read together. The administrator's Trending pins are *not* read there; the app layer reads them from `administration` and hands them to the read model as `pinnedIds`, so `analytics` never imports `administration`. The four raw-SQL rules that the grid obeys are recorded in D-050.
-- **The visitor is a guest-session row (Prompts 139–154, D-057):** the event tables carry `guest_sessions.id` and nothing else that identifies a person. The row is found by `user_id` for a signed-in viewer and by the anonymous `session_id` cookie for a guest, and the same row gains the `user_id` when the account signs in, so the views recorded before sign-in keep the same visitor key. The cookie is written by the view-tracking route handler, because Next.js forbids `cookies().set()` in a Server Component.
+- **The visitor is a guest-session row (Prompts 139–154, D-057, D-083):** the event tables carry `guest_sessions.id` and nothing else that identifies a person. The row is found by `user_id` for a signed-in viewer and by the anonymous `session_id` cookie for a guest, and the same row gains the `user_id` when the account signs in, so the views recorded before sign-in keep the same visitor key. The cookie is written by the analytics route handlers — the view beacon and the playback beacon — because Next.js forbids `cookies().set()` in a Server Component. The module resolves the identifier and never writes the cookie.
 - **The six-hour window is an application rule with an hourly unique index as a safety net (D-058):** before a view is written, the workflow looks for a view by the same visitor for the same content inside the previous six hours. The per-hour-bucket unique index is the database-level guard against a concurrent double submit. The public view count reads `content_view_events` directly; the dashboard reads the stored daily aggregates.
 - **Writes are bounded (D-060):** a playback event is one row per (visitor, content, event type, hour bucket). `watch_duration_seconds` is the per-event delta — the seconds the viewer accumulated since the last event the server stored — and the browser only clears its accumulator when the server confirms the row was written, so an event the bounded write dropped does not lose the watch time it carried. The reports are serialized through a promise chain, so two reports for one viewer cannot race into the same bucket.
 - **A calendar day is a Dhaka day, and the aggregates are written on demand (D-059):** the aggregate row's `date` is `to_char(timestamp at time zone 'UTC' + interval '6 hours','YYYY-MM-DD')`. The aggregation is a bounded, on-demand command — one pass per scope inside a transaction — so re-running it for the same day produces the same result. There is no worker, no queue, and no recurring job; the dashboard shows when the numbers were last written.
@@ -444,6 +453,8 @@ The eleven modules below are the complete initial module set. Adding a twelfth r
 - **An event carries the viewer classification of its own moment (D-074):** `content_view_events` and `playback_analytics_events` carry `viewer_type` (`authenticated` / `guest`), written at request time from the resolved visitor. The dashboard counts a visitor as signed in when at least one of their events in the range (or the day) is authenticated, and the two buckets add up to the viewer count. Joining the events to `guest_sessions.user_id` instead would have reclassified the events a viewer produced before signing in, because that column is set when the account is linked.
 - **The daily aggregate has a database-level key (D-070):** a refresh takes a transaction-scoped advisory lock and inserts with `ON CONFLICT DO NOTHING`, and two partial unique indexes (`uq_analytics_daily_aggregates_site_date` and `uq_analytics_daily_aggregates_content_date`) state the two logical keys of the table. Two overlapping refreshes therefore produce one row, whatever the interleaving.
 - **The range-level playback viewers are counted over the raw events (D-070):** the daily aggregate keeps a viewer count per day, but the range counts the distinct visitors of the raw playback events, so a viewer who played on three days is one viewer of the range and not three. The average watch time of a range is divided by that number.
+- **The typed target wins, and the cookie is issued at the edge (D-082, D-083):** an event row carries both a legacy `content_type`/`content_id` pair and a typed `drama_id`/`movie_id` pair, and the typed pair is authoritative — the grouping and the filter of a query use the same expressions, from `analytics/typed-targets.ts`, so a row whose pairs disagree is counted under the target it is filtered by. The module resolves the anonymous session identifier but never writes the cookie: the analytics route handler is the only issuer, and the workflow that receives the identifier is not a Server Action, because a Server Action argument arrives from the request body.
+- **The event catalogue has one owner (D-085):** the playback event list lives in `analytics/playback-events.shared.ts`, and the player and the server read it from there. A catalogue with two copies drifts: the player would report an event the server does not know.
 
 ### 6.10 `administration` — Admin operations and system configuration
 
@@ -582,6 +593,7 @@ their tables.
 | `authorize-admin`            | auth, authorization, administration, notifications         | Grants roles, records the admin account, notifies                  |
 | `change-admin-role`          | authorization, administration, notifications               | Changes roles and emits a security notification                    |
 | `terminate-admin-session`    | auth, administration, notifications                        | Revokes a session, records it, notifies                            |
+| `admin/users`                | authorization, auth, notifications                         | Assigns roles, changes the account status, and terminates the sessions of an account; every change emits its own mandatory security notification |
 | `export-dataset`             | administration, owning module                              | Builds an approved dataset across modules                          |
 | `import-dataset`             | administration, owning module                              | Dry-run and apply metadata across modules                          |
 
@@ -602,24 +614,29 @@ their tables.
 | Entrypoint                                        | Responsibility                                                                                                                     | Must not                                                                               |
 | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | **Server Component** (`app/**/page.tsx`, layouts) | Resolve actor, call one or more module **query** services, render                                                                  | Mutate data, access repositories or the DB, call write services                        |
-| **Server Action** (`app/actions/**`)              | Parse `FormData`, validate with Zod, resolve actor, call one workflow or one module **service**, map errors, revalidate cache tags | Contain domain rules, access the DB, duplicate REST logic                              |
+| **Server Action** (`workflows/**`, `'use server'`) | Parse `FormData`, validate with Zod, resolve actor, call one workflow or one module **service**, map errors, revalidate cache tags | Contain domain rules, access the DB, duplicate REST logic                              |
 | **REST route handler** (`app/api/**/route.ts`)    | Parse request (params/query/body), resolve actor, call one workflow or one module service, map result/errors to HTTP, set headers  | Contain domain rules, access the DB, implement logic not present in the shared service |
 
 Every entrypoint performs authentication/authorization checks. Every protected service re-checks independently.
+
+A Server Action lives in `src/workflows/**`, beside the workflow it belongs to, and is marked with the `'use server'` directive. `src/app` holds routing and entrypoint adaptation only; `src/app/actions/**` is reserved for app-level actions that have no workflow of their own (D-086). A workflow that receives a value the browser could forge — the anonymous session identifier, for instance — is not a Server Action: a Server Action argument arrives from the request body (D-083).
 
 ### 9.2 REST allowlist
 
 REST exists only for these categories. Anything else is a Server Action or a Server Component read.
 
-1. Client-driven reads and polling (search autocomplete, notification unread count, admin operational metrics refresh).
+1. Client-driven reads and polling (search autocomplete, admin operational metrics refresh).
 2. Analytics beacons (content view, playback heartbeat) sent with `sendBeacon`/`fetch(..., { keepalive: true })`.
 3. Exports and downloads (CSV datasets, authorized backup download).
 4. Better Auth integration (`/api/auth/[...all]`).
 5. Health checks (public minimal; authenticated detailed).
 6. OpenAPI document.
 7. Explicitly approved external integrations (webhooks) — none in the initial release.
+8. Administration mutations driven by the admin client islands (`/admin/api/**`): the island owns the interaction, the route re-checks the actor and calls one workflow (D-086).
 
 Push subscription management is a client-driven mutation and uses a Server Action, not REST.
+
+The notification unread count is **not** a REST endpoint: the public layout resolves it on the server and hands it to the bell as a prop (D-088).
 
 ### 9.3 Examples
 
@@ -641,14 +658,17 @@ Push subscription management is a client-driven mutation and uses a Server Actio
 | Permanently delete content  | Server Action                              | `workflows/permanently-delete-content`                                                  |
 | CSV export                  | REST `GET /api/admin/exports/[dataset]`    | `workflows/export-dataset`                                                              |
 | Admin dashboard             | Server Component                           | `administration.getOperationalSummary` + `analytics.getAnalyticsOverview`               |
-| Notification unread count   | REST `GET /api/notifications/unread-count` | `notifications.getUnreadCount`                                                          |
+| Notification unread count   | Server Component (`components/public/Layout.tsx`) | `notifications.getUnreadNotificationCount`                                             |
 | Push subscribe/unsubscribe  | Server Action                              | `notifications.upsertPushSubscription` / `removePushSubscription`                       |
+| Terminate the sessions of an account | REST `POST /admin/api/users/[id]/sessions` | `workflows/admin/users.terminateUserSessionsForAdmin`                       |
 | Health                      | REST `GET /api/health`                     | `maintenance.getHealth`                                                                 |
 | OpenAPI                     | REST `GET /api/openapi`                    | Static/generated document                                                               |
 
 ### 9.4 HTTP concerns stay at the edge
 
 Request parsing, status-code mapping, headers, cookies, and response envelopes live in `app` and `platform/http`. Domain services return typed results or throw typed errors. No module imports HTTP types.
+
+The cookie jar is an HTTP concern: only a route handler writes a cookie. The analytics module resolves the anonymous session identifier, and the analytics route handler issues the cookie (D-083).
 
 ---
 
@@ -787,7 +807,9 @@ Modules may define domain errors that extend these classes (for example, `Conten
 - `components/**` may import only `lib`, `lib/contracts`, and third-party client libraries. It may not import a module, repository, DB client, or authorization code.
 - Client Components receive serializable DTOs as props. They never receive raw rows, DB handles, session secrets, or permission internals.
 - `lib/contracts/**` contains the client-safe DTO and form-schema definitions. It imports no server code.
-- A pure helper that belongs to a module may live in a `*.shared.ts` file beside it, and a client island imports that file directly rather than the module index (D-049, §5.1). The `*.shared.ts` file carries no `server-only` marker, no database import, and no `@/` module import; the notification islands use `notifications/{preferences,notification-center,subscriptions}.shared.ts` this way (S7, D-078).
+- A pure helper that belongs to a module may live in a `*.shared.ts` file beside it, and a client island imports that file directly rather than the module index (D-049, §5.1). The `*.shared.ts` file carries no `server-only` marker, no database import, and no `@/` module import; the notification islands use `notifications/{preferences,notification-center,subscriptions,admin-notifications,announcements}.shared.ts` this way, and the player uses `analytics/playback-events.shared.ts` (S7, D-078, D-085).
+- A client island never imports a module index, not even for a type. The DTOs a client island renders live in a `*.shared.ts` file, and a unit test enforces the boundary (D-085).
+- A form and the action it calls share one schema from `lib/contracts`: the form validates with React Hook Form and `zodResolver`, the action re-validates with the same schema (CONVENTIONS §6.3/§6.4, D-085).
 - Secrets are read only by `platform/config` in server code. No secret uses a `NEXT_PUBLIC_*` variable.
 
 ---
@@ -878,15 +900,20 @@ Architecture rules are enforced by tooling, not only by documentation.
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Layer/module dependency direction          | `eslint-plugin-boundaries` (or equivalent zone rules) in Prompt 013                                                                                                                                      |
 | No circular dependencies                   | `import/no-cycle` across `src`                                                                                                                                                                           |
-| Public API only (`modules/x/index.ts`)     | `no-restricted-imports` pattern `@/modules/*/**` excluding `index.ts`                                                                                                                                    |
+| Public API only (`modules/x/index.ts`)     | `no-restricted-imports` pattern `@/modules/*/**` excluding `index.ts`; a client island reads a `*.shared.ts` file instead (D-085)                                                                           |
 | Server-only modules                        | `server-only` imports + lint rule forbidding `@/modules/*` and `@/platform/*` in `components` and `"use client"` files                                                                                   |
-| DB access only in repositories/read-models | `no-restricted-imports` for `@/db/client` outside `modules/*/repository*`, `modules/*/read-models*`, and `src/db`; `@/db/schema` only in `src/db`; workflows may import only `@/platform/db/transaction` |
+| DB access stays inside the owning module   | A module reaches the database through its own files and never writes another module's tables; the integration suite asserts the ownership of every table (D-086)                                             |
 | Permission catalog single source           | Typed `PermissionKey` union; lint forbids permission-looking string literals in guard calls                                                                                                              |
 | Type safety                                | TypeScript strict mode; no unrestricted `any`; no ignored type errors                                                                                                                                    |
 | Data ownership                             | Repository boundaries + code review + read-model allowlist review                                                                                                                                        |
 | New module/dependency/exception            | Requires a `DECISIONS.md` entry and an update to this document before implementation                                                                                                                     |
 
 CI runs install, type check, lint (including architecture rules), unit tests, integration tests, and production build. A pull request that violates a boundary fails before review.
+
+**Documented deviation (D-086).** Two rules of this table describe a layer the project does not have and are therefore restated as they are implemented:
+
+- There is no `repository.ts` / `read-models.ts` split. About 48 files inside `src/modules/**` reach `@/db/client` directly, which is the repository-wide pattern. The rule that holds — and that the integration suite enforces — is that a module never writes another module's tables. A repository split would be an architectural change with its own decision, not a cleanup.
+- The `no-restricted-imports` rules for the module boundary and for the database client are not configured in `eslint.config.js` yet. The boundaries are enforced by the unit-test guards (`tests/unit/architecture/`, `tests/unit/modules/notifications/client-boundary.test.ts`) and by the code review checklist in §17.1, not by a lint rule. Adding the lint rules is a mechanical follow-up, tracked in `docs/PROJECT_STATUS.md`.
 
 ### 17.1 Review checklist for a new cross-module dependency
 

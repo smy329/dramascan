@@ -1,9 +1,15 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { BellRing, Check } from 'lucide-react';
 
+import {
+  notificationPreferencesSchema,
+  type NotificationPreferencesValues,
+} from '@/lib/contracts/notification-preferences';
 import type { NotificationPreferenceSet } from '@/modules/notifications/preferences.shared';
 import { saveNotificationPreferences } from '@/workflows/notifications/preferences';
 import { cn } from '@/lib/utils';
@@ -18,15 +24,20 @@ import { cn } from '@/lib/utils';
  *
  * The form saves the switches the viewer changed. It never sends the switches
  * it did not change, so two devices cannot silently reset each other.
+ *
+ * React Hook Form owns the switch state and the Zod schema owns the rules
+ * (CONVENTIONS §6.3/§6.4). The Server Action re-validates with the same
+ * schema, so the browser and the server cannot disagree about what a valid
+ * switch set is (D-085).
  */
 
 export type NotificationPreferencesFormProps = Readonly<{
   preferences: NotificationPreferenceSet;
 }>;
 
-type SwitchKey = keyof NotificationPreferenceSet;
-
 /** The switches the viewer may change. */
+type SwitchKey = keyof NotificationPreferencesValues;
+
 const EVENT_SWITCHES: ReadonlyArray<{ key: SwitchKey; label: string; description: string }> = [
   {
     key: 'newEpisode',
@@ -118,40 +129,53 @@ export function NotificationPreferencesForm({
   preferences: initialPreferences,
 }: Readonly<NotificationPreferencesFormProps>) {
   const router = useRouter();
-  const [preferences, setPreferences] = useState<NotificationPreferenceSet>({
-    ...initialPreferences,
-  });
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+
+  const {
+    handleSubmit,
+    setValue,
+    watch,
+    reset,
+    formState: { isSubmitting },
+  } = useForm<NotificationPreferencesValues>({
+    resolver: zodResolver(notificationPreferencesSchema),
+    mode: 'onChange',
+    defaultValues: {
+      newEpisode: initialPreferences.newEpisode,
+      newDrama: initialPreferences.newDrama,
+      newDramaSeason: initialPreferences.newDramaSeason,
+      websiteAnnouncement: initialPreferences.websiteAnnouncement,
+      globalInApp: initialPreferences.globalInApp,
+      globalPush: initialPreferences.globalPush,
+    },
+  });
 
   const toggle = (key: SwitchKey, checked: boolean) => {
     setSaved(false);
     setError(null);
-    setPreferences(current => ({ ...current, [key]: checked }));
+    setValue(key, checked, { shouldDirty: true });
   };
 
-  const save = () => {
-    startTransition(async () => {
-      const result = await saveNotificationPreferences({
-        newEpisode: preferences.newEpisode,
-        newDrama: preferences.newDrama,
-        newDramaSeason: preferences.newDramaSeason,
-        websiteAnnouncement: preferences.websiteAnnouncement,
-        globalInApp: preferences.globalInApp,
-        globalPush: preferences.globalPush,
-      });
+  const save = handleSubmit(async values => {
+    const result = await saveNotificationPreferences(values);
 
-      if (!result.ok) {
-        setError(result.error.message);
-        return;
-      }
+    if (!result.ok) {
+      setError(result.error.message);
+      return;
+    }
 
-      setPreferences(result.data);
-      setSaved(true);
-      router.refresh();
+    reset({
+      newEpisode: result.data.newEpisode,
+      newDrama: result.data.newDrama,
+      newDramaSeason: result.data.newDramaSeason,
+      websiteAnnouncement: result.data.websiteAnnouncement,
+      globalInApp: result.data.globalInApp,
+      globalPush: result.data.globalPush,
     });
-  };
+    setSaved(true);
+    router.refresh();
+  });
 
   return (
     <div className="space-y-8">
@@ -170,7 +194,7 @@ export function NotificationPreferencesForm({
               id={`preference-${switchRow.key}`}
               label={switchRow.label}
               description={switchRow.description}
-              checked={preferences[switchRow.key]}
+              checked={watch(switchRow.key) ?? false}
               onChange={checked => toggle(switchRow.key, checked)}
             />
           ))}
@@ -204,7 +228,7 @@ export function NotificationPreferencesForm({
               id={`preference-${switchRow.key}`}
               label={switchRow.label}
               description={switchRow.description}
-              checked={preferences[switchRow.key]}
+              checked={watch(switchRow.key) ?? false}
               onChange={checked => toggle(switchRow.key, checked)}
             />
           ))}
@@ -214,12 +238,12 @@ export function NotificationPreferencesForm({
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          onClick={save}
-          disabled={isPending}
+          onClick={() => void save()}
+          disabled={isSubmitting}
           className="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:opacity-50"
         >
           <Check className="size-4" aria-hidden="true" />
-          {isPending ? 'Saving…' : 'Save preferences'}
+          {isSubmitting ? 'Saving…' : 'Save preferences'}
         </button>
 
         {saved ? (

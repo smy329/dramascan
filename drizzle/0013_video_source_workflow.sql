@@ -1,3 +1,12 @@
+-- Migration 0013 — video source workflow tables
+--
+-- Creates the administrative audit trail, the playback failure reports, and the
+-- subtitle tracks.
+--
+-- Reversible: the rollback drops the three tables, their indexes, and the
+-- cross-module foreign keys. The audit trail and the failure reports are lost
+-- with the tables.
+
 CREATE TABLE "admin_audit_log" (
 	"id" uuid PRIMARY KEY DEFAULT uuidv7() NOT NULL,
 	"actor_id" uuid,

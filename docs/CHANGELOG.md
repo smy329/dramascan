@@ -4,6 +4,103 @@ All notable changes to the DramaScan project will be documented in this file.
 
 ## [Unreleased] - 2026-11-24
 
+### fix: resolve the fourth Phase 11 review round (Prompts 139–154)
+
+A fourth fresh review of the whole Phase 11 branch found ten findings to fix
+and four to answer. Each was checked against the code and the binding rules
+before any fix, and each fix was written test-first.
+
+#### Analytics
+
+- **The typed target wins over the legacy pair.** `analytics/typed-targets.ts`
+  owns the four SQL expressions, and the aggregation and the dashboard use
+  them for both the grouping and the filter, so a row whose typed and legacy
+  targets disagree is counted under the target it is filtered by (A1, D-082).
+- **The cookie is issued at the edge.** `analytics/guest-session.ts` resolves
+  the identifier and never touches the cookie jar; the analytics route handlers
+  issue it, and the workflows take the identifier as an argument. The
+  workflows are therefore not Server Actions: a Server Action argument arrives
+  from the request body, so a caller could attribute its views to another
+  visitor's session (A2, D-083).
+- **The dashboard freshness describes the selected range.** "Last updated" is
+  read from the rows of that range, and a range with no aggregate row says it
+  has no freshness instead of borrowing another range's (A10, D-081).
+
+#### Notifications
+
+- **A security notification follows the change, not the request.** Assigning
+  a role the account already holds, or deactivating an account that was
+  already deactivated, no longer tells the account owner that something
+  happened (A9, D-080).
+- **The admin islands read their DTOs from shared files.** The administrator
+  alert and announcement DTOs live in `admin-notifications.shared.ts` and
+  `announcements.shared.ts`; a client island never imports the server-only
+  module barrel (A3, D-085).
+- **The preference form and its action share one contract.** The form uses
+  React Hook Form with `zodResolver`, and both sides validate with the schema
+  of `lib/contracts/notification-preferences.ts` (A4, D-085).
+- **The new-drama switch is `NOT NULL DEFAULT true`.** Migration `0024`
+  backfills the nulls, sets the default, and sets the constraint, so the
+  column matches the documented data model (A5, D-084).
+- **One owner per catalogue.** `formatCreatedAt` lives in `src/lib/utils.ts`
+  and the playback event list in `analytics/playback-events.shared.ts`; the
+  islands and the player read the same definitions (A7, D-085).
+
+#### Administration
+
+- **The session-termination workflow is reachable.** `POST
+  /admin/api/users/[id]/sessions` calls `terminateUserSessionsForAdmin`, and
+  the users page offers a Super Admin-only "Terminate sessions" control that
+  asks for confirmation first (A8).
+
+#### Schema
+
+- `drizzle/0024_phase11_review_round4.sql` (new): the `new_drama` backfill,
+  default, and `NOT NULL` constraint.
+- Every remaining migration now states whether it can be rolled back. The
+  18 pre-existing migrations that had no `Reversibility:` line carry one
+  now; the change is comment-only, and the whole chain was re-applied to a
+  scratch schema to prove it stayed inert (A6).
+
+#### Documentation
+
+Four findings were rejected with a correction, because the code followed the
+repository's real conventions and the documentation was the part that was
+wrong:
+
+- **ARCHITECTURE §17 now states the database rule as it is implemented.** The
+  project has no repository/read-model split; the rule that holds is that a
+  module never writes another module's tables (D-086).
+- **Server Actions live in `src/workflows/**`,** beside the workflow they
+  belong to; `src/app` holds routing and entrypoint adaptation (D-086).
+- **A component file is kebab-case,** as the admin kits already document; the
+  existing PascalCase files are left alone (D-087).
+- **The notification unread count is resolved on the server,** in the public
+  layout, and there is no REST endpoint for it (D-088).
+
+#### Testing
+
+- New guards: the admin session route, the guest-cookie boundary, the shared
+  catalogue, the migration reversibility, and the preference contract.
+- New behavioural coverage: the no-op security request, the range-scoped
+  dashboard freshness, the typed-target grouping, the `new_drama` constraint,
+  and the Super Admin-only session-termination control.
+- A new browser spec terminates the sessions of an account and proves the
+  account is signed out: the target's own browser session renders the
+  anonymous notification centre afterwards.
+
+#### Verification
+
+- Typecheck: **PASS** (`npm run typecheck`)
+- Lint: **PASS** (`npm run lint`)
+- Unit tests: **PASS** — 1298/1298, 136 files (`npm test`)
+- Integration tests: **PASS** — 793/793, 55 files (`npm run test:integration`)
+- Playwright E2E: **PASS** — 94/94 (`npx playwright test`)
+- Production build: **PASS** (`npm run build` with HTTPS `APP_URL` and
+  `TRUSTED_ORIGINS`) — "Compiled successfully in 2.4min", exit code 0
+
+---
+
 ### fix: resolve the third Phase 11 review round (Prompts 139–154)
 
 A third fresh review of the Phase 11 work found nine Standards findings and six

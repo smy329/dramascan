@@ -18,6 +18,10 @@
 -- the default configuration, because the queries use the `simple`
 -- configuration. An index built on the default configuration would not match
 -- the query and PostgreSQL would fall back to a sequential scan.
+--
+-- Reversible: the rollback drops the six indexes. The `pg_trgm` extension
+-- stays installed, because another schema object may depend on it and
+-- dropping an extension is not part of this migration.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_dramas_title_trgm" ON "dramas" USING gin ("title" gin_trgm_ops);

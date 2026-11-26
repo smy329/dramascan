@@ -371,6 +371,152 @@ and the dashboard custom range and viewer split at component level.
 
 ---
 
+#### Phase 11 review round 4 (2026-11-26)
+
+A fourth fresh reviewer reviewed the whole branch `9c421ed..e4b122d` and
+requested changes: ten findings to fix and four to answer. Each finding was
+checked against the code and the binding rules before any fix, and each fix was
+written test-first — the failing test was run and watched fail before the
+implementation changed.
+
+- **A security notification followed the request, not the change.** Assigning
+  a role the account already held, or deactivating an account that was already
+  deactivated, told the account owner that something had happened. The
+  workflows now read the stored state first and notify only on a real
+  transition (D-080) (A9).
+- **The dashboard freshness ignored the selected range.** "Last updated" was
+  read from the aggregate table without a range filter, so a range with no
+  data borrowed the freshness of another range. The read is now scoped to the
+  range, and a range with no aggregate row says so (D-081) (A10).
+- **The typed target lost to the legacy pair.** D-032 §4 makes the typed
+  `drama_id`/`movie_id` pair authoritative, but the grouping still used
+  `content_type`/`content_id`, so a row whose pairs disagree was counted under
+  the legacy target. One file now owns the four SQL expressions, and the
+  grouping and the filter use the same expression (D-082) (A1).
+- **The analytics module wrote a cookie.** Next.js forbids
+  `cookies().set()` while a Server Component renders, so the module's cookie
+  write only worked when the call happened to run as a mutation. The module
+  now resolves the identifier and the analytics route handlers issue the
+  cookie; the workflows take the identifier as an argument and are no longer
+  Server Actions, because a Server Action argument arrives from the request
+  body and a caller could attribute its views to another visitor's session
+  (D-083) (A2).
+- **Three admin islands imported the server-only module barrel.** The
+  administrator DTOs moved to `admin-notifications.shared.ts` and
+  `announcements.shared.ts`, and the islands import those files directly
+  (D-085) (A3).
+- **The preference form and its action each had their own contract.** The
+  switches lived in component state and were validated nowhere, while the
+  action declared a second Zod schema. The form now uses React Hook Form with
+  `zodResolver` and both sides validate with the schema of
+  `lib/contracts/notification-preferences.ts` (D-085) (A4).
+- **The new-drama switch was nullable.** The data model documents
+  `notification_preferences.new_drama` as `boolean NOT NULL DEFAULT true`, and
+  migration 0018 added it as nullable, so one reader could read a null as
+  "off" and another as "on". Migration 0024 backfills the nulls, sets the
+  default, and sets the constraint (D-084) (A5).
+- **No migration stated whether it could be rolled back.** CONVENTIONS §10.3
+  asks for a `Reversibility:` line; 19 migrations had none. All 18 remaining
+  migrations now carry an accurate one — the change is comment-only, and the
+  whole chain was re-applied to a scratch schema to prove it stayed inert
+  (A6).
+- **The timestamp formatter and the playback event list each existed twice.**
+  `formatCreatedAt` moved to `src/lib/utils.ts` and the event catalogue to
+  `analytics/playback-events.shared.ts`, so the three notification islands and
+  the player read the same definitions (D-085) (A7).
+- **The session-termination workflow had no route.** The workflow existed and
+  was tested, but no administrator could reach it. `POST
+  /admin/api/users/[id]/sessions` now calls it, and the users page offers a
+  Super Admin-only "Terminate sessions" control that asks for confirmation
+  first (A8).
+
+Four findings were rejected with a documented correction, because the code
+follows the repository's real conventions and the documentation was the part
+that was wrong:
+
+- **The repository/read-model split does not exist.** About 48 files inside
+  `src/modules/**` reach `@/db/client` directly; that is the repository-wide
+  pattern. ARCHITECTURE §17 now states the rule as it is implemented — a
+  module never writes another module's tables — and records the deviation
+  (D-086).
+- **Server Actions live in `src/workflows/**`,** not in `app/actions/**`:
+  about 25 workflow files carry the `'use server'` directive and
+  `src/app/actions/**` does not exist. ARCHITECTURE §9.1 and the directory
+  tree now describe the implemented layout (D-086).
+- **Component files are kebab-case,** as the admin kits already document. The
+  naming rule in CONVENTIONS §2.2 and `coding-conventions.md` now matches the
+  repository, and the existing PascalCase files are left alone (D-087).
+- **There is no `GET /api/notifications/unread-count` route,** and there never
+  was one: the public layout resolves the count on the server and hands it to
+  the bell. ARCHITECTURE §4 and §9.2 now describe that (D-088).
+
+#### Changed files
+
+- `drizzle/0000…0018` (comment-only: the `Reversibility:` lines),
+  `drizzle/0024_phase11_review_round4.sql` (new), `drizzle/meta/_journal.json`
+- `src/modules/analytics/{typed-targets.ts (new),playback-events.shared.ts (new),guest-session,aggregation-workflow,playback-analytics-workflow,index}.ts`,
+  `src/modules/analytics/read-models/dashboard.ts`
+- `src/modules/notifications/{admin-notifications.shared.ts (new),announcements.shared.ts (new),admin-notifications,announcements,schema}.ts`
+- `src/app/api/analytics/{_guest-session.ts (new),view/route.ts,playback/route.ts}`,
+  `src/app/admin/api/users/[id]/sessions/route.ts` (new)
+- `src/app/admin/{analytics/page.tsx,users/page.tsx}`
+- `src/workflows/analytics/{record-view,record-playback}.ts`,
+  `src/workflows/admin/users.ts`, `src/workflows/notifications/preferences.ts`
+- `src/components/admin/notifications/{admin-notification-list,admin-notification-detail,announcement-admin}.tsx`,
+  `src/components/notifications/{notification-center-list,notification-preferences-form}.tsx`,
+  `src/components/player/playback-analytics.ts`,
+  `src/components/admin/users/user-management-controls.tsx`
+- `src/lib/utils.ts`, `src/lib/contracts/notification-preferences.ts` (new)
+- `tests/unit/app/admin-api-user-sessions.test.ts` (new),
+  `tests/unit/architecture/{analytics-guest-session-cookie,shared-catalogue}.test.ts` (new),
+  `tests/unit/db/migration-reversibility.test.ts` (new),
+  `tests/unit/lib/notification-preferences-contract.test.ts` (new),
+  `tests/unit/modules/notifications/client-boundary.test.ts`,
+  `tests/unit/components/admin-user-management-controls.test.tsx`,
+  `tests/unit/workflows/admin/authorization.test.ts`,
+  `tests/integration/analytics/dashboard.integration.test.ts`,
+  `tests/integration/notifications/notifications.integration.test.ts`
+- `docs/decisions/DECISIONS.md` (D-080…D-088), `docs/architecture/ARCHITECTURE.md`,
+  `docs/development/{API,CONVENTIONS,DATABASE,admin-shell,coding-conventions}.md`
+
+#### Verification
+
+- Typecheck: **PASS** (`npm run typecheck`)
+- Lint: **PASS** (`npm run lint`; only the pre-existing
+  `MODULE_TYPELESS_PACKAGE_JSON` warning)
+- Unit tests: **PASS** — 1298/1298, 136 files (`npm test`)
+- Integration tests: **PASS** — 793/793, 55 files (`npm run test:integration`)
+- Playwright E2E: **PASS** — 94/94 (`npx playwright test`), including the new
+  "terminates every session of an account and signs it out" spec
+- Production build: **PASS** (`npm run build` with HTTPS `APP_URL` and
+  `TRUSTED_ORIGINS`; the local `.env.local` uses `http://localhost`, which the
+  production configuration rejects) — "Compiled successfully in 2.4min", exit
+  code 0
+
+#### Known limitations
+
+- **The boundary rules are still documentation, not lint rules.**
+  `eslint.config.js` has no `no-restricted-imports` configuration, so the
+  module boundary and the database-client rule are enforced by the unit-test
+  guards and by code review, not by ESLint. The lint rules are a mechanical
+  follow-up (D-086).
+- **The browser suite is flaky on a slow filesystem.** Two of the four runs of
+  the suite in this round failed on an infrastructure race, not on the
+  application: once on a `networkidle` wait that exceeded the 60-second
+  navigation budget although the page had already rendered, and once on a
+  PostgreSQL deadlock (`40P01`) in the drama fixture's cleanup while the
+  development server held a lock on the same row. Both specs pass in
+  isolation and in the succeeding full run, and neither touches the round-4
+  changes. The suite measures the application; the two failures measure the
+  machine.
+- **A beacon that the browser aborts is logged as a server error.** The
+  development server logs `ECONNRESET` when the browser closes a page while a
+  `keepalive` view beacon is still on its way, and the analytics pool can
+  report a connection timeout when the server is busy compiling. The beacon is
+  fire-and-forget, so neither reaches the viewer.
+
+---
+
 ### Phase 9 — Ratings, Reviews, and Moderation (2026-11-24)
 
 Prompts 115-120 implement the rating submission, review submission/editing, rating aggregation, review enjoyment reactions, review sorting/reporting, and review moderation features. The pass that produced this section audited the whole phase and fixed the defects listed under *Bugs found and fixed*.

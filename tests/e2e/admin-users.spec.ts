@@ -231,4 +231,80 @@ test.describe('admin users listing', () => {
       await adminSession.remove(session.userId);
     }
   });
+
+  test('terminates every session of an account and signs it out', async ({ browser }) => {
+    // The actor is a Super Admin; the target is an ordinary account with its
+    // own session. The target's notification centre is the probe: it renders
+    // the signed-in view while the session exists, and the anonymous view once
+    // the session row has been deleted.
+    const actor = await adminSession.seed({
+      email: 'e2e-users-session-actor@example.com',
+      name: 'E2E Session Actor',
+    });
+    const targetEmail = 'e2e-users-session-target@example.com';
+    const targetName = 'E2E Session Target';
+    const target = await adminSession.seed({
+      email: targetEmail,
+      name: targetName,
+      superAdmin: false,
+    });
+
+    const actorContext = await browser.newContext();
+    const targetContext = await browser.newContext();
+
+    try {
+      await actorContext.addCookies([
+        {
+          name: actor.cookieName,
+          value: actor.cookieValue,
+          url: 'http://localhost:3000',
+          httpOnly: true,
+          sameSite: 'Lax',
+        },
+      ]);
+      await targetContext.addCookies([
+        {
+          name: target.cookieName,
+          value: target.cookieValue,
+          url: 'http://localhost:3000',
+          httpOnly: true,
+          sameSite: 'Lax',
+        },
+      ]);
+
+      const targetPage = await targetContext.newPage();
+
+      await targetPage.goto('/notifications');
+      await expect(targetPage.getByText('Sign in to see your notifications')).toHaveCount(0);
+
+      const actorPage = await actorContext.newPage();
+
+      await actorPage.goto(`/admin/users?q=${encodeURIComponent(targetEmail)}`);
+      await expect(actorPage.getByRole('cell', { name: targetEmail })).toBeVisible();
+
+      // The operation signs the account out of every device, so it is
+      // confirmed before it runs.
+      await actorPage
+        .getByRole('button', { name: `Terminate sessions for ${targetName}` })
+        .click();
+
+      const dialog = actorPage.getByRole('alertdialog');
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: 'Terminate sessions', exact: true }).click();
+
+      // The dialog closes only when the request succeeded: a refused request
+      // keeps it open and shows the reason inside it.
+      await expect(dialog).toBeHidden();
+
+      // The account is signed out everywhere: the very browser session that
+      // rendered the notification centre now sees the anonymous page.
+      await targetPage.reload();
+      await expect(targetPage.getByText('Sign in to see your notifications')).toBeVisible();
+    } finally {
+      await actorContext.close();
+      await targetContext.close();
+      await adminSession.remove(actor.userId);
+      await adminSession.remove(target.userId);
+    }
+  });
 });

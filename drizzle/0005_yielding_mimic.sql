@@ -1,3 +1,8 @@
+-- Migration 0005 — structure conversion snapshots
+--
+-- Reversible: the rollback drops the `structure_conversion_snapshots` table.
+-- The conversion snapshots it holds are lost with it.
+
 CREATE TABLE "structure_conversion_snapshots" (
 	"id" uuid PRIMARY KEY DEFAULT uuidv7() NOT NULL,
 	"drama_id" uuid NOT NULL,

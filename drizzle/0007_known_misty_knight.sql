@@ -2,6 +2,12 @@
 -- Backfill first: existing NULL values and legacy episode 'ongoing'/'completed'
 -- lifecycle values become 'draft'. This preserves drama content status, which
 -- lives in the separate "status" column, and never touches other metadata.
+--
+-- Reversible: the rollback drops the four publication-status CHECK
+-- constraints, drops the NOT NULL constraint of the four columns, and restores
+-- their previous values. The previous values cannot be restored exactly: a
+-- legacy 'ongoing'/'completed' episode status was rewritten to 'draft', and
+-- the original spelling is not stored.
 UPDATE "dramas" SET "publication_status" = 'draft' WHERE "publication_status" IS NULL OR "publication_status" NOT IN ('draft', 'published', 'unpublished');--> statement-breakpoint
 UPDATE "seasons" SET "publication_status" = 'draft' WHERE "publication_status" IS NULL OR "publication_status" NOT IN ('draft', 'published', 'unpublished');--> statement-breakpoint
 UPDATE "episodes" SET "publication_status" = 'draft' WHERE "publication_status" IS NULL OR "publication_status" NOT IN ('draft', 'published', 'unpublished');--> statement-breakpoint

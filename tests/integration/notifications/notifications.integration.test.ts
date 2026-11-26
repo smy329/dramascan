@@ -30,7 +30,7 @@ vi.hoisted(() => {
 
 vi.mock('server-only', () => ({}));
 
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { users } from '@/modules/auth/schema';
@@ -251,6 +251,23 @@ describe('notification preferences', () => {
 
     expect(saved.newDrama).toBe(false);
     expect(saved.newEpisode).toBe(true);
+  });
+
+  it('stores the new-drama switch as NOT NULL DEFAULT true', async () => {
+    // The column is the fifth independent event switch, and DATABASE.md §8.9
+    // defines it as `boolean NOT NULL DEFAULT true`.
+    const result = await db.execute(sql`
+      select is_nullable, column_default
+        from information_schema.columns
+       where table_name = 'notification_preferences'
+         and column_name = 'new_drama'
+    `);
+
+    const rows = 'rows' in result ? result.rows : [];
+    const column = rows[0] as { is_nullable?: string; column_default?: string } | undefined;
+
+    expect(column?.is_nullable).toBe('NO');
+    expect(column?.column_default).toBe('true');
   });
 });
 

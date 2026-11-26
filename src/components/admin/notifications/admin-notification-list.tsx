@@ -8,8 +8,9 @@ import { Check, Circle } from 'lucide-react';
 import type {
   AdminNotificationPage,
   AdminNotificationView,
-} from '@/modules/notifications';
+} from '@/modules/notifications/admin-notifications.shared';
 import { setAdminNotificationReadAction } from '@/workflows/admin/admin-notifications';
+import { formatCreatedAt } from '@/lib/utils';
 
 /**
  * The administrator alert list (D-067).
@@ -25,14 +26,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   system: 'System',
   maintenance: 'Maintenance',
 };
-
-function formatCreatedAt(value: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Dhaka',
-  }).format(new Date(value));
-}
 
 function pageHref(page: number, category: string | null): string {
   const params = new URLSearchParams();

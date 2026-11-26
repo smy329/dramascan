@@ -11,6 +11,12 @@ import {
   playback_analytics_events,
 } from '@/modules/analytics/schema';
 import { addDays, dhakaDateString, startOfDhakaDay } from '@/modules/analytics/date-filters';
+import {
+  playbackTargetIdExpression,
+  playbackTargetTypeExpression,
+  viewTargetIdExpression,
+  viewTargetTypeExpression,
+} from '@/modules/analytics/typed-targets';
 
 /**
  * The analytics aggregation (Prompt 143).
@@ -233,8 +239,8 @@ async function computeAggregateRows(
     executor,
     sql`
     select to_char(${content_view_events.viewed_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
-           ${content_view_events.content_type} as content_type,
-           ${content_view_events.content_id}::text as target_id,
+           ${viewTargetTypeExpression} as content_type,
+           ${viewTargetIdExpression}::text as target_id,
            count(*)::int as total_views
       from ${content_view_events}
      where ${content_view_events.deleted_at} is null
@@ -249,8 +255,8 @@ async function computeAggregateRows(
     executor,
     sql`
     select to_char(${playback_analytics_events.event_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
-           ${playback_analytics_events.content_type} as content_type,
-           coalesce(${playback_analytics_events.drama_id}, ${playback_analytics_events.movie_id})::text as target_id,
+           ${playbackTargetTypeExpression} as content_type,
+           ${playbackTargetIdExpression}::text as target_id,
            count(*)::int as total_playback_events,
            count(*) filter (where ${playback_analytics_events.event_type} = 'play')::int as playback_starts,
            count(*) filter (where ${playback_analytics_events.completion_threshold_met})::int as completion_events
@@ -267,8 +273,8 @@ async function computeAggregateRows(
     executor,
     sql`
     select to_char(${content_view_events.viewed_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
-           ${content_view_events.content_type} as content_type,
-           ${content_view_events.content_id}::text as target_id,
+           ${viewTargetTypeExpression} as content_type,
+           ${viewTargetIdExpression}::text as target_id,
            count(distinct ${content_view_events.guest_session_id})::int as unique_visitors
       from ${content_view_events}
      where ${content_view_events.deleted_at} is null
@@ -284,8 +290,8 @@ async function computeAggregateRows(
     executor,
     sql`
     select to_char(${playback_analytics_events.event_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
-           ${playback_analytics_events.content_type} as content_type,
-           coalesce(${playback_analytics_events.drama_id}, ${playback_analytics_events.movie_id})::text as target_id,
+           ${playbackTargetTypeExpression} as content_type,
+           ${playbackTargetIdExpression}::text as target_id,
            coalesce(sum(${playback_analytics_events.watch_duration_seconds}), 0)::int as total_watch_duration_seconds
       from ${playback_analytics_events}
      where ${playback_analytics_events.deleted_at} is null
@@ -300,8 +306,8 @@ async function computeAggregateRows(
     executor,
     sql`
     select to_char(${playback_analytics_events.event_at} at time zone 'UTC' + interval '6 hours', 'YYYY-MM-DD') as day,
-           ${playback_analytics_events.content_type} as content_type,
-           coalesce(${playback_analytics_events.drama_id}, ${playback_analytics_events.movie_id})::text as target_id,
+           ${playbackTargetTypeExpression} as content_type,
+           ${playbackTargetIdExpression}::text as target_id,
            count(distinct ${playback_analytics_events.guest_session_id})::int as playback_viewers
       from ${playback_analytics_events}
      where ${playback_analytics_events.deleted_at} is null
@@ -537,12 +543,12 @@ async function buildSiteRows(
 function buildViewFilter(scope: AggregationScope): SQL {
   if (scope.kind === 'content') {
     return scope.type === 'drama'
-      ? sql`and ${content_view_events.drama_id} = ${scope.contentId}`
-      : sql`and ${content_view_events.movie_id} = ${scope.contentId}`;
+      ? sql`and ${viewTargetTypeExpression} = 'drama' and ${viewTargetIdExpression} = ${scope.contentId}`
+      : sql`and ${viewTargetTypeExpression} = 'movie' and ${viewTargetIdExpression} = ${scope.contentId}`;
   }
 
   if (scope.kind === 'type') {
-    return sql`and ${content_view_events.content_type} = ${scope.type}`;
+    return sql`and ${viewTargetTypeExpression} = ${scope.type}`;
   }
 
   return sql``;
@@ -552,12 +558,15 @@ function buildViewFilter(scope: AggregationScope): SQL {
 function buildPlaybackFilter(scope: AggregationScope): SQL {
   if (scope.kind === 'content') {
     return scope.type === 'drama'
-      ? sql`and ${playback_analytics_events.drama_id} = ${scope.contentId}`
-      : sql`and ${playback_analytics_events.movie_id} = ${scope.contentId}`;
+      ? sql`and ${playbackTargetTypeExpression} = 'drama' and ${playbackTargetIdExpression} = ${scope.contentId}`
+      : sql`and ${playbackTargetTypeExpression} = 'movie' and ${playbackTargetIdExpression} = ${scope.contentId}`;
   }
 
   if (scope.kind === 'type') {
-    return sql`and ${playback_analytics_events.content_type} = ${scope.type}`;
+    // A playback row that cannot be placed names no title, so it is not
+    // attributed to one. The site-wide scope still counts it.
+    return sql`and (${playback_analytics_events.drama_id} is not null or ${playback_analytics_events.movie_id} is not null)
+                and ${playbackTargetTypeExpression} = ${scope.type}`;
   }
 
   return sql``;

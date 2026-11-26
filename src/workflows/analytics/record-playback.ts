@@ -1,9 +1,6 @@
-'use server';
-
 import { resolveActor } from '@/modules/authorization';
 import { getPublicEpisodeContentReference, getPublicMoviePlayback } from '@/modules/content';
 import {
-  ensureGuestSessionId,
   parseAnalyticsPlaybackInput,
   recordPlaybackEvent,
   type PlaybackEventResult,
@@ -17,14 +14,23 @@ import {
  * never be attributed to an episode nobody may watch, and the drama of an
  * episode is taken from the database rather than from the browser.
  *
+ * This workflow must never carry the `'use server'` directive: the anonymous
+ * session identifier is an argument, and a Server Action argument arrives from
+ * the request body. A caller could then attribute its playback to another
+ * visitor's session. Only the route handler calls this workflow, and the
+ * route handler resolves the identifier from the cookie itself (D-031, D-083).
+ *
  * @param input the raw payload
+ * @param sessionId the anonymous session identifier of the request
  * @returns what the event write did
  */
-export async function recordPlaybackEventWorkflow(input: unknown): Promise<PlaybackEventResult> {
+export async function recordPlaybackEventWorkflow(
+  input: unknown,
+  sessionId: string
+): Promise<PlaybackEventResult> {
   const values = parseAnalyticsPlaybackInput(input);
 
   const actor = await resolveActor();
-  const sessionId = await ensureGuestSessionId();
 
   if (values.movieId !== undefined) {
     const movie = await getPublicMoviePlayback(values.movieId);

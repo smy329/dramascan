@@ -9,6 +9,8 @@ import {
 } from '@/platform/Http';
 import { recordPlaybackEventWorkflow } from '@/workflows/analytics/record-playback';
 
+import { issueGuestSession } from '../_guest-session';
+
 /**
  * The playback analytics endpoint (Prompts 141, 142).
  *
@@ -28,7 +30,14 @@ export async function POST(request: Request): Promise<Response> {
     // A playback event is a mutation of the analytics rows.
     assertSameOrigin(request);
 
-    const result = await recordPlaybackEventWorkflow(await readJsonBody(request));
+    // The route handler is the only place that may issue the anonymous session
+    // cookie, so the visitor is identified here and handed to the workflow.
+    const guest = await issueGuestSession();
+
+    const result = await recordPlaybackEventWorkflow(
+      await readJsonBody(request),
+      guest.sessionId
+    );
 
     return jsonResponse(
       { data: { recorded: result.recorded, duplicate: result.duplicate } },

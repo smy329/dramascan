@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Megaphone, Send } from 'lucide-react';
 
-import type { AnnouncementView } from '@/modules/notifications';
+import type { AnnouncementView } from '@/modules/notifications/announcements.shared';
 import {
   createAnnouncementAction,
   publishAnnouncementAction,

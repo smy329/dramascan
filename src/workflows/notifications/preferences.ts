@@ -1,8 +1,9 @@
 'use server';
 
-import { z } from 'zod';
-
 import type { ActionResult } from '@/lib/contracts/common';
+import {
+  notificationPreferencesSchema,
+} from '@/lib/contracts/notification-preferences';
 import { requireUserId, resolveActor } from '@/modules/authorization';
 import {
   getNotificationPreferences,
@@ -17,16 +18,10 @@ import { toActionError } from '@/workflows/action-errors';
  * The switches belong to the signed-in viewer. The action resolves the viewer
  * from the server-side session — a client can never assert whose preferences
  * it is changing — and writes only the switches the form actually changed.
+ *
+ * The action validates with the same schema the form validates with, so the
+ * browser cannot submit a shape the server does not accept (D-085).
  */
-
-const preferenceInputSchema = z.object({
-  newEpisode: z.boolean().optional(),
-  newDrama: z.boolean().optional(),
-  newDramaSeason: z.boolean().optional(),
-  websiteAnnouncement: z.boolean().optional(),
-  globalInApp: z.boolean().optional(),
-  globalPush: z.boolean().optional(),
-});
 
 /**
  * Save the viewer's notification preferences.
@@ -41,7 +36,7 @@ export async function saveNotificationPreferences(
     const actor = await resolveActor();
     const userId = requireUserId(actor);
 
-    const parsed = preferenceInputSchema.safeParse(input);
+    const parsed = notificationPreferencesSchema.safeParse(input);
 
     if (!parsed.success) {
       return {

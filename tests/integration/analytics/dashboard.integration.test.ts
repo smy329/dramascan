@@ -36,7 +36,7 @@ import {
   guest_sessions,
   playback_analytics_events,
 } from '@/modules/analytics/schema';
-import { aggregateDailyAnalytics } from '@/modules/analytics/aggregation-workflow';
+import { aggregateDailyAnalytics, aggregateDateRange } from '@/modules/analytics/aggregation-workflow';
 import { buildDateRange, resolveDateRange } from '@/modules/analytics/date-filters';
 import {
   getAnalyticsLastUpdated,
@@ -442,7 +442,8 @@ describe('analytics dashboard', () => {
   });
 
   it('reports when the aggregates were last written', async () => {
-    const before = await getAnalyticsLastUpdated();
+    const range = buildDateRange(DAY, DAY);
+    const before = await getAnalyticsLastUpdated(range);
 
     // A day with no events produces no aggregate row at all, so the assertion
     // needs one real event to write.
@@ -456,10 +457,59 @@ describe('analytics dashboard', () => {
 
     await aggregateDailyAnalytics(DAY, null, null);
 
-    const after = await getAnalyticsLastUpdated();
+    const after = await getAnalyticsLastUpdated(range);
 
     expect(after).not.toBeNull();
     expect(before === null || (after?.getTime() ?? 0) >= before.getTime()).toBe(true);
+  });
+
+  it('reports the freshness of the selected range only', async () => {
+    await recordContentView({
+      type: 'drama',
+      contentId: seeded.dramaId,
+      userId: null,
+      sessionId: `session-${TEST_PREFIX}${randomUUID()}`,
+      now: new Date('2026-11-24T10:00:00.000Z'),
+    });
+
+    await aggregateDailyAnalytics(DAY, null, null);
+
+    // The line sits beside the selected range, so it must describe that range.
+    // An aggregate of another day must not make the selected range look fresh.
+    const selected = await getAnalyticsLastUpdated(buildDateRange(DAY, DAY));
+    const other = await getAnalyticsLastUpdated(buildDateRange('2026-11-23', '2026-11-23'));
+
+    expect(selected).not.toBeNull();
+    expect(other).toBeNull();
+  });
+
+  it('attributes a view to the typed target when the legacy pair disagrees', async () => {
+    // The legacy pair says "drama"; the typed target says "movie". The typed
+    // target wins whenever the two disagree (D-032 §4).
+    await db.insert(content_view_events).values({
+      content_id: seeded.dramaId,
+      content_type: 'drama',
+      drama_id: null,
+      movie_id: seeded.movieId,
+      viewed_at: new Date('2026-11-24T10:00:00.000Z'),
+      viewed_hour_bucket: '2026-11-24T10',
+    });
+
+    await aggregateDateRange(DAY, DAY);
+
+    const rows = await db
+      .select({
+        contentId: analytics_daily_aggregates.content_id,
+        totalViews: analytics_daily_aggregates.total_views,
+      })
+      .from(analytics_daily_aggregates)
+      .where(inArray(analytics_daily_aggregates.date, [DAY]));
+
+    const movieRow = rows.find(row => row.contentId === seeded.movieId);
+    const dramaRow = rows.find(row => row.contentId === seeded.dramaId);
+
+    expect(movieRow?.totalViews).toBe(1);
+    expect(dramaRow).toBeUndefined();
   });
 });
 

@@ -94,16 +94,25 @@ export async function assignUserRoleForAdmin(
 ): Promise<UserRoleAssignment[]> {
   requireSuperAdmin(actor);
 
+  // Assigning a role is idempotent: the assignment either exists or it does
+  // not. The notification follows the change, not the request, so a repeated
+  // request does not tell the account owner about a role it has held all along
+  // (D-064, D-080).
+  const before = await listUserRoleAssignments(actor, userId);
+  const alreadyAssigned = before.some(row => row.roleId === roleId);
+
   const assignments = await assignUserRole(actor, userId, roleId);
   const roleName = assignments.find(row => row.roleId === roleId)?.roleName ?? null;
 
-  await notifySecurityEvent({
-    userId,
-    title: 'Your account role was added',
-    content: roleName
-      ? `The role "${roleName}" was added to your account.`
-      : 'A role was added to your account.',
-  });
+  if (!alreadyAssigned) {
+    await notifySecurityEvent({
+      userId,
+      title: 'Your account role was added',
+      content: roleName
+        ? `The role "${roleName}" was added to your account.`
+        : 'A role was added to your account.',
+    });
+  }
 
   return assignments;
 }
@@ -183,13 +192,19 @@ export async function setUserAccountActiveForAdmin(
 
   const updated = await setUserAccountActive(userId, isActive);
 
-  await notifySecurityEvent({
-    userId,
-    title: isActive ? 'Your account was reactivated' : 'Your account was deactivated',
-    content: isActive
-      ? 'An administrator reactivated your account. You can sign in again.'
-      : 'An administrator deactivated your account. Your bookmarks and watch history were kept.',
-  });
+  // The status write is a no-op when the account already has the requested
+  // status. The notification follows the change, not the request, so a repeated
+  // request does not tell the account owner about a state it was already in
+  // (D-064, D-080).
+  if (account.isActive !== isActive) {
+    await notifySecurityEvent({
+      userId,
+      title: isActive ? 'Your account was reactivated' : 'Your account was deactivated',
+      content: isActive
+        ? 'An administrator reactivated your account. You can sign in again.'
+        : 'An administrator deactivated your account. Your bookmarks and watch history were kept.',
+    });
+  }
 
   return updated;
 }

@@ -114,9 +114,12 @@ export default async function AdminUsersPage({
 
   // Role assignment grants access, so it is Super Admin only. Account status
   // keeps the canonical `admin.manage` requirement, and the API refuses a
-  // change to a Super Admin account by a non-Super-Admin.
+  // change to a Super Admin account by a non-Super-Admin. Terminating the
+  // sessions signs the account out of every device, so it is Super Admin only
+  // as well.
   const canManageRoles = actor.isSuperAdmin;
   const canManageStatus = hasPermission(actor, toPermissionKey('admin', 'manage'));
+  const canManageSessions = actor.isSuperAdmin;
 
   const availableRoles: readonly AdminAssignableRoleView[] = canManageRoles
     ? (await listRolesForAdmin(actor)).map(role => ({ id: role.id, name: role.name }))
@@ -173,6 +176,7 @@ export default async function AdminUsersPage({
           availableRoles={availableRoles}
           canManageStatus={canManageStatus}
           canManageRoles={canManageRoles}
+          canManageSessions={canManageSessions}
         />
       ),
     },

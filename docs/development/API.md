@@ -202,6 +202,14 @@ anonymous session cookie (D-057). Both check for a same-origin `Origin` header
 before they parse the body, so a cross-site request cannot count views or
 playback events for another site.
 
+Both route handlers also **issue** the anonymous session cookie when the
+request carries none: the cookie is written here and nowhere else, because
+Next.js forbids `cookies().set()` while a Server Component renders (D-083).
+The identifier is resolved by the analytics module and handed to the workflow
+as an argument; the workflow is therefore not a Server Action, because a
+Server Action argument arrives from the request body and a caller could then
+attribute its views to another visitor's session.
+
 ### 3.4 Playback
 
 | Method | Path                     | Auth          | Permission                              | Purpose                                               | Status  |
@@ -474,6 +482,7 @@ the route entrypoint and re-checked inside the workflow and the module service.
 | `POST`   | `/admin/api/users/[id]/roles`         | Super Admin   | —                             | Assign a role to an account                          | Implemented |
 | `DELETE` | `/admin/api/users/[id]/roles/[roleId]`| Super Admin   | —                             | Revoke one role from an account                      | Implemented |
 | `POST`   | `/admin/api/users/[id]/status`        | Admin         | `admin.manage`               | Activate or deactivate one account                   | Implemented |
+| `POST`   | `/admin/api/users/[id]/sessions`      | Super Admin   | —                             | Terminate every session of one account               | Implemented |
 
 Bodies are strict; unknown fields are rejected.
 
@@ -492,6 +501,10 @@ Bodies are strict; unknown fields are rejected.
   active Super Admin cannot be deactivated: the invariant is enforced inside
   the auth module under a `FOR UPDATE` lock, so it holds under concurrency. A
   Super Admin account can only be changed by a Super Admin.
+- `POST /admin/api/users/[id]/sessions` — no body. Every session of the account
+  is ended, and the account owner receives the mandatory account-security
+  notification. Super Admin only: the workflow re-checks it, so a hidden
+  control is not the boundary.
 
 Responses use the standard envelopes: `{ data, meta }` for a read, `{ data }`
 for a write, and `{ error: { code, message, fieldErrors?, requestId } }` for a

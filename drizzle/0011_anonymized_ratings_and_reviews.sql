@@ -1,3 +1,10 @@
+-- Migration 0011 — anonymized ratings and reviews
+--
+-- Reversible: the rollback drops the two `anonymized_at` columns and restores
+-- the previous target constraints and the NOT NULL constraint of `user_id`.
+-- Neither can be restored while an anonymized row exists — the rollback must
+-- delete those rows first, and the ratings and reviews they hold are lost.
+
 ALTER TABLE "ratings" DROP CONSTRAINT "ck_ratings_target";--> statement-breakpoint
 ALTER TABLE "reviews" DROP CONSTRAINT "ck_reviews_target";--> statement-breakpoint
 ALTER TABLE "ratings" ALTER COLUMN "user_id" DROP NOT NULL;--> statement-breakpoint

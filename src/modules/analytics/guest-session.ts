@@ -1,7 +1,3 @@
-import 'server-only';
-
-import { cookies } from 'next/headers';
-
 /**
  * The anonymous guest session (Prompt 139).
  *
@@ -10,10 +6,11 @@ import { cookies } from 'next/headers';
  * user-agent fingerprint, no device identifier. The identifier is random, so
  * it cannot be derived from anything about the visitor.
  *
- * The cookie is written by the view-tracking route handler, never by a Server
- * Component: Next.js refuses `cookies().set()` while rendering, and a server
- * component that silently failed to set the cookie would count every refresh
- * as a new visitor.
+ * The module never touches the cookie jar. It resolves the identifier and the
+ * route handler issues it, because the route handler is the only place that
+ * may write a cookie: Next.js forbids `cookies().set()` while a Server
+ * Component renders, and a Server Component that silently failed to set the
+ * cookie would count every refresh as a new visitor (D-057 §4).
  */
 
 /** The cookie that carries the anonymous guest session identifier. */
@@ -21,6 +18,14 @@ export const GUEST_SESSION_COOKIE = 'dramascan_guest';
 
 /** How long the anonymous guest session lives: 180 days. */
 export const GUEST_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 180;
+
+/** The resolved anonymous session of a request. */
+export type GuestSessionResolution = Readonly<{
+  /** The anonymous session identifier. */
+  sessionId: string;
+  /** Whether the identifier was created for this request. */
+  isNew: boolean;
+}>;
 
 /**
  * Create a fresh anonymous session identifier.
@@ -36,43 +41,18 @@ export function generateGuestSessionId(): string {
 }
 
 /**
- * Read the anonymous session identifier of the current request.
+ * Resolve the anonymous session identifier of a request.
  *
- * @returns the identifier, or `null` when the request carries no cookie
+ * The function is pure: it never writes a cookie. The caller — the analytics
+ * route handler — issues the identifier when the resolution is new.
+ *
+ * @param existing the identifier the request already carries, if any
+ * @returns the identifier, and whether it was created for this request
  */
-export async function readGuestSessionId(): Promise<string | null> {
-  const store = await cookies();
-  const value = store.get(GUEST_SESSION_COOKIE)?.value;
-
-  return typeof value === 'string' && value.length > 0 ? value : null;
-}
-
-/**
- * Return the anonymous session identifier of the current request, creating and
- * storing one when the request carries none.
- *
- * Only a Route Handler or a Server Action may call this: writing a cookie is
- * forbidden while a Server Component renders.
- *
- * @returns the identifier
- */
-export async function ensureGuestSessionId(): Promise<string> {
-  const existing = await readGuestSessionId();
-
-  if (existing !== null) {
-    return existing;
+export function resolveGuestSessionId(existing: string | null): GuestSessionResolution {
+  if (typeof existing === 'string' && existing.length > 0) {
+    return { sessionId: existing, isNew: false };
   }
 
-  const created = generateGuestSessionId();
-  const store = await cookies();
-
-  store.set(GUEST_SESSION_COOKIE, created, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: GUEST_SESSION_MAX_AGE_SECONDS,
-  });
-
-  return created;
+  return { sessionId: generateGuestSessionId(), isNew: true };
 }

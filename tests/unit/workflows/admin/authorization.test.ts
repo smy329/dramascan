@@ -125,6 +125,10 @@ const userReader: ActorContext = {
 beforeEach(() => {
   vi.clearAllMocks();
 
+  // The account holds no role by default: a role assignment is a change, and a
+  // change is what the account owner is told about.
+  listUserRoleAssignmentsMock.mockResolvedValue([]);
+
   getUserAccountMock.mockResolvedValue({
     id: 'user-1',
     name: 'Target User',
@@ -273,6 +277,28 @@ describe('user role workflows', () => {
     );
   });
 
+  it('does not tell the account owner when the role was already assigned', async () => {
+    listUserRoleAssignmentsMock.mockResolvedValue([
+      {
+        roleId: 'role-1',
+        roleName: 'Content Manager',
+        assignedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    assignUserRoleMock.mockResolvedValue([
+      {
+        roleId: 'role-1',
+        roleName: 'Content Manager',
+        assignedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+
+    await assignUserRoleForAdmin(superAdmin, 'user-1', 'role-1');
+
+    expect(assignUserRoleMock).toHaveBeenCalledWith(superAdmin, 'user-1', 'role-1');
+    expect(notifyAccountSecurityMock).not.toHaveBeenCalled();
+  });
+
   it('tells the account owner when a role is removed', async () => {
     listUserRoleAssignmentsMock.mockResolvedValue([
       {
@@ -368,6 +394,18 @@ describe('account status workflow', () => {
   });
 
   it('tells the account owner when the account is reactivated', async () => {
+    // The account was deactivated: a reactivation is a change, and a change is
+    // what the account owner is told about.
+    getUserAccountMock.mockResolvedValue({
+      id: 'user-1',
+      name: 'Target User',
+      email: 'target@example.com',
+      isActive: false,
+      isSuperAdmin: false,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      deletedAt: null,
+    });
     setUserAccountActiveMock.mockResolvedValue({
       id: 'user-1',
       isActive: true,
@@ -382,6 +420,18 @@ describe('account status workflow', () => {
         title: expect.stringContaining('reactivated'),
       })
     );
+  });
+
+  it('does not tell the account owner when the account status did not change', async () => {
+    setUserAccountActiveMock.mockResolvedValue({
+      id: 'user-1',
+      isActive: true,
+    });
+
+    await setUserAccountActiveForAdmin(adminManager, 'user-1', true);
+
+    expect(setUserAccountActiveMock).toHaveBeenCalledWith('user-1', true);
+    expect(notifyAccountSecurityMock).not.toHaveBeenCalled();
   });
 
   it('refuses to change a Super Admin account for a non-Super-Admin', async () => {

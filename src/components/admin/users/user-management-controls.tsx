@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
+import { ConfirmationDialog } from '@/components/dialogs/confirmation-dialog';
 import {
   Dialog,
   DialogContent,
@@ -22,14 +23,16 @@ import type {
  * Per-account administration controls.
  *
  * The server page owns authorization and decides which controls an actor may
- * use; the API re-checks every call. Account status and role assignment are
- * separate decisions:
+ * use; the API re-checks every call. Account status, role assignment, and
+ * session termination are separate decisions:
  *
  * - Changing an account's status keeps the canonical `admin.manage`
  *   requirement. A Super Admin account can only be changed by a Super Admin,
  *   and the API refuses it otherwise.
  * - Assigning or revoking a role grants or removes access, so it is Super
  *   Admin only.
+ * - Terminating the sessions signs an administrator out of every device, so it
+ *   is Super Admin only, and it is confirmed before it runs.
  *
  * The role editor reflects the stored assignments. Toggling a role on assigns
  * it, toggling it off revokes it; each toggle is one request, so a failure
@@ -49,6 +52,8 @@ export type UserManagementControlsProps = Readonly<{
   availableRoles: readonly AdminAssignableRoleView[];
   canManageStatus: boolean;
   canManageRoles: boolean;
+  /** Super Admin only: ending the sessions of an account signs it out everywhere. */
+  canManageSessions: boolean;
 }>;
 
 function readErrorMessage(body: unknown): string {
@@ -75,12 +80,14 @@ export function UserManagementControls({
   availableRoles,
   canManageStatus,
   canManageRoles,
+  canManageSessions,
 }: UserManagementControlsProps): JSX.Element {
   const router = useRouter();
 
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rolesOpen, setRolesOpen] = useState(false);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
   const [assignedRoleIds, setAssignedRoleIds] = useState<readonly string[]>(
     user.roles.map(role => role.roleId)
   );
@@ -153,6 +160,24 @@ export function UserManagementControls({
     }
   }
 
+  async function terminateSessions(): Promise<void> {
+    setPending('sessions');
+    clearFailure();
+
+    try {
+      await send(`/admin/api/users/${user.id}/sessions`, { method: 'POST' });
+
+      setSessionsOpen(false);
+      router.refresh();
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : 'The sessions could not be terminated.'
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
   const isDeleted = user.status === 'deleted';
   const isActive = user.status === 'active';
   const statusLabel = isActive ? 'Deactivate' : 'Reactivate';
@@ -187,6 +212,22 @@ export function UserManagementControls({
             aria-label={`Manage roles for ${user.name}`}
           >
             Roles
+          </Button>
+        ) : null}
+
+        {canManageSessions && !isDeleted ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setSessionsOpen(true);
+              clearFailure();
+            }}
+            disabled={pending !== null}
+            aria-label={`Terminate sessions for ${user.name}`}
+          >
+            Terminate sessions
           </Button>
         ) : null}
       </div>
@@ -246,6 +287,23 @@ export function UserManagementControls({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmationDialog
+        open={sessionsOpen}
+        onOpenChange={open => {
+          if (!open && pending !== 'sessions') {
+            setSessionsOpen(false);
+          }
+        }}
+        onConfirm={() => void terminateSessions()}
+        isPending={pending === 'sessions'}
+        error={error}
+        title={`Terminate the sessions of ${user.name}`}
+        description="The account is signed out of every device. The owner has to sign in again."
+        confirmLabel="Terminate sessions"
+        pendingLabel="Terminating…"
+        variant="destructive"
+      />
     </div>
   );
 }

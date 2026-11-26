@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -15,12 +15,17 @@ import { describe, expect, it } from 'vitest';
  * import, and the next value import would.
  */
 
-const ISLAND_DIRECTORY = join(process.cwd(), 'src/components/notifications');
+const ISLAND_DIRECTORIES = [
+  join(process.cwd(), 'src/components/notifications'),
+  join(process.cwd(), 'src/components/admin/notifications'),
+];
 
 const SHARED_FILES = [
   'src/modules/notifications/preferences.shared.ts',
   'src/modules/notifications/notification-center.shared.ts',
   'src/modules/notifications/subscriptions.shared.ts',
+  'src/modules/notifications/admin-notifications.shared.ts',
+  'src/modules/notifications/announcements.shared.ts',
 ];
 
 describe('the notification client islands', () => {
@@ -49,18 +54,51 @@ describe('the notification client islands', () => {
       const source = readFileSync(join(process.cwd(), relativePath), 'utf8');
 
       expect(source, relativePath).not.toContain("import 'server-only'");
-      expect(source, relativePath).not.toContain("@/db/");
+      expect(source, relativePath).not.toContain('@/db/');
       expect(source, relativePath).not.toContain("from 'drizzle-orm'");
+    }
+  });
+
+  it('read the administrator DTOs from the shared files', () => {
+    // The administrator islands render server-built rows. The shape of a row
+    // lives in a shared file, so the server and the browser cannot drift.
+    const expectations: ReadonlyArray<readonly [string, string]> = [
+      [
+        'src/components/admin/notifications/admin-notification-list.tsx',
+        '@/modules/notifications/admin-notifications.shared',
+      ],
+      [
+        'src/components/admin/notifications/admin-notification-detail.tsx',
+        '@/modules/notifications/admin-notifications.shared',
+      ],
+      [
+        'src/components/admin/notifications/announcement-admin.tsx',
+        '@/modules/notifications/announcements.shared',
+      ],
+    ];
+
+    for (const [relativePath, sharedImport] of expectations) {
+      const source = readFileSync(join(process.cwd(), relativePath), 'utf8');
+
+      expect(source, relativePath).toContain(sharedImport);
     }
   });
 });
 
 function listIslandFiles(): string[] {
-  if (!existsSync(ISLAND_DIRECTORY)) {
-    return [];
+  const files: string[] = [];
+
+  for (const directory of ISLAND_DIRECTORIES) {
+    if (!existsSync(directory)) {
+      continue;
+    }
+
+    for (const entry of readdirSync(directory)) {
+      if (entry.endsWith('.tsx')) {
+        files.push(join(directory, entry));
+      }
+    }
   }
 
-  return ['notification-preferences-form.tsx', 'notification-center-list.tsx', 'push-notification-opt-in.tsx']
-    .map(name => join(ISLAND_DIRECTORY, name))
-    .filter(file => existsSync(file));
+  return files;
 }

@@ -131,6 +131,7 @@ export const WARMUP_PATHS = [
   `/admin/api/users/${WARMUP_PLACEHOLDER_ID}/roles`,
   `/admin/api/users/${WARMUP_PLACEHOLDER_ID}/roles/${WARMUP_PLACEHOLDER_ID}`,
   `/admin/api/users/${WARMUP_PLACEHOLDER_ID}/status`,
+  `/admin/api/users/${WARMUP_PLACEHOLDER_ID}/sessions`,
   `/media/${WARMUP_PLACEHOLDER_ID}`,
 ];
 

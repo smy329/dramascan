@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check } from 'lucide-react';
 
-import type { AdminNotificationView } from '@/modules/notifications';
+import type { AdminNotificationView } from '@/modules/notifications/admin-notifications.shared';
 import { setAdminNotificationReadAction } from '@/workflows/admin/admin-notifications';
+import { formatCreatedAt } from '@/lib/utils';
 
 /**
  * One administrator alert (D-067).
@@ -14,14 +15,6 @@ import { setAdminNotificationReadAction } from '@/workflows/admin/admin-notifica
  * The alert was authorized on the server before this component rendered. The
  * only write here is the reader's own read state.
  */
-
-function formatCreatedAt(value: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Dhaka',
-  }).format(new Date(value));
-}
 
 function audienceLabel(notification: AdminNotificationView): string {
   if (notification.audience === 'super_admin') {

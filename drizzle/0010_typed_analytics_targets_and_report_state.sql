@@ -26,6 +26,10 @@
 --   * The report → review foreign key is replaced with a `restrict` version, so
 --     permanently removing a review that has reports is blocked instead of
 --     silently deleting the moderation history.
+--
+-- Reversible: the rollback drops the indexes, the constraints, and the columns
+-- this migration adds. The rows stay, but the typed target of an analytics row
+-- and the resolution record of a report are lost with the columns.
 
 -- 1. Typed analytics targets (H-09). The legacy `content_type`/`content_id`
 --    pair stays: it is still the only evidence for rows the backfill cannot

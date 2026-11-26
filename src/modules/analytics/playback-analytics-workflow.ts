@@ -8,6 +8,11 @@ import { isForeignKeyViolation, isUniqueViolation } from '@/platform/db/errors';
 
 import { playback_analytics_events } from './schema';
 import { utcHourBucket } from './date-filters';
+import {
+  PLAYBACK_EVENT_TYPES,
+  type PlaybackEventTarget,
+  type PlaybackEventType,
+} from './playback-events.shared';
 import { clampPlaybackEvent, isCompletionSupported } from './playback-plausibility';
 import { analyticsViewerType } from './viewer-types';
 import { resolveAnalyticsVisitor, type AnalyticsVisitor } from './visitor';
@@ -33,22 +38,19 @@ import { resolveAnalyticsVisitor, type AnalyticsVisitor } from './visitor';
  * per-second log. The bound is enforced by a partial unique index.
  */
 
-/** The event types the player reports. */
-export const PLAYBACK_EVENT_TYPES = [
-  'play',
-  'play_pause',
-  'seek',
-  'completion',
-  'exit',
-] as const;
+/**
+ * The event types the player reports.
+ *
+ * The catalogue itself lives in a shared file, because the player reports the
+ * same events from the browser (D-085).
+ */
+export { PLAYBACK_EVENT_TYPES };
 
 /** One playback event type. */
-export type PlaybackEventType = (typeof PLAYBACK_EVENT_TYPES)[number];
+export type { PlaybackEventType };
 
 /** What a playback event is about. */
-export type PlaybackEventTarget =
-  | { type: 'drama'; episodeId: string; dramaId: string }
-  | { type: 'movie'; movieId: string };
+export type { PlaybackEventTarget };
 
 /** The result of one playback event write. */
 export type PlaybackEventResult = {

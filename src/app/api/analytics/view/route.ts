@@ -9,6 +9,8 @@ import {
 } from '@/platform/Http';
 import { recordContentViewWorkflow } from '@/workflows/analytics/record-view';
 
+import { issueGuestSession } from '../_guest-session';
+
 /**
  * The view-tracking endpoint (Prompt 140).
  *
@@ -32,7 +34,11 @@ export async function POST(request: Request): Promise<Response> {
     // must not be able to count views for another site.
     assertSameOrigin(request);
 
-    const result = await recordContentViewWorkflow(await readJsonBody(request));
+    // The route handler is the only place that may issue the anonymous session
+    // cookie, so the visitor is identified here and handed to the workflow.
+    const guest = await issueGuestSession();
+
+    const result = await recordContentViewWorkflow(await readJsonBody(request), guest.sessionId);
 
     return jsonResponse(
       { data: { counted: result.counted, alreadyCounted: result.alreadyCounted } },

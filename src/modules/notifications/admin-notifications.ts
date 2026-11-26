@@ -22,6 +22,10 @@ import {
   type AdminNotificationAudience,
   type AdminNotificationViewer,
 } from './admin-notification-rules';
+import type {
+  AdminNotificationPage,
+  AdminNotificationView,
+} from './admin-notifications.shared';
 import { admin_notification_reads, admin_notifications } from './schema';
 
 /**
@@ -50,6 +54,14 @@ export { ADMIN_NOTIFICATION_AUDIENCES, canViewAdminNotification };
 
 export type { AdminNotificationAudience, AdminNotificationViewer };
 
+/**
+ * The shape of an alert and of a page of alerts.
+ *
+ * The types live in a shared file so that the client islands read them from
+ * there instead of from the server-only barrel (D-085).
+ */
+export type { AdminNotificationPage, AdminNotificationView } from './admin-notifications.shared';
+
 /** The categories an alert can belong to. */
 export const ADMIN_NOTIFICATION_CATEGORIES = [
   'security',
@@ -71,29 +83,6 @@ export const ADMIN_NOTIFICATION_TITLE_MAX_LENGTH = 200;
 export const ADMIN_NOTIFICATION_CONTENT_MAX_LENGTH = 5000;
 export const ADMIN_NOTIFICATION_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
-
-/** One alert as the centre renders it. */
-export type AdminNotificationView = Readonly<{
-  id: string;
-  title: string;
-  content: string;
-  audience: string;
-  audienceRoles: readonly string[];
-  category: string;
-  priority: string;
-  link: string | null;
-  isResolved: boolean;
-  createdAt: string;
-  readAt: string | null;
-}>;
-
-/** One page of alerts. */
-export type AdminNotificationPage = Readonly<{
-  items: readonly AdminNotificationView[];
-  total: number;
-  page: number;
-  pageSize: number;
-}>;
 
 /** An alert to write. */
 export type AdminNotificationInput = Readonly<{

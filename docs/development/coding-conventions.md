@@ -60,7 +60,7 @@ The full tree and layer rules are in `ARCHITECTURE.md` §4. Summary:
 | Kind                       | Convention                   | Example                                                            |
 | -------------------------- | ---------------------------- | ------------------------------------------------------------------ |
 | Directories                | kebab-case                   | `publish-content/`, `read-models/`                                 |
-| React component files      | PascalCase                   | `DramaCard.tsx`, `PlayerShell.tsx`                                 |
+| React component files      | kebab-case                   | `user-management-controls.tsx`, `notification-preferences-form.tsx` |
 | All other TypeScript files | kebab-case                   | `content-service.ts`, `rate-limit.ts`                              |
 | Next.js special files      | Framework names              | `page.tsx`, `layout.tsx`, `route.ts`, `error.tsx`, `not-found.tsx` |
 | Unit/integration tests     | `<subject>.test.ts(x)`       | `publish-content.test.ts`                                          |
@@ -70,6 +70,8 @@ The full tree and layer rules are in `ARCHITECTURE.md` §4. Summary:
 | Local environment          | `.env.local`                 | ignored                                                            |
 
 Do not create barrel `index.ts` files for convenience. The only `index.ts` files are module public APIs and framework-required files.
+
+A component file is kebab-case like every other file; the component inside it keeps its PascalCase name (D-087). The existing PascalCase component files are left as they are — renaming a file is a change with its own risk, and the name of a component is not a behaviour.
 
 ---
 

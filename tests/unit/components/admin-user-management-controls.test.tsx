@@ -56,6 +56,7 @@ describe('UserManagementControls', () => {
         availableRoles={AVAILABLE_ROLES}
         canManageStatus
         canManageRoles
+        canManageSessions={false}
       />
     );
 
@@ -81,6 +82,7 @@ describe('UserManagementControls', () => {
         availableRoles={AVAILABLE_ROLES}
         canManageStatus
         canManageRoles
+        canManageSessions={false}
       />
     );
 
@@ -101,6 +103,7 @@ describe('UserManagementControls', () => {
         availableRoles={AVAILABLE_ROLES}
         canManageStatus
         canManageRoles
+        canManageSessions={false}
       />
     );
 
@@ -132,6 +135,7 @@ describe('UserManagementControls', () => {
         availableRoles={AVAILABLE_ROLES}
         canManageStatus
         canManageRoles
+        canManageSessions={false}
       />
     );
 
@@ -168,6 +172,7 @@ describe('UserManagementControls', () => {
         availableRoles={AVAILABLE_ROLES}
         canManageStatus
         canManageRoles
+        canManageSessions={false}
       />
     );
 
@@ -202,6 +207,7 @@ describe('UserManagementControls', () => {
         availableRoles={AVAILABLE_ROLES}
         canManageStatus
         canManageRoles
+        canManageSessions={false}
       />
     );
 
@@ -236,6 +242,7 @@ describe('UserManagementControls', () => {
         availableRoles={AVAILABLE_ROLES}
         canManageStatus
         canManageRoles={false}
+        canManageSessions={false}
       />
     );
 
@@ -252,6 +259,7 @@ describe('UserManagementControls', () => {
         availableRoles={AVAILABLE_ROLES}
         canManageStatus={false}
         canManageRoles
+        canManageSessions={false}
       />
     );
 
@@ -261,5 +269,51 @@ describe('UserManagementControls', () => {
     expect(
       screen.getByRole('button', { name: 'Manage roles for Ada Lovelace' })
     ).toBeTruthy();
+  });
+
+  it('offers session termination to a Super Admin and calls the session API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ data: { id: 'user-1' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <UserManagementControls
+        user={USER}
+        availableRoles={AVAILABLE_ROLES}
+        canManageStatus
+        canManageRoles
+        canManageSessions
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Terminate sessions for Ada Lovelace' }));
+
+    // Terminating the sessions signs the viewer out of every device, so the
+    // operation is confirmed before it runs.
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Terminate sessions' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/admin/api/users/user-1/sessions');
+    expect(init.method).toBe('POST');
+  });
+
+  it('hides session termination from an actor that is not a Super Admin', () => {
+    render(
+      <UserManagementControls
+        user={USER}
+        availableRoles={AVAILABLE_ROLES}
+        canManageStatus
+        canManageRoles
+        canManageSessions={false}
+      />
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Terminate sessions for Ada Lovelace' })
+    ).toBeNull();
   });
 });

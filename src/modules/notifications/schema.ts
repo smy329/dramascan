@@ -54,7 +54,7 @@ export const notification_preferences = pgTable('notification_preferences', {
   // exists so the row is complete, but a workflow never consults it to decide
   // whether to deliver a security notification.
   new_episode: boolean('new_episode').default(true),
-  new_drama: boolean('new_drama').default(true),
+  new_drama: boolean('new_drama').notNull().default(true),
   new_drama_season: boolean('new_drama_season').default(true),
   website_announcement: boolean('website_announcement').default(true),
   account_security: boolean('account_security').default(true),

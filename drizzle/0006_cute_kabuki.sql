@@ -1,3 +1,11 @@
+-- Migration 0006 — movie targets for ratings and reviews
+--
+-- Reversible: the rollback drops the added indexes and the
+-- `movie_id`/`converted_from_drama_id` columns, and restores the NOT NULL
+-- constraint of `ratings.drama_id` and `reviews.drama_id`. That constraint
+-- cannot be restored while a movie-only row exists, so the rollback must
+-- delete those rows first — and the ratings and reviews they hold are lost.
+
 ALTER TABLE "ratings" ALTER COLUMN "drama_id" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "reviews" ALTER COLUMN "drama_id" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "movies" ADD COLUMN "converted_from_drama_id" uuid;--> statement-breakpoint

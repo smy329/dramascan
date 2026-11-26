@@ -51,7 +51,7 @@ export default async function AdminAnalyticsPage({
     listContentPerformance(range),
     listEngagementTrend(range),
     listViewerActivity(range),
-    getAnalyticsLastUpdated(),
+    getAnalyticsLastUpdated(range),
   ]);
 
   return (

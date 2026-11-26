@@ -13,6 +13,7 @@ import type { DbExecutor } from '@/platform/db/executor';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 
 import { announcements } from './schema';
+import type { AnnouncementView } from './announcements.shared';
 import {
   MAX_AUDIENCE_SIZE,
   deliverToAudience,
@@ -54,15 +55,7 @@ export type AnnouncementInput = {
 };
 
 /** One announcement. */
-export type AnnouncementView = {
-  id: string;
-  title: string;
-  content: string;
-  authorId: string;
-  status: string;
-  expiresAt: Date | null;
-  createdAt: Date;
-};
+export type { AnnouncementView } from './announcements.shared';
 
 /** What one announcement publication did. */
 export type AnnouncementPublicationResult = NotificationRoundResult & {

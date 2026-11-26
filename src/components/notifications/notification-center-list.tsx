@@ -11,7 +11,7 @@ import {
   markAllNotificationsReadAction,
   markNotificationReadAction,
 } from '@/workflows/notifications/center';
-import { cn } from '@/lib/utils';
+import { cn, formatCreatedAt } from '@/lib/utils';
 
 /**
  * The notification centre (Prompt 149).
@@ -38,14 +38,6 @@ const EVENT_LABELS: Record<string, string> = {
   review_report_resolved: 'Report resolved',
   content_report_resolved: 'Report resolved',
 };
-
-function formatCreatedAt(value: Date): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Dhaka',
-  }).format(new Date(value));
-}
 
 export function NotificationCenterList({
   notifications: initialNotifications,

@@ -1,11 +1,17 @@
 import 'server-only';
 
-import { and, desc, gte, inArray, isNull, lt, sql, type SQL } from 'drizzle-orm';
+import { and, desc, gte, inArray, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 
 import { analytics_daily_aggregates, content_view_events, playback_analytics_events } from '../schema';
 import type { DateRange } from '../date-filters';
+import {
+  playbackTargetIdExpression,
+  playbackTargetTypeExpression,
+  viewTargetIdExpression,
+  viewTargetTypeExpression,
+} from '../typed-targets';
 
 /**
  * The administrator analytics dashboard read models (Prompts 144, 145, 146).
@@ -401,16 +407,28 @@ export async function listViewerActivity(range: DateRange): Promise<ViewerActivi
 }
 
 /**
- * The instant the aggregates were last written, for the dashboard's
- * "last updated" line (Prompt 146).
+ * The instant the aggregates of the selected range were last written, for the
+ * dashboard's "last updated" line (Prompt 146).
  *
- * @returns the latest aggregate timestamp, or `null` when there is no data
+ * The line sits beside the selected range, so it answers "how fresh is *this*
+ * range?". An aggregate of another day does not make the selected range look
+ * fresh, so the read is bounded by the range's own days (D-081).
+ *
+ * @param range the resolved range
+ * @returns the latest aggregate timestamp of the range, or `null` when the
+ *          range holds no aggregate
  */
-export async function getAnalyticsLastUpdated(): Promise<Date | null> {
+export async function getAnalyticsLastUpdated(range: DateRange): Promise<Date | null> {
   const [row] = await db
     .select({ updatedAt: sql<Date | null>`max(${analytics_daily_aggregates.updated_at})` })
     .from(analytics_daily_aggregates)
-    .where(isNull(analytics_daily_aggregates.deleted_at));
+    .where(
+      and(
+        isNull(analytics_daily_aggregates.deleted_at),
+        gte(analytics_daily_aggregates.date, range.startDate),
+        lte(analytics_daily_aggregates.date, range.endDate)
+      )
+    );
 
   const value = row?.updatedAt;
 
@@ -579,8 +597,8 @@ async function countDistinctVisitorsByContent(
   const rows = await runQuery(sql`
     select content_type, target_id, count(distinct visitor)::int as unique_visitors
       from (
-        select ${content_view_events.content_type} as content_type,
-               ${content_view_events.content_id}::text as target_id,
+        select ${viewTargetTypeExpression} as content_type,
+               ${viewTargetIdExpression}::text as target_id,
                ${content_view_events.guest_session_id} as visitor
           from ${content_view_events}
          where ${content_view_events.deleted_at} is null
@@ -588,8 +606,8 @@ async function countDistinctVisitorsByContent(
            and ${content_view_events.viewed_at} < ${range.endInstant}
            and ${content_view_events.guest_session_id} is not null
         union all
-        select ${playback_analytics_events.content_type} as content_type,
-               coalesce(${playback_analytics_events.drama_id}, ${playback_analytics_events.movie_id})::text as target_id,
+        select ${playbackTargetTypeExpression} as content_type,
+               ${playbackTargetIdExpression}::text as target_id,
                ${playback_analytics_events.guest_session_id} as visitor
           from ${playback_analytics_events}
          where ${playback_analytics_events.deleted_at} is null
