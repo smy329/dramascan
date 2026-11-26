@@ -13,34 +13,109 @@
 :root {
   --radius: 0.75rem;
 
+  /* --background (#0b0b0f): Page background color. Used on <body>, main containers,
+     card backgrounds, and as the default page backdrop. Maps to bg-background in Tailwind. */
   --background: #0b0b0f;
+
+  /* --foreground (#f5f2ec): Main text color. Used for primary body text, headings,
+     and as the default text color. Maps to text-foreground in Tailwind. */
   --foreground: #f5f2ec;
 
+  /* --card (#14141b): Card background color. Used on card components, modals,
+     popovers, and panel backgrounds. Maps to bg-card in Tailwind. */
   --card: #14141b;
+
+  /* --card-foreground (#f5f2ec): Text color inside cards. Used for headings and
+     body text within card components. Maps to text-card-foreground in Tailwind. */
   --card-foreground: #f5f2ec;
 
+  /* --popover (#17171f): Popover/background modal background color. Used on
+     dropdown menus, modal panels, and floating panels. Maps to bg-popover in Tailwind. */
   --popover: #17171f;
+
+  /* --popover-foreground (#f5f2ec): Text color inside popovers. Maps to
+     text-popover-foreground in Tailwind. */
   --popover-foreground: #f5f2ec;
 
+  /* --primary (#e23d5c): Primary action color. Used for primary buttons,
+     primary links, active states, and error highlights. Maps to bg-primary,
+     text-primary-foreground, and border-primary in Tailwind. */
   --primary: #e23d5c;
+
+  /* --primary-foreground (#fff7f8): Text color on primary backgrounds. Used
+     for button/text on primary-colored elements. Maps to text-primary-foreground
+     in Tailwind. */
   --primary-foreground: #fff7f8;
 
+  /* --secondary (#1c1c25): Secondary background color. Used for secondary
+     buttons, secondary sections, and alternate layouts. Maps to bg-secondary
+     and text-secondary-foreground in Tailwind. */
   --secondary: #1c1c25;
+
+  /* --secondary-foreground (#f5f2ec): Text color on secondary backgrounds.
+     Maps to text-secondary-foreground in Tailwind. */
   --secondary-foreground: #f5f2ec;
 
+  /* --muted (#1c1c25): Muted/disabled background color. Used for disabled
+     states, inactive elements, and subtle backgrounds. Maps to bg-muted in Tailwind. */
   --muted: #1c1c25;
+
+  /* --muted-foreground (#a7a3b3): Muted text color. Used for placeholder text,
+     disabled text, and secondary/tertiary labels. Maps to text-muted-foreground
+     in Tailwind. */
   --muted-foreground: #a7a3b3;
 
+  /* --accent (#26212b): Accent color. Used for highlight elements, active
+     navigation states, and special callouts. Maps to bg-accent in Tailwind. */
   --accent: #26212b;
+
+  /* --accent-foreground (#f5f2ec): Text color on accent backgrounds. Maps to
+     text-accent-foreground in Tailwind. */
   --accent-foreground: #f5f2ec;
 
+  /* --destructive (#ef4444): Error/destructive action color. Used for delete
+     buttons, error messages, and destructive actions. Maps to bg-destructive
+     and text-destructive-foreground in Tailwind. */
   --destructive: #ef4444;
+
+  /* --destructive-foreground (#fff7f8): Text color on destructive backgrounds.
+     Maps to text-destructive-foreground in Tailwind. */
   --destructive-foreground: #fff7f8;
 
+  /* --border (#2a2a35): Border color. Used for input borders, element
+     separators, and form field outlines. Maps to border-border in Tailwind. */
   --border: #2a2a35;
+
+  /* --input (#34343f): Input background color. Used on form inputs, text
+     fields, and textarea backgrounds. Maps to bg-input in Tailwind. */
   --input: #34343f;
+
+  /* --ring (#e23d5c): Focus ring color. Used around focused elements (buttons,
+     inputs, links) to indicate keyboard focus. Maps to ring-primary in Tailwind. */
   --ring: #e23d5c;
 }
+
+/* Mapping of CSS color variables to Tailwind color utilities:
+   --background   -> bg-background
+   --foreground   -> text-foreground
+   --card         -> bg-card
+   --card-foreground -> text-card-foreground
+   --popover      -> bg-popover
+   --popover-foreground -> text-popover-foreground
+   --primary      -> bg-primary / text-primary-foreground
+   --primary-foreground -> text-primary-foreground
+   --secondary    -> bg-secondary / text-secondary-foreground
+   --secondary-foreground -> text-secondary-foreground
+   --muted        -> bg-muted
+   --muted-foreground -> text-muted-foreground
+   --accent       -> bg-accent
+   --accent-foreground -> text-accent-foreground
+   --destructive  -> bg-destructive
+   --destructive-foreground -> text-destructive-foreground
+   --border       -> border-border
+   --input        -> bg-input
+   --ring         -> ring-primary
+*/
 
 @theme inline {
   --color-background: var(--background);
@@ -106,7 +181,8 @@
 }
 
 @layer components {
-  /* Skip link for keyboard users. */
+  /* Skip link for keyboard users.
+     Uses --foreground for background and --background for text contrast. */
   .skip-link {
     position: fixed;
     top: 0;
@@ -124,7 +200,8 @@
     transform: translateY(0);
   }
 
-  /* Subtle film-grain texture used by the hero, without external assets. */
+  /* Subtle film-grain texture used by the hero, without external assets.
+     Uses --primary RGB values (226, 61, 92) for the gradient stops. */
   .hero-texture {
     background-image:
       radial-gradient(ellipse 80% 60% at 70% 0%, rgba(226, 61, 92, 0.16), transparent 65%),
