@@ -1,3 +1,15 @@
+src/modules/administration/alert.escalation.ts(73,24): error TS1005: ',' expected.
+src/modules/administration/alert.escalation.ts(74,30): error TS1005: ',' expected.
+src/modules/administration/alert.escalation.ts(76,20): error TS1005: ',' expected.
+src/modules/administration/alert.escalation.ts(76,30): error TS1005: ',' expected.
+src/modules/administration/alert.escalation.ts(86,20): error TS1005: ';' expected.
+src/modules/administration/alert.escalation.ts(87,19): error TS1005: ';' expected.
+src/modules/administration/alert.escalation.ts(88,19): error TS1005: ';' expected.
+src/modules/administration/alert.escalation.ts(89,7): error TS1109: Expression expected.
+src/modules/administration/alert.escalation.ts(89,8): error TS1128: Declaration or statement expected.
+src/modules/administration/alert.escalation.ts(90,5): error TS1128: Declaration or statement expected.
+src/modules/administration/alert.escalation.ts(91,5): error TS1128: Declaration or statement expected.
+src/modules/administration/alert.escalation.ts(108,1): error TS1128: Declaration or statement expected.
 src/modules/administration/anomaly.detection.ts(104,24): error TS1005: ',' expected.
 src/modules/administration/anomaly.detection.ts(105,30): error TS1005: ',' expected.
 src/modules/administration/anomaly.detection.ts(107,20): error TS1005: ',' expected.
