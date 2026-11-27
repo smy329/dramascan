@@ -116,6 +116,13 @@ src/modules/administration/performance.analytics.ts(85,8): error TS1128: Declara
 src/modules/administration/performance.analytics.ts(86,5): error TS1128: Declaration or statement expected.
 src/modules/administration/performance.analytics.ts(87,5): error TS1128: Declaration or statement expected.
 src/modules/administration/performance.analytics.ts(104,1): error TS1128: Declaration or statement expected.
+src/modules/administration/rate.limiting.ts(144,24): error TS1005: ';' expected.
+src/modules/administration/rate.limiting.ts(146,10): error TS1005: ';' expected.
+src/modules/administration/rate.limiting.ts(154,20): error TS1005: ';' expected.
+src/modules/administration/rate.limiting.ts(155,19): error TS1005: ';' expected.
+src/modules/administration/rate.limiting.ts(156,19): error TS1005: ';' expected.
+src/modules/administration/rate.limiting.ts(157,7): error TS1109: Expression expected.
+src/modules/administration/rate.limiting.ts(157,8): error TS1128: Declaration or statement expected.
 src/modules/administration/resource.monitoring.ts(143,24): error TS1005: ';' expected.
 src/modules/administration/resource.monitoring.ts(145,10): error TS1005: ';' expected.
 src/modules/administration/resource.monitoring.ts(155,20): error TS1005: ';' expected.
