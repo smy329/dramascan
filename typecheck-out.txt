@@ -68,6 +68,18 @@ src/modules/administration/incident.management.ts(263,7): error TS1109: Expressi
 src/modules/administration/incident.management.ts(263,8): error TS1128: Declaration or statement expected.
 src/modules/administration/incident.management.ts(359,51): error TS1109: Expression expected.
 src/modules/administration/incident.management.ts(363,51): error TS1109: Expression expected.
+src/modules/administration/incident.notes.ts(87,24): error TS1005: ',' expected.
+src/modules/administration/incident.notes.ts(88,30): error TS1005: ',' expected.
+src/modules/administration/incident.notes.ts(90,20): error TS1005: ',' expected.
+src/modules/administration/incident.notes.ts(90,30): error TS1005: ',' expected.
+src/modules/administration/incident.notes.ts(100,20): error TS1005: ';' expected.
+src/modules/administration/incident.notes.ts(101,19): error TS1005: ';' expected.
+src/modules/administration/incident.notes.ts(102,19): error TS1005: ';' expected.
+src/modules/administration/incident.notes.ts(103,7): error TS1109: Expression expected.
+src/modules/administration/incident.notes.ts(103,8): error TS1128: Declaration or statement expected.
+src/modules/administration/incident.notes.ts(104,5): error TS1128: Declaration or statement expected.
+src/modules/administration/incident.notes.ts(105,5): error TS1128: Declaration or statement expected.
+src/modules/administration/incident.notes.ts(138,1): error TS1128: Declaration or statement expected.
 src/modules/administration/performance.analytics.ts(68,24): error TS1005: ',' expected.
 src/modules/administration/performance.analytics.ts(69,30): error TS1005: ',' expected.
 src/modules/administration/performance.analytics.ts(71,20): error TS1005: ',' expected.
