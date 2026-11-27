@@ -36,6 +36,7 @@ export const WARMUP_PATHS = [
   // Public site.
   '/',
   '/drama',
+  '/legal',
   '/movie',
   '/categories',
   '/platforms',
