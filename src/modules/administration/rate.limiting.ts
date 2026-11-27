@@ -101,12 +101,20 @@ export async function checkRateLimit(
   const config = getRateLimitConfig(endpoint);
   const now = new Date().getTime();
 
-  // Query the database for requests within this window
+  // Query the database for requests within this window.
+  // `system_settings.value` is jsonb holding { identifier, endpoint, timestamp },
+  // so we read the fields with the jsonb text accessor (`->>`) and filter the
+  // trailing window by `timestamp` — a plain count of all hits would keep a
+  // client permanently limited and defeat the sliding window.
+  const windowStart = now - config.windowMs;
   const result = await db
     .select({ count: sql<number>`count(*)` })
     .from(system_settings)
     .where(
-      sql`${system_settings.key}.like('rate_limit_%') AND JSON_EXTRACT(${system_settings.value}, '$.identifier') = ${identifier} AND JSON_EXTRACT(${system_settings.value}, '$.endpoint') = ${endpoint}`
+      sql`${system_settings.key} LIKE 'rate_limit%'
+        AND ${system_settings.value}->>'identifier' = ${identifier}
+        AND ${system_settings.value}->>'endpoint' = ${endpoint}
+        AND (${system_settings.value}->>'timestamp')::bigint >= ${windowStart}`
     );
 
   const requestCount = Number(result[0]?.count || 0);

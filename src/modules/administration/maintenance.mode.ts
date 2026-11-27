@@ -63,6 +63,7 @@ export async function enableMaintenanceMode(
     .values({
       key: 'maintenance_mode',
       value: 'enabled',
+      description: message,
       updated_by: actor.userId,
       updated_at: new Date(),
     })
@@ -70,6 +71,7 @@ export async function enableMaintenanceMode(
       target: system_settings.key,
       set: {
         value: 'enabled',
+        description: message,
         updated_by: actor.userId,
         updated_at: new Date(),
       },
@@ -189,6 +191,11 @@ export async function canAccessAdmin(actor: { userId: string; isSuperAdmin: bool
     return true
   }
 
-  // Non-super admins can only access if maintenance mode is not enabled
-  return !await isMaintenanceMode() || actor.isSuperAdmin
+  // Non-super admins can only access if maintenance mode is not enabled.
+  // `isMaintenanceMode()` returns a string ('enabled' | 'disabled'), which is
+  // always truthy, so it must be compared explicitly rather than negated —
+  // `!await isMaintenanceMode()` would be false for every non-super admin even
+  // when the site is not in maintenance mode.
+  const mode = await isMaintenanceMode()
+  return mode === 'disabled'
 }

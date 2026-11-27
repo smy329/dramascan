@@ -128,7 +128,7 @@ export async function getIncidentTimeline(
   const countResult = await db
     .select({ count: sql<number>`count(*)` })
     .from(system_settings)
-    .where(sql`${system_settings.key}.like('timeline_event_%') AND JSON_EXTRACT(${system_settings.value}, '$.incidentId') = ${incidentId}`);
+    .where(sql`${system_settings.key} LIKE 'timeline_event_%' AND ${system_settings.value}->>'incidentId' = ${incidentId}`);
 
   const totalCount = Number(countResult[0]?.count || 0);
 
@@ -136,7 +136,7 @@ export async function getIncidentTimeline(
   const allEvents = await db
     .select()
     .from(system_settings)
-    .where(sql`${system_settings.key}.like('timeline_event_%')`)
+    .where(sql`${system_settings.key} LIKE 'timeline_event_%'`)
     .orderBy(desc(system_settings.key))
     .limit(pageSize)
     .offset((page - 1) * pageSize);

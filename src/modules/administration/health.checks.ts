@@ -132,15 +132,17 @@ export async function checkApplicationHealth(): Promise<ApplicationHealth> {
     getMaintenanceStatus(),
   ]);
 
-  // Determine overall status
-  const allHealthy = postgres.status === 'healthy' && config.status === 'healthy' && disk.status === 'healthy';
-  const someDegraded = postgres.status !== 'healthy' || config.status !== 'healthy' || disk.status !== 'healthy' || maintenance === 'degraded';
+  // Determine overall status. Any unhealthy component drops overall health
+  // to unhealthy; if no component is unhealthy but maintenance mode or a
+  // check is degraded, the overall health is degraded.
+  const anyUnhealthy = postgres.status === 'unhealthy' || config.status === 'unhealthy' || disk.status === 'unhealthy';
+  const allHealthy = postgres.status === 'healthy' && config.status === 'healthy' && disk.status === 'healthy' && maintenance === 'healthy';
 
-  const overallStatus: HealthCheckResult = allHealthy
+  const overallStatus: HealthCheckResult = anyUnhealthy
+    ? 'unhealthy'
+    : allHealthy
     ? 'healthy'
-    : someDegraded
-    ? 'degraded'
-    : 'unhealthy';
+    : 'degraded';
 
   const checks: HealthCheckItem[] = [postgres, config, disk];
 

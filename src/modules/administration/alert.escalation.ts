@@ -288,14 +288,14 @@ export async function getEscalationsForAlert(
   const result = await db
     .select({ count: sql`count(*)` })
     .from(system_settings)
-    .where(sql`${system_settings.key}.like('escalation_%') AND JSON_EXTRACT(${system_settings.value}, '$.alertId') = ${alertId}`);
+    .where(sql`${system_settings.key} LIKE 'escalation_%' AND ${system_settings.value}->>'alertId' = ${alertId}`);
   const count = Number(result[0]?.count ?? 0);
 
   // Get escalations for current page
   const allEscalations = await db
     .select()
     .from(system_settings)
-    .where(sql`${system_settings.key}.like('escalation_%')`)
+    .where(sql`${system_settings.key} LIKE 'escalation_%'`)
     .orderBy(desc(system_settings.key))
     .limit(pageSize)
     .offset((page - 1) * pageSize);

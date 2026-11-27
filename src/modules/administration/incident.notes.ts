@@ -184,7 +184,7 @@ export async function getIncidentNotes(
   const countResult = await db
     .select({ count: sql<number>`count(*)` })
     .from(system_settings)
-    .where(sql`${system_settings.key}.like('incident_note_%') AND JSON_EXTRACT(${system_settings.value}, '$.incidentId') = ${incidentId}`);
+    .where(sql`${system_settings.key} LIKE 'incident_note_%' AND ${system_settings.value}->>'incidentId' = ${incidentId}`);
 
   const totalCount = Number(countResult[0]?.count || 0);
 
@@ -192,7 +192,7 @@ export async function getIncidentNotes(
   const allNotes = await db
     .select()
     .from(system_settings)
-    .where(sql`${system_settings.key}.like('incident_note_%')`)
+    .where(sql`${system_settings.key} LIKE 'incident_note_%'`)
     .orderBy(desc(system_settings.key))
     .limit(pageSize)
     .offset((page - 1) * pageSize);

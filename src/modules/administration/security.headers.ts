@@ -130,27 +130,27 @@ export function generateCSPHeader(configuration?: CSPConfiguration): string {
     directives.push("frame-ancestors 'none'");
   }
 
-  return `Content-Security-Policy-${directives.length > 0 ? '' : ''}${directives.join('; ')}`;
+  return directives.join('; ');
 }
 
-/** Frame protection (X-Frame-Options). */
+/** Frame protection value (X-Frame-Options). */
 export function getFrameProtection(): string {
-  return 'X-Frame-Options: DENY';
+  return 'DENY';
 }
 
-/** Content-Type protection (X-Content-Type-Options). */
+/** Content-Type protection value (X-Content-Type-Options). */
 export function getContentTypeProtection(): string {
-  return 'X-Content-Type-Options: nosniff';
+  return 'nosniff';
 }
 
-/** Referrer policy. */
+/** Referrer policy value. */
 export function getReferrerPolicy(): string {
-  return 'Referrer-Policy: strict-origin-when-cross-origin';
+  return 'strict-origin-when-cross-origin';
 }
 
-/** HSTS header. */
+/** HSTS header value. */
 export function getHSTSHeader(maxAge: number = 31536000): string {
-  return `Strict-Transport-Security: max-age=${maxAge}; includeSubDomains; preload`;
+  return `max-age=${maxAge}; includeSubDomains; preload`;
 }
 
 /** Get all security headers. */
