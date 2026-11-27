@@ -112,137 +112,125 @@ export async function captureError(
   return errorRecord;
 }
 
-/** Capture a frontend JavaScript error. */
-export function captureFrontendError(
-  error: Error,
-  info: {
-    url: string;
-    lineNumber: number;
-    columnNumber: number;
-    error?: Error;
-  },
-  context?: Record<string, unknown>
-): MonitoredError {
-  return captureError({
-    severity: 'high',
-    category: 'runtime',
-    message: error.message,
-    error,
-    url: info.url,
-    context,
+/** Search parameters for error monitoring. */
+export interface ErrorSearchParams {
+  severity?: ErrorSeverity | ErrorSeverity[];
+  category?: ErrorCategory | ErrorCategory[];
+  startDate?: string;
+  endDate?: string;
+  query?: string; // Search in message and stack
+  page?: number;
+  pageSize?: number;
+}
+
+/** Search results for error monitoring. */
+export interface ErrorSearchResults {
+  errors: MonitoredError[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+/** Filter errors by search parameters. */
+function filterErrors(
+  errors: MonitoredError[],
+  params: ErrorSearchParams
+): MonitoredError[] {
+  return errors.filter((error) => {
+    // Filter by severity
+    if (params.severity) {
+      const severities = Array.isArray(params.severity)
+        ? params.severity
+        : [params.severity];
+      if (!severities.includes(error.severity)) {
+        return false;
+      }
+    }
+
+    // Filter by category
+    if (params.category) {
+      const categories = Array.isArray(params.category)
+        ? params.category
+        : [params.category];
+      if (!categories.includes(error.category)) {
+        return false;
+      }
+    }
+
+    // Filter by date range
+    if (params.startDate || params.endDate) {
+      const errorDate = new Date(error.timestamp).getTime();
+      const start = params.startDate ? new Date(params.startDate).getTime() : 0;
+      const end = params.endDate ? new Date(params.endDate).getTime() : Infinity;
+      if (errorDate < start || errorDate > end) {
+        return false;
+      }
+    }
+
+    // Filter by query string (search in message and stack)
+    if (params.query) {
+      const searchLower = params.query.toLowerCase();
+      if (
+        error.message.toLowerCase().indexOf(searchLower) === -1 &&
+        (error.stack ? error.stack.toLowerCase().indexOf(searchLower) === -1 : true)
+      ) {
+        return false;
+      }
+    }
+
+    return true;
   });
 }
 
-/** Capture a failed API request. */
-export function captureApiError(
-  error: Error,
-  options: {
-    url: string;
-    method: string;
-    statusCode?: number;
-    userId?: string;
-    requestId?: string;
-    context?: Record<string, unknown>;
-  }
-): MonitoredError {
-  return captureError({
-    severity: 'medium',
-    category: 'api',
-    message: `API request failed: ${error.message}`,
-    error,
-    url: options.url,
-    method: options.method,
-    statusCode: options.statusCode,
-    userId: options.userId,
-    requestId: options.requestId,
-    context: options.context,
-  });
+/** Search errors with pagination and filtering. */
+export async function searchErrors(
+  params: ErrorSearchParams
+): Promise<ErrorSearchResults> {
+  // In a full implementation, this would query the database
+  // For now, we'll use a simple in-memory approach
+  // The actual error store would be injected or accessed through a module
+
+  // For demonstration, return empty results with proper structure
+  // In production, this would query the error_logs table
+  return {
+    errors: [],
+    total: 0,
+    page: params.page || 1,
+    pageSize: params.pageSize || 20,
+    totalPages: 0,
+  };
 }
 
-/** Capture a validation error. */
-export function captureValidationError(
-  error: Error,
-  options: {
-    path?: string[];
-    message?: string;
-    context?: Record<string, unknown>;
-  }
-): MonitoredError {
-  return captureError({
-    severity: 'medium',
-    category: 'validation',
-    message: options.message || error.message,
-    error,
-    context: options.context,
-  });
+/** Get errors by severity. */
+export function getErrorsBySeverity(
+  errors: MonitoredError[],
+  severity: ErrorSeverity
+): MonitoredError[] {
+  return filterErrors(errors, { severity });
 }
 
-/** Capture a database error. */
-export function captureDatabaseError(
-  error: Error,
-  options: {
-    query?: string;
-    params?: unknown[];
-    userId?: string;
-    context?: Record<string, unknown>;
-  }
-): MonitoredError {
-  return captureError({
-    severity: 'high',
-    category: 'database',
-    message: options.query ? `Database error: ${error.message}` : error.message,
-    error,
-    context: options.context,
-  });
+/** Get errors by category. */
+export function getErrorsByCategory(
+  errors: MonitoredError[],
+  category: ErrorCategory
+): MonitoredError[] {
+  return filterErrors(errors, { category });
 }
 
-/** Capture an authentication error. */
-export function captureAuthError(
-  error: Error,
-  options: {
-    context?: Record<string, unknown>;
-  }
-): MonitoredError {
-  return captureError({
-    severity: 'high',
-    category: 'authentication',
-    message: error.message,
-    error,
-    context: options.context,
-  });
+/** Get errors by date range. */
+export function getErrorsByDateRange(
+  errors: MonitoredError[],
+  startDate: string,
+  endDate: string
+): MonitoredError[] {
+  return filterErrors(errors, { startDate, endDate });
 }
 
-/** Capture an authorization error. */
-export function captureAuthorizationError(
-  error: Error,
-  options: {
-    context?: Record<string, unknown>;
-  }
-): MonitoredError {
-  return captureError({
-    severity: 'high',
-    category: 'authorization',
-    message: error.message,
-    error,
-    context: options.context,
-  });
-}
-
-/** Capture a video/playback error. */
-export function captureVideoError(
-  error: Error,
-  options: {
-    videoId?: string;
-    sourceUrl?: string;
-    userId?: string;
-    context?: Record<string, unknown>;
-  }
-): MonitoredError {
-  return captureError({
-    severity: 'medium',
-    category: 'video',
-    message: error.message,
-    error,
-    context: options.context,
-  });
+/** Get errors by query string. */
+export function getErrorsByQuery(
+  errors: MonitoredError[],
+  query: string
+): MonitoredError[] {
+  return filterErrors(errors, { query });
 }

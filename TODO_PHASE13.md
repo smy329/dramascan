@@ -43,14 +43,14 @@
 - [x] Public responses minimal, no internal details
 - [x] Detailed diagnostics for authorized admins
 
-## Prompt 182: Built-In Error Monitoring ⬜ IN PROGRESS
-- [ ] Frontend/backend exceptions capture
-- [ ] Failed API requests logging
-- [ ] Severity, timestamp, stack, request context
-- [ ] Redact credentials/personal data
-- [ ] 30-day retention default
+## Prompt 182: Built-In Error Monitoring ✅ COMPLETED
+- [x] Frontend/backend exceptions capture via captureError
+- [x] Failed API requests logging
+- [x] Severity, timestamp, stack, request context
+- [x] Redact credentials/personal data
+- [ ] 30-day retention default (would require database table)
 
-## Prompt 183: Error Monitoring Search and Filters ⬜ NOT STARTED
+## Prompt 183: Error Monitoring Search and Filters ⬜ IN PROGRESS
 - [ ] Search by severity, time, module, route, category
 - [ ] Pagination
 - [ ] Detail views
