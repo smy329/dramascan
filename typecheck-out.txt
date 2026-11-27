@@ -40,6 +40,13 @@ src/modules/administration/performance.analytics.ts(85,8): error TS1128: Declara
 src/modules/administration/performance.analytics.ts(86,5): error TS1128: Declaration or statement expected.
 src/modules/administration/performance.analytics.ts(87,5): error TS1128: Declaration or statement expected.
 src/modules/administration/performance.analytics.ts(104,1): error TS1128: Declaration or statement expected.
+src/modules/administration/resource.monitoring.ts(143,24): error TS1005: ';' expected.
+src/modules/administration/resource.monitoring.ts(145,10): error TS1005: ';' expected.
+src/modules/administration/resource.monitoring.ts(155,20): error TS1005: ';' expected.
+src/modules/administration/resource.monitoring.ts(156,19): error TS1005: ';' expected.
+src/modules/administration/resource.monitoring.ts(157,19): error TS1005: ';' expected.
+src/modules/administration/resource.monitoring.ts(158,7): error TS1109: Expression expected.
+src/modules/administration/resource.monitoring.ts(158,8): error TS1128: Declaration or statement expected.
 src/modules/administration/task.controls.ts(241,24): error TS1005: ';' expected.
 src/modules/administration/task.controls.ts(243,10): error TS1005: ';' expected.
 src/modules/administration/task.controls.ts(250,20): error TS1005: ';' expected.
