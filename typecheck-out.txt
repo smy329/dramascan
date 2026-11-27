@@ -32,6 +32,18 @@ src/modules/administration/anomaly.detection.ts(157,1): error TS1128: Declaratio
 src/modules/administration/anomaly.detection.ts(211,51): error TS1109: Expression expected.
 src/modules/administration/anomaly.detection.ts(215,51): error TS1109: Expression expected.
 src/modules/administration/anomaly.detection.ts(219,51): error TS1109: Expression expected.
+src/modules/administration/incident.attachments.ts(125,24): error TS1005: ',' expected.
+src/modules/administration/incident.attachments.ts(126,30): error TS1005: ',' expected.
+src/modules/administration/incident.attachments.ts(128,20): error TS1005: ',' expected.
+src/modules/administration/incident.attachments.ts(128,30): error TS1005: ',' expected.
+src/modules/administration/incident.attachments.ts(140,20): error TS1005: ';' expected.
+src/modules/administration/incident.attachments.ts(141,19): error TS1005: ';' expected.
+src/modules/administration/incident.attachments.ts(142,19): error TS1005: ';' expected.
+src/modules/administration/incident.attachments.ts(143,7): error TS1109: Expression expected.
+src/modules/administration/incident.attachments.ts(143,8): error TS1128: Declaration or statement expected.
+src/modules/administration/incident.attachments.ts(144,5): error TS1128: Declaration or statement expected.
+src/modules/administration/incident.attachments.ts(145,5): error TS1128: Declaration or statement expected.
+src/modules/administration/incident.attachments.ts(181,1): error TS1128: Declaration or statement expected.
 src/modules/administration/incident.history.ts(99,24): error TS1005: ',' expected.
 src/modules/administration/incident.history.ts(100,30): error TS1005: ',' expected.
 src/modules/administration/incident.history.ts(102,20): error TS1005: ',' expected.
