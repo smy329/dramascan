@@ -33,11 +33,11 @@
 - [x] Provide preview of proposed changes
 - [x] Require confirmation before applying (importConfiguration with confirmation)
 
-## Prompt 180: Maintenance Mode
-- [ ] Super Admin control of maintenance mode
-- [ ] Configurable public maintenance page/message
-- [ ] Optional estimated return time
-- [ ] Authorized admins retain admin access
+## Prompt 180: Maintenance Mode ✅ COMPLETED
+- [x] Super Admin control of maintenance mode
+- [x] Configurable public maintenance page/message
+- [x] Optional estimated return time
+- [x] Authorized admins retain admin access
 
 ## Prompt 181: Application Health Checks
 - [ ] Layered health checks (app, PostgreSQL, disk)
