@@ -18,6 +18,22 @@ The Phase 13 administration module (`src/modules/administration/`, ~31 files) ca
 
 **Verification:** `npx tsc --noEmit` exit 0; `npx eslint "src/modules/administration/**/*.ts" --max-warnings 0` exit 0; full `npm test` (Vitest, 137 files / 1320 tests) pass; `npm run build` (Next.js production build) pass.
 
+#### Phase 13 defect audit and crash fixes (2026-11-27, commit `fd657f4`)
+
+A full audit of the administration module (all 39 admin files, catalog in `docs/ADMINISTRATION_AUDIT_REPORT.md`: 4 crash, 11 stub, 8 tooling, 16 ok) found seven crash-grade defects in the files that actually query the database. All seven would throw at runtime in production; all were fixed in place (behaviour-preserving):
+
+- **MySQL JSON path syntax** — `incident.notes.ts`, `incident.timeline.ts` (2 sites), `alert.escalation.ts`, and `rate.limiting.ts` used `JSON_EXTRACT(col, '$.key')`, which is not valid PostgreSQL. Replaced with the Postgres `col -> 'key'` operator and the corresponding `.like()` comparisons with `LIKE` where applicable.
+- **Permanent rate-limiting** — `rate.limiting.ts` counted every stored event with no window filter, so once a counter row accumulated, the caller was rate-limited forever. Added the sliding-window timestamp filter so the count respects `windowMs`.
+- **Always-truthy admin access check** — `maintenance.mode.ts` compared the mode as a string against a string equality that was always true in one branch, so `canAccessAdmin` misbehaved in maintenance mode. Fixed the comparison and made the public maintenance message persist to `system_settings` instead of being dropped.
+- **CSP header name baked into its value** — `security.headers.ts` returned `"Content-Security-Policy-<directives>"` from the getter, so any consumer that set the header would emit a directive string containing its own name. All header getters now return the value only.
+- **Unreachable `unhealthy` result** — `health.checks.ts` returned `degraded` whenever any component was degraded, so an `unhealthy` component could never surface an overall `unhealthy` status. The overall status is now the worst component status.
+
+**Schema check:** the module schema (`schema.ts`) defines exactly `admin_audit_log`, `system_setting_versions`, and `system_settings`, all migrated and present; every DB-hitting file in the module references only those three tables, so no query can hit a missing relation.
+
+**Known limitation:** the remaining stub and tooling files are documented placeholders, not wired into any route, workflow, or UI. They are dead code outside the production request path and do not affect behaviour. Live security headers and auth rate limiting are handled by `next.config.ts`, `proxy.ts` (per-request CSP nonce), and Better Auth; `security.headers.ts` and `rate.limiting.ts` are not referenced by those paths.
+
+**Verification:** `npx tsc --noEmit` exit 0; module ESLint clean; full `npm test` (Vitest, 137 files / 1320 tests) pass; `npm run build` pass.
+
 
 ### Phase 11 — Analytics and Notifications (2026-11-24)
 

@@ -2,7 +2,45 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
-## [Unreleased] - 2026-11-24
+## [Unreleased] - 2026-11-27
+
+### fix: resolve crash-grade SQL and logic defects found in the Phase 13 administration audit (commit `fd657f4`)
+
+A full audit of `src/modules/administration/` (catalog in
+`docs/ADMINISTRATION_AUDIT_REPORT.md`: 4 crash, 11 stub, 8 tooling, 16 ok)
+found seven defects that would throw or misbehave at runtime in the files
+that query the database. All were fixed in place, behaviour-preserving:
+
+- **Invalid PostgreSQL JSON syntax** — `incident.notes.ts`,
+  `incident.timeline.ts` (two sites), `alert.escalation.ts`, and
+  `rate.limiting.ts` used MySQL's `JSON_EXTRACT(col, '$.key')`. Replaced with
+  the Postgres `col -> 'key'` operator, and MySQL-style `.like()` comparisons
+  with plain `LIKE`.
+- **Permanent rate limiting** — `rate.limiting.ts` counted every stored event
+  without a window filter, so a caller would stay rate-limited forever once
+  events accumulated. Added the sliding-window timestamp filter against
+  `windowMs`.
+- **Always-truthy maintenance access check** — `maintenance.mode.ts` compared
+  the mode string in a way that was always true in one branch; fixed the
+  comparison and made the public maintenance message persist to
+  `system_settings` instead of being discarded.
+- **CSP header name baked into the value** — `security.headers.ts` returned
+  `"Content-Security-Policy-<directives>"` from its getter; all header getters
+  now return the value only.
+- **Unreachable `unhealthy` health status** — `health.checks.ts` capped the
+  overall status at `degraded`, so an unhealthy component could never surface
+  as `unhealthy`; the overall status is now the worst component status.
+
+The module schema (`schema.ts`) defines exactly `admin_audit_log`,
+`system_setting_versions`, and `system_settings`; every DB-hitting file in the
+module references only those three tables, so no query can hit a missing
+relation. The remaining stub/tooling files are documented placeholders that no
+route, workflow, or UI imports; live security headers and auth rate limiting
+come from `next.config.ts`, `proxy.ts` (per-request CSP nonce), and Better
+Auth.
+
+Verified: `npx tsc --noEmit` (exit 0), module ESLint clean, full Vitest suite
+(137 files, 1320 tests, all passing), `next build` (passing).
 
 ### fix: resolve the Phase 13 administration module TypeScript and ESLint errors
 
