@@ -6,6 +6,9 @@
  * reused by the administration interface.
  */
 
+import { z } from 'zod';
+import { settingSchema, isSecretSettingKey, sanitizeSettingForExport } from './settings.zod';
+
 /** The settings this application knows about. */
 export const SYSTEM_SETTING_KEYS = {
   /** The drama or movie the homepage hero shows. */
@@ -18,15 +21,42 @@ export const SYSTEM_SETTING_KEYS = {
   heroRotationItems: 'hero_rotation_item_ids',
   /** Whether a content item is pinned into the Trending list. */
   trendingPinnedItems: 'trending_pinned_item_ids',
+  /** Global empty-drama visibility modes (requirements §4.7). */
+  emptyDramaVisibility: 'empty_drama_visibility',
+  /** Default Trash retention period in days (requirements §4.8). */
+  trashRetentionDays: 'trash_retention_days',
+  /** Default playback completion threshold in percent (requirements §7.3). */
+  playbackCompletionThresholdPercent: 'playback_completion_threshold_percent',
 } as const;
 
-export type SystemSettingKey = (typeof SYSTEM_SETTING_KEYS)[keyof typeof SYSTEM_SETTING_KEYS];
+/** The type of a system setting key. */
+export type SystemSettingKey = keyof typeof SYSTEM_SETTING_KEYS;
 
 /** A content item named by a setting. */
 export type SettingContentRef = {
   type: 'drama' | 'movie';
   id: string;
 };
+
+/** Input shape for a validated system setting (Zod schema). */
+export type SettingInput = z.infer<typeof import('./settings.zod').settingSchema>;
+
+/**
+ * Validate a setting input against the canonical Zod schema.
+ * Returns the validated setting or throws a ConfigurationError.
+ */
+export function validateSettingInput(input: unknown): SettingInput {
+  const result = settingSchema.safeParse(input);
+
+  if (!result.success) {
+    const issues = result.error.issues.map(
+      (issue: { path: readonly unknown[]; message: string }) => issue.message
+    ).join('\n');
+    throw new Error(`Invalid setting input: ${issues}`);
+  }
+
+  return result.data;
+}
 
 /**
  * Parse the JSON value of a setting that names content items.
@@ -64,3 +94,12 @@ export function parseSettingContentRefs(value: unknown): SettingContentRef[] {
 
   return refs;
 }
+
+/**
+ * Sanitize a setting value for safe export, redacting any secret-sensitive
+ * fields. Returns a plain-object shape suitable for JSON serialization.
+ */
+export {
+  sanitizeSettingForExport,
+  isSecretSettingKey,
+};

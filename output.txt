@@ -1,0 +1,13 @@
+src/modules/administration/index.ts(23,3): error TS2459: Module '"./settings"' declares 'SettingContentRef' locally, but it is not exported.
+src/modules/administration/index.ts(25,3): error TS2724: '"./settings"' has no exported member named 'SystemSettingKey'. Did you mean 'SystemSetting'?
+src/modules/administration/settings.shared.ts(103,3): error TS2304: Cannot find name 'sanitizeSettingForExport'.
+src/modules/administration/settings.shared.ts(104,3): error TS2304: Cannot find name 'isSecretSettingKey'.
+src/modules/administration/settings.ts(17,8): error TS6133: 'SystemSettingKey' is declared but its value is never read.
+src/modules/administration/settings.ts(48,51): error TS2304: Cannot find name 'SettingInput'.
+src/modules/administration/settings.ts(93,50): error TS2339: Property 'value' does not exist on type 'SystemSetting'.
+src/modules/administration/settings.ts(105,43): error TS2339: Property 'value' does not exist on type 'SystemSetting'.
+src/modules/administration/settings.ts(213,13): error TS2551: Property 'booleanValue' does not exist on type '{ id: string; key: string; description: string | null; boolean_value: boolean | null; string_value: string | null; value: unknown; updated_by: string | null; created_at: Date; updated_at: Date; }'. Did you mean 'boolean_value'?
+src/modules/administration/settings.ts(214,17): error TS2551: Property 'booleanValue' does not exist on type '{ id: string; key: string; description: string | null; boolean_value: boolean | null; string_value: string | null; value: unknown; updated_by: string | null; created_at: Date; updated_at: Date; }'. Did you mean 'boolean_value'?
+src/modules/administration/settings.ts(215,17): error TS2551: Property 'stringValue' does not exist on type '{ id: string; key: string; description: string | null; boolean_value: boolean | null; string_value: string | null; value: unknown; updated_by: string | null; created_at: Date; updated_at: Date; }'. Did you mean 'string_value'?
+src/modules/administration/settings.ts(216,17): error TS2551: Property 'stringValue' does not exist on type '{ id: string; key: string; description: string | null; boolean_value: boolean | null; string_value: string | null; value: unknown; updated_by: string | null; created_at: Date; updated_at: Date; }'. Did you mean 'string_value'?
+src/modules/administration/settings.ts(217,17): error TS2339: Property 'jsonValue' does not exist on type '{ id: string; key: string; description: string | null; boolean_value: boolean | null; string_value: string | null; value: unknown; updated_by: string | null; created_at: Date; updated_at: Date; }'.
