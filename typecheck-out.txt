@@ -1,4 +1,12 @@
 src/modules/administration/error.monitoring.ts(103,5): error TS2322: Type 'unknown' is not assignable to type 'Record<string, unknown>'.
+src/modules/administration/maintenance.commands.ts(52,9): error TS6133: 'commandId' is declared but its value is never read.
+src/modules/administration/maintenance.commands.ts(110,11): error TS6133: 'timeout' is declared but its value is never read.
+src/modules/administration/maintenance.commands.ts(111,11): error TS6133: 'cwd' is declared but its value is never read.
+src/modules/administration/maintenance.commands.ts(152,11): error TS6133: 'timeout' is declared but its value is never read.
+src/modules/administration/maintenance.commands.ts(153,11): error TS6133: 'cwd' is declared but its value is never read.
+src/modules/administration/maintenance.commands.ts(196,11): error TS6133: 'timeout' is declared but its value is never read.
+src/modules/administration/maintenance.commands.ts(197,28): error TS2339: Property 'table' does not exist on type 'MaintenanceCommandOptions'.
+src/modules/administration/maintenance.commands.ts(234,11): error TS6133: 'timeout' is declared but its value is never read.
 src/modules/administration/maintenance.mode.ts(162,9): error TS6133: 'isEnabled' is declared but its value is never read.
 src/modules/administration/schema.ts(76,17): error TS2304: Cannot find name 'timestamp'.
 src/modules/administration/settings.ts(17,8): error TS6133: 'SystemSettingKey' is declared but its value is never read.
