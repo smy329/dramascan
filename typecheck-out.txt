@@ -1,1 +1,8 @@
+src/modules/administration/schema.ts(76,17): error TS2304: Cannot find name 'timestamp'.
 src/modules/administration/settings.ts(17,8): error TS6133: 'SystemSettingKey' is declared but its value is never read.
+src/modules/administration/settings.ts(184,8): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(value: { setting_key: string | SQL<unknown> | Placeholder<string, any>; changed_by: string | SQL<unknown> | Placeholder<string, any>; id?: string | SQL<unknown> | Placeholder<...> | undefined; ... 4 more ...; version_comment?: string | ... 3 more ... | undefined; }): PgInsertBase<...>', gave the following error.
+    Type 'string | null' is not assignable to type 'string | SQL<unknown> | Placeholder<string, any>'.
+      Type 'null' is not assignable to type 'string | SQL<unknown> | Placeholder<string, any>'.
+  Overload 2 of 2, '(values: { setting_key: string | SQL<unknown> | Placeholder<string, any>; changed_by: string | SQL<unknown> | Placeholder<string, any>; id?: string | SQL<unknown> | Placeholder<...> | undefined; ... 4 more ...; version_comment?: string | ... 3 more ... | undefined; }[]): PgInsertBase<...>', gave the following error.
+    Object literal may only specify known properties, and 'setting_key' does not exist in type '{ setting_key: string | SQL<unknown> | Placeholder<string, any>; changed_by: string | SQL<unknown> | Placeholder<string, any>; id?: string | SQL<unknown> | Placeholder<...> | undefined; ... 4 more ...; version_comment?: string | ... 3 more ... | undefined; }[]'.

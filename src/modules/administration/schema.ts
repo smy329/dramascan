@@ -58,6 +58,31 @@ export const admin_audit_log = pgTable(
   ]
 );
 
+// ----- system_setting_versions -----
+// Records configuration changes with before/after values for rollback and
+// audit purposes. Each update creates a new version entry, never deleting
+// history.
+//
+// The `changed_by` references the `users` table via the auth module.
+export const system_setting_versions = pgTable(
+  'system_setting_versions',
+  {
+    id: uuidPrimaryKey(),
+    setting_key: text('setting_key').notNull(),
+    setting_description: text('setting_description'),
+    previous_value: text('previous_value'),
+    new_value: text('new_value'),
+    changed_by: uuid('changed_by').notNull(),
+    changed_at: timestamp('changed_at', { withTimezone: true }).defaultNow().notNull(),
+    version_comment: text('version_comment'),
+  },
+  table => [
+    indexOn('system_setting_versions', table.setting_key),
+    indexOn('system_setting_versions', table.changed_at),
+    indexOn('system_setting_versions', table.changed_by),
+  ]
+);
+
 // ----- system_settings -----
 // A small key/value store for the settings that change what a viewer sees.
 // The value is stored in the column that matches its type, so a setting is
@@ -87,4 +112,4 @@ export const system_settings = pgTable(
 
 export type AdministrationTables = typeof admin_audit_log | typeof system_settings;
 
-export type AdministrationSchema = typeof admin_audit_log | typeof system_settings;
+export type AdministrationSchema = typeof admin_audit_log | typeof system_settings | typeof system_setting_versions;

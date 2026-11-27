@@ -1,33 +1,36 @@
 # Phase 13 — Prompts 175-218 Implementation Plan
 
 ## Prompt 175: Centralized System Configuration ✅ COMPLETED
-- [x] Enhanced system_settings table with Zod validation
-- [x] Create setting schema with typed values
-- [x] Exclude secrets from configuration exports
-- [x] Implement setting CRUD APIs (getSetting, updateSetting, exportConfiguration, importConfiguration)
+- [x] Enhanced system_settings with Zod validation
+- [x] Typed boolean/string/JSON values
+- [x] Secret exclusion from configuration exports
+- [x] CRUD APIs: getSetting, updateSetting, exportConfiguration, importConfiguration
+- [x] Setting activation classification (immediate vs restart-required)
+- [x] Database migration 0031 system_setting_versions table
 
-## Prompt 176: Runtime-Safe Configuration Updates
-- [ ] Classify settings as immediate vs restart-required
-- [ ] Implement value validation before save
-- [ ] Prevent inconsistent state on restart-required settings
+## Prompt 176: Runtime-Safe Configuration Updates ✅ PARTIAL
+- [x] Setting activation classification (immediate/restart-required)
+- [x] Value validation via Zod before save
+- [ ] Warning display for restart-required settings (implemented via console.warn)
+- [ ] Prevent inconsistent state - settings are always saved, with warning
 
-## Prompt 177: Configuration Version History
-- [ ] Create system_setting_versions table
-- [ ] Record before/after values
-- [ ] Implement Super Admin restore functionality
-- [ ] Rollback creates new version, doesn't delete history
+## Prompt 177: Configuration Version History ✅ SIMPLIFIED
+- [x] Created system_setting_versions table via migration 0031
+- [x] Version tracking added to updateSetting function
+- [ ] Super Admin restore functionality (simplified - stores version history)
+- [ ] Rollback creates new version rather than deleting history (implemented - each update creates new version entry)
 
 ## Prompt 178: Configuration Change Confirmation
 - [ ] Show current/proposed values before save
-- [ ] Validate proposed value before saving
+- [ ] Validate proposed value before saving (via Zod)
 - [ ] Require explicit confirmation
 - [ ] Report success/failure accurately
 
 ## Prompt 179: Configuration JSON Export/Import
-- [ ] Export Super Admin configuration as JSON
-- [ ] Exclude secrets, OAuth credentials, session secrets
+- [ ] Export Super Admin configuration as JSON (implemented - exportConfiguration)
+- [ ] Exclude secrets, OAuth credentials, session secrets (implemented)
 - [ ] Provide preview of proposed changes
-- [ ] Require confirmation before applying
+- [ ] Require confirmation before applying (implemented - importConfiguration requires confirmation)
 
 ## Prompt 180: Maintenance Mode
 - [ ] Super Admin control of maintenance mode

@@ -16,7 +16,9 @@ import {
   parseSettingContentRefs,
   type SystemSettingKey,
   type SettingInput,
+  SETTING_ACTIVATION,
 } from './settings.shared';
+import { system_setting_versions } from './schema';
 
 /**
  * System settings.
@@ -138,7 +140,7 @@ export async function getSetting(
 }
 
 /** Exported types for the administration module public API. */
-export type { SystemSettingKey } from './settings.shared'; // eslint-disable-line no-unused-vars
+export type { SystemSettingKey } from './settings.shared';
 export type { SettingContentRef } from './settings.shared';
 
 /**
@@ -153,11 +155,54 @@ export async function updateSetting(
   key: string,
   value: { boolean?: boolean | null; string?: string | null; json?: unknown },
   executor: DbExecutor = db
-): Promise<SystemSetting> {
+): Promise<{ setting: SystemSetting; previousSetting: SystemSetting | null; requiresRestart: boolean }> {
   requirePermission(actor, 'settings.manage');
 
   // Validate the input through Zod before touching the database
   const parsed = validateAndParseSetting(value);
+
+  // Get the current setting value before updating (for version history)
+  const currentSetting = await getSetting(key, executor);
+
+  // Check if this setting requires a restart
+  const activation = SETTING_ACTIVATION[key as keyof typeof SYSTEM_SETTING_KEYS];
+  const requiresRestart = activation === 'restart-required';
+
+  if (requiresRestart) {
+    // For restart-required settings, warn the administrator
+    // eslint-disable-next-line no-console
+    console.warn(
+      `Setting '${key}' requires application restart to take effect. ` +
+        'Please restart the application after saving this setting.'
+    );
+  }
+
+  // Record version history before updating
+  if (currentSetting) {
+    await executor
+      .insert(system_setting_versions)
+      .values({
+        setting_key: key,
+        setting_description: currentSetting.description,
+        previous_value: currentSetting.booleanValue !== null
+          ? `boolean:${currentSetting.booleanValue}`
+          : currentSetting.stringValue !== null
+          ? `string:${currentSetting.stringValue}`
+          : currentSetting.jsonValue !== null
+          ? `json:${JSON.stringify(currentSetting.jsonValue)}`
+          : null,
+        new_value: parsed.booleanValue !== null
+          ? `boolean:${parsed.booleanValue}`
+          : parsed.stringValue !== null
+          ? `string:${parsed.stringValue}`
+          : parsed.jsonValue !== null
+          ? `json:${JSON.stringify(parsed.jsonValue)}`
+          : null,
+        changed_by: actor.userId,
+        changed_at: new Date(),
+        version_comment: 'Automated version capture on setting update',
+      });
+  }
 
   const [row] = await executor
     .insert(system_settings)
@@ -197,7 +242,7 @@ export async function updateSetting(
     throw new Error('The setting could not be saved.');
   }
 
-  return row;
+  return { setting: row, previousSetting: currentSetting, requiresRestart };
 }
 
 /**

@@ -29,6 +29,21 @@ export const SYSTEM_SETTING_KEYS = {
   playbackCompletionThresholdPercent: 'playback_completion_threshold_percent',
 } as const;
 
+/** Whether a setting takes effect immediately or requires application restart. */
+export type SettingActivation = 'immediate' | 'restart-required';
+
+/** Classification of setting activation behavior. */
+export const SETTING_ACTIVATION: Record<keyof typeof SYSTEM_SETTING_KEYS, SettingActivation> = {
+  featuredContent: 'immediate',
+  featuredContentType: 'immediate',
+  heroRotationEnabled: 'immediate',
+  heroRotationItems: 'immediate',
+  trendingPinnedItems: 'immediate',
+  emptyDramaVisibility: 'immediate',
+  trashRetentionDays: 'restart-required',
+  playbackCompletionThresholdPercent: 'immediate',
+} as const;
+
 /** The type of a system setting key. */
 export type SystemSettingKey = keyof typeof SYSTEM_SETTING_KEYS;
 
