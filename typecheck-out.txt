@@ -1,3 +1,11 @@
+src/modules/administration/error.monitoring.ts(103,5): error TS2322: Type 'unknown' is not assignable to type 'Record<string, unknown>'.
+src/modules/administration/error.monitoring.ts(126,3): error TS2740: Type 'Promise<MonitoredError>' is missing the following properties from type 'MonitoredError': id, severity, category, message, and 3 more.
+src/modules/administration/error.monitoring.ts(148,3): error TS2740: Type 'Promise<MonitoredError>' is missing the following properties from type 'MonitoredError': id, severity, category, message, and 3 more.
+src/modules/administration/error.monitoring.ts(171,3): error TS2740: Type 'Promise<MonitoredError>' is missing the following properties from type 'MonitoredError': id, severity, category, message, and 3 more.
+src/modules/administration/error.monitoring.ts(190,3): error TS2740: Type 'Promise<MonitoredError>' is missing the following properties from type 'MonitoredError': id, severity, category, message, and 3 more.
+src/modules/administration/error.monitoring.ts(206,3): error TS2740: Type 'Promise<MonitoredError>' is missing the following properties from type 'MonitoredError': id, severity, category, message, and 3 more.
+src/modules/administration/error.monitoring.ts(222,3): error TS2740: Type 'Promise<MonitoredError>' is missing the following properties from type 'MonitoredError': id, severity, category, message, and 3 more.
+src/modules/administration/error.monitoring.ts(241,3): error TS2740: Type 'Promise<MonitoredError>' is missing the following properties from type 'MonitoredError': id, severity, category, message, and 3 more.
 src/modules/administration/maintenance.mode.ts(162,9): error TS6133: 'isEnabled' is declared but its value is never read.
 src/modules/administration/schema.ts(76,17): error TS2304: Cannot find name 'timestamp'.
 src/modules/administration/settings.ts(17,8): error TS6133: 'SystemSettingKey' is declared but its value is never read.
