@@ -11,14 +11,12 @@
 
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
 
 import { system_settings } from './schema';
-import { admin_audit_log } from './schema';
-import { PerformanceMetric } from './performance.analytics';
+import { getMetricsByName } from './performance.analytics';
 
 /** Anomaly type. */
 export type AnomalyType =
@@ -133,6 +131,10 @@ export async function createAnomaly(
       value: system_settings.value,
     });
 
+  if (!row || !row.value) {
+    throw new Error('Failed to create anomaly record');
+  }
+
   const anomalyData = JSON.parse(row.value as string);
 
   return {
@@ -224,7 +226,7 @@ export async function listAnomalies(
     ? sql.join(whereConditions, sql` AND `)
     : undefined;
 
-  const [{ count }] = await db
+  await db
     .select({ count: sql`count(*)` })
     .from(system_settings)
     .where(whereClause ?? sql`1=1`);
@@ -235,7 +237,7 @@ export async function listAnomalies(
     .select()
     .from(system_settings)
     .where(sql`${system_settings.key}.like('anomaly_%')`)
-    .orderBy(system_settings.key.desc());
+    .orderBy(desc(system_settings.key));
 
   const anomalies: AnomalyRecord[] = [];
   for (const row of allAnomalies) {
@@ -419,9 +421,12 @@ export async function detectDiskPressure(
   }
 
   const metric = metrics.metrics[0];
+  if (!metric) {
+    return null;
+  }
 
   if (metric.value > thresholdBytes) {
-    const percentage = ((metric.value / thresholdBytes) * 100).toFixed(1);
+    const percentage = (metric.value / thresholdBytes * 100).toFixed(1);
 
     return createAnomaly({
       type: 'disk_pressure',
@@ -480,13 +485,13 @@ export async function detectResourcePressure(
 /** Helper function to format bytes. */
 function formatBytes(bytes: number): string {
   if (bytes >= 1073741824) {
-    return ((bytes / 1073741824).toFixed(1) + ' GB');
+    return (bytes / 1073741824).toFixed(1) + ' GB';
   }
   if (bytes >= 1048576) {
-    return ((bytes / 1048576).toFixed(1) + ' MB');
+    return (bytes / 1048576).toFixed(1) + ' MB';
   }
   if (bytes >= 1024) {
-    return ((bytes / 1024).toFixed(1) + ' KB');
+    return (bytes / 1024).toFixed(1) + ' KB';
   }
   return `${bytes} bytes`;
 }
@@ -496,17 +501,22 @@ export async function resolveAnomaly(
   anomalyId: string,
   resolvedBy: string
 ): Promise<AnomalyRecord> {
-  const anomaly = await getAnomaly(anomalyId);
+  const [row] = await db
+    .select()
+    .from(system_settings)
+    .where(eq(system_settings.key, `anomaly_${anomalyId}`));
 
-  if (!anomaly) {
+  if (!row || !row.value) {
     throw new Error('Anomaly not found');
   }
+
+  const existingData = JSON.parse(row.value as string);
 
   await db
     .update(system_settings)
     .set({
       value: JSON.stringify({
-        ...JSON.parse(anomaly.value as string),
+        ...existingData,
         resolved: true,
         resolved_at: new Date().toISOString(),
         resolved_by: resolvedBy,
@@ -515,5 +525,9 @@ export async function resolveAnomaly(
     })
     .where(eq(system_settings.key, `anomaly_${anomalyId}`));
 
-  return getAnomaly(anomalyId);
+  const resolved = await getAnomaly(anomalyId);
+  if (!resolved) {
+    throw new Error('Anomaly not found after update');
+  }
+  return resolved;
 }

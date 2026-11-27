@@ -11,31 +11,23 @@
 
 import 'server-only';
 
-import { eq } from 'drizzle-orm';
-
-import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
-
-import { system_settings } from './schema';
-import { admin_audit_log } from './schema';
-import { getIncident, resolveIncident, IncidentRecord, IncidentStatusType } from './incident.management';
-import { checkResourceThresholds, getSystemResourceUsage } from './resource.monitoring';
+import { getIncident, resolveIncident, IncidentRecord } from './incident.management';
+import { checkResourceThresholds } from './resource.monitoring';
 
 /** Resolve incident with verification. */
 export async function verifiedIncidentRecovery(
   incidentId: string,
   performedBy: string,
   verifyThroughHealthCheck: boolean = true
-): Promise<{ success: boolean; incident: IncidentRecord; verified: boolean; message: string }> {
+): Promise<{ success: boolean; incident: IncidentRecord | null; verified: boolean; message: string }> {
   const incident = await getIncident(incidentId);
 
   if (!incident) {
-    return { success: false, incident: null as any, verified: false, message: 'Incident not found' };
+    return { success: false, incident: null, verified: false, message: 'Incident not found' };
   }
 
   if (verifyThroughHealthCheck) {
     // Verify through health check before auto-resolving
-    const resourceUsage = await getSystemResourceUsage();
     const { withinThresholds, violations } = await checkResourceThresholds();
 
     if (!withinThresholds) {
@@ -50,7 +42,7 @@ export async function verifiedIncidentRecovery(
     }
 
     // System is healthy, auto-resolve the incident
-    const resolvedIncident = await resolveIncident(incidentId, performedBy);
+    const resolvedIncident = await resolveIncident(incidentId, true, performedBy);
 
     return {
       success: true,
@@ -62,7 +54,7 @@ export async function verifiedIncidentRecovery(
     // Require authorized administrator confirmation
     // In a production system, this would present a confirmation dialog
     // For now, we'll mark it as resolved with admin confirmation
-    const resolvedIncident = await resolveIncident(incidentId, performedBy);
+    const resolvedIncident = await resolveIncident(incidentId, false, performedBy);
 
     return {
       success: true,
@@ -77,25 +69,17 @@ export async function verifiedIncidentRecovery(
 export async function getIncidentRecoveryHistory(
   incidentId: string
 ): Promise<{
-  incident: IncidentRecord;
+  incident: IncidentRecord | null;
   recoveryAttempts: Array<{ verified: boolean; performedBy: string; timestamp: string; success: boolean; message: string }>;
 }> {
   const incident = await getIncident(incidentId);
 
   if (!incident) {
-    return { incident: null as any, recoveryAttempts: [] };
+    return { incident: null, recoveryAttempts: [] };
   }
 
-  // Get escalation history for this incident
-  const escalations = await getEscalationsForAlert(incidentId);
-
-  const recoveryAttempts = escalations.escalations.map(escalation => ({
-    verified: escalation.resolved || false,
-    performedBy: escalation.resolvedBy || 'system',
-    timestamp: escalation.triggeredAt,
-    success: escalation.action !== 'critical-escalate', // Simplified success check
-    message: escalation.reason,
-  }));
-
-  return { incident, recoveryAttempts };
+  // Return empty recovery attempts for now since incident recovery
+  // doesn't have its own escalation tracking yet
+  // This could be extended to track recovery attempts separately
+  return { incident, recoveryAttempts: [] };
 }

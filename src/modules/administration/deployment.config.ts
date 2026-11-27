@@ -11,8 +11,6 @@
 
 import 'server-only';
 
-import { getAlertConfiguration } from './alert.severity';
-
 /** Deployment platform. */
 export type DeploymentPlatform = 'ubuntu-24.04' | 'digitalocean' | 'aws' | 'azure';
 
@@ -30,6 +28,10 @@ export interface DeploymentConfiguration {
   databaseLocalOnly: boolean;
   /** Custom environment variables (excluding secrets) */
   environmentVariables: Record<string, string>;
+  /** Working directory for the application */
+  workingDirectory: string;
+  /** System user to run the service as */
+  user: string;
 }
 
 /** Get default deployment configuration. */
@@ -46,6 +48,8 @@ export function getDefaultDeploymentConfiguration(): DeploymentConfiguration {
       NODE_ENV: 'production',
       PORT: '3000',
     },
+    workingDirectory: '/var/www/dramascan',
+    user: 'dramascan',
   };
 }
 
@@ -67,6 +71,8 @@ export function getDeploymentConfiguration(): DeploymentConfiguration {
       // Note: Database credentials should NOT be included here;
       // use separate secure secret management
     },
+    workingDirectory: process.env.WORKING_DIRECTORY || '/var/www/dramascan',
+    user: process.env.SERVICE_USER || 'dramascan',
   };
 }
 

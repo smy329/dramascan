@@ -12,10 +12,10 @@
 
 import 'server-only';
 
-import { eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
+import type { ActorContext } from '@/modules/authorization';
 
 import { system_settings } from './schema';
 import { admin_audit_log } from './schema';
@@ -214,7 +214,7 @@ export async function preventOverlap(
     return { canExecute: false, message: 'Only Super Admin can check overlap' };
   }
 
-  const { hasConflicts, conflictingTaskIds, message } = await checkForConflicts(
+  const { hasConflicts, message } = await checkForConflicts(
     taskId,
     actor
   );

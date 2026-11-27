@@ -11,14 +11,11 @@
 
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
-
 import { system_settings } from './schema';
-import { admin_audit_log } from './schema';
-import { AlertSeverity, getAlertConfiguration, isSeverityEnabled, shouldAutoResolve, getMinDurationMs } from './alert.severity';
+import { AlertSeverity, getAlertConfiguration, isSeverityEnabled, getMinDurationMs } from './alert.severity';
 
 /** Escalation action. */
 export type EscalationAction = 'none' | 'notify' | 'escalate' | 'critical-escalate';
@@ -92,6 +89,10 @@ export async function createEscalation(
       key: system_settings.key,
       value: system_settings.value,
     });
+
+  if (!row || !row.value) {
+    throw new Error('Failed to create escalation record');
+  }
 
   const escalationData = JSON.parse(row.value as string);
 
@@ -191,6 +192,11 @@ export async function checkEscalationNeeded(
       action = 'none';
       reason = `Low alert active for ${Math.round(duration / 60000)} minutes`;
       break;
+    default:
+      // Unrecognized severities do not escalate
+      action = 'none';
+      reason = `Unknown severity '${severity}', no escalation action`;
+      break;
   }
 
   // Create escalation record if escalation is needed
@@ -212,18 +218,23 @@ export async function resolveEscalation(
   escalationId: string,
   resolvedBy: string
 ): Promise<EscalationRecord> {
-  const escalation = await getEscalation(escalationId);
+  // Get the raw row to access the JSON value
+  const [row] = await db
+    .select()
+    .from(system_settings)
+    .where(eq(system_settings.key, `escalation_${escalationId}`));
 
-  if (!escalation) {
+  if (!row || !row.value) {
     throw new Error('Escalation not found');
   }
 
   // Update the escalation as resolved
+  const existingData = JSON.parse(row.value as string);
   await db
     .update(system_settings)
     .set({
       value: JSON.stringify({
-        ...JSON.parse(escalation.value as string),
+        ...existingData,
         resolved: true,
         resolvedAt: new Date().toISOString(),
         resolvedBy,
@@ -232,7 +243,11 @@ export async function resolveEscalation(
     })
     .where(eq(system_settings.key, `escalation_${escalationId}`));
 
-  return getEscalation(escalationId);
+  const updated = await getEscalation(escalationId);
+  if (!updated) {
+    throw new Error('Escalation not found after update');
+  }
+  return updated;
 }
 
 /** De-escalate an alert based on verified recovery. */
@@ -241,9 +256,6 @@ export async function deEscalateAlert(
   verifiedBy: string,
   performedBy: string
 ): Promise<EscalationRecord | null> {
-  // Check if the alert should be de-escalated based on health check
-  const configuration = await getAlertConfiguration();
-
   // Get the alert/resolution status
   // In a production system, this would query the actual alert state
   // For now, we'll create a de-escalation record
@@ -273,17 +285,18 @@ export async function getEscalationsForAlert(
   totalPages: number;
 }> {
   // Count total escalations for this alert
-  const [{ count }] = await db
+  const result = await db
     .select({ count: sql`count(*)` })
     .from(system_settings)
     .where(sql`${system_settings.key}.like('escalation_%') AND JSON_EXTRACT(${system_settings.value}, '$.alertId') = ${alertId}`);
+  const count = Number(result[0]?.count ?? 0);
 
   // Get escalations for current page
   const allEscalations = await db
     .select()
     .from(system_settings)
     .where(sql`${system_settings.key}.like('escalation_%')`)
-    .orderBy(system_settings.key.desc())
+    .orderBy(desc(system_settings.key))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
 

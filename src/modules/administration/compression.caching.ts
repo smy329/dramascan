@@ -11,8 +11,6 @@
 
 import 'server-only';
 
-import { getDeploymentConfiguration } from './deployment.config';
-
 /** Compression algorithm. */
 export type CompressionAlgorithm = 'gzip' | 'brotli' | 'both';
 
@@ -97,9 +95,10 @@ export function getDefaultCacheConfiguration(): CacheConfiguration {
 
 /** Get cache configuration from environment. */
 export function getCacheConfiguration(): CacheConfiguration {
+  const defaultDirective = (process.env.CACHE_DEFAULT_DIRECTIVE || 'public') as CacheDirective;
   return {
     enabled: process.env.ENABLE_HTTP_CACHE !== 'false',
-    defaultDirective: process.env.CACHE_DEFAULT_DIRECTIVE || 'public',
+    defaultDirective,
     tagBasedInvalidation: process.env.CACHE_TAG_BASED_INVALIDATION !== 'false',
     defaultTtl: Number(process.env.CACHE_DEFAULT_TTL) || 300,
     cacheAPIResponses: process.env.CACHE_API_RESPONSES !== 'false',
@@ -152,7 +151,7 @@ export async function invalidateCacheByTag(
 ): Promise<{ success: boolean; message: string }> {
   // In a production environment, would use Redis or a cache invalidation service
   // For now, we'll log the invalidation
-  // eslint-disable-next-line no-console
+
   console.log('Cache invalidation triggered for tag: ' + tag + ' by ' + performedBy);
 
   return {

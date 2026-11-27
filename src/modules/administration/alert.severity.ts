@@ -11,13 +11,12 @@
 
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { requirePermission, type ActorContext } from '@/modules/authorization';
 
 import { system_settings } from './schema';
-import { admin_audit_log } from './schema';
 
 /** Alert severity levels. */
 export type AlertSeverity = 'critical' | 'high' | 'medium' | 'low';
@@ -195,6 +194,10 @@ export async function updateAlertConfiguration(
       value: system_settings.value,
     });
 
+  if (!row || !row.value) {
+    return newConfig;
+  }
+
   try {
     return JSON.parse(row.value as string) as AlertConfiguration;
   } catch {
@@ -228,7 +231,7 @@ export function getMinDurationMs(
 
 /** Check for duplicate alerts (suppression). */
 export function checkForDuplicateAlert(
-  alertId: string,
+  _alertId: string,
   configuration: AlertConfiguration
 ): { isDuplicate: boolean; lastSent?: string; suppressedCount: number } {
   // In a production system, this would query a duplicate suppression store
@@ -239,8 +242,8 @@ export function checkForDuplicateAlert(
   }
 
   // Simulated - in production would check timestamps within the window
-  const windowMs = configuration.duplicateSuppression.windowMs;
-  const maxSuppressed = configuration.duplicateSuppression.maxSuppressedPerHour;
+  // const windowMs = configuration.duplicateSuppression.windowMs;
+  // const maxSuppressed = configuration.duplicateSuppression.maxSuppressedPerHour;
 
   return {
     isDuplicate: false, // Would check actual suppression database
@@ -250,7 +253,7 @@ export function checkForDuplicateAlert(
 
 /** Get role-aware visibility for a severity. */
 export function getSeverityVisibility(
-  severity: AlertSeverity,
+  _severity: AlertSeverity,
   configuration: AlertConfiguration
 ): { admin: boolean; superAdmin: boolean; viewer: boolean } {
   const vis = configuration.roleAwareVisibility;

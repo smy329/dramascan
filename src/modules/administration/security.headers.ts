@@ -11,8 +11,6 @@
 
 import 'server-only';
 
-import { getAlertConfiguration } from './alert.severity';
-
 /** Content Security Policy directives. */
 export type CSPDirective =
   | 'default-src'
@@ -72,8 +70,6 @@ export function getDefaultCSPConfiguration(): CSPConfiguration {
 
 /** Get CSP configuration based on alert configuration. */
 export function getCSPFromConfiguration(): CSPConfiguration {
-  const config = getAlertConfiguration();
-
   // In a production system, would derive CSP from alert config
   // For now, return default configuration
   return getDefaultCSPConfiguration();
@@ -81,43 +77,43 @@ export function getCSPFromConfiguration(): CSPConfiguration {
 
 /** Generate HTTP CSP header string. */
 export function generateCSPHeader(configuration?: CSPConfiguration): string {
-  const csp = configuration || getDefaultCSPConfiguration();
+  const effectiveConfig = configuration || getDefaultCSPConfiguration();
 
   const directives: string[] = [];
 
-  if (configuration) {
-    if (configuration.defaultSrc) {
-      directives.push(`default-src ${configuration.defaultSrc.join(' ')}`);
+  if (effectiveConfig) {
+    if (effectiveConfig.defaultSrc) {
+      directives.push(`default-src ${effectiveConfig.defaultSrc.join(' ')}`);
     }
-    if (configuration.scriptSrc) {
-      directives.push(`script-src ${configuration.scriptSrc.join(' ')}`);
+    if (effectiveConfig.scriptSrc) {
+      directives.push(`script-src ${effectiveConfig.scriptSrc.join(' ')}`);
     }
-    if (configuration.styleSrc) {
-      directives.push(`style-src ${configuration.styleSrc.join(' ')}`);
+    if (effectiveConfig.styleSrc) {
+      directives.push(`style-src ${effectiveConfig.styleSrc.join(' ')}`);
     }
-    if (configuration.imgSrc) {
-      directives.push(`img-src ${configuration.imgSrc.join(' ')}`);
+    if (effectiveConfig.imgSrc) {
+      directives.push(`img-src ${effectiveConfig.imgSrc.join(' ')}`);
     }
-    if (configuration.connectSrc) {
-      directives.push(`connect-src ${configuration.connectSrc.join(' ')}`);
+    if (effectiveConfig.connectSrc) {
+      directives.push(`connect-src ${effectiveConfig.connectSrc.join(' ')}`);
     }
-    if (configuration.fontSrc) {
-      directives.push(`font-src ${configuration.fontSrc.join(' ')}`);
+    if (effectiveConfig.fontSrc) {
+      directives.push(`font-src ${effectiveConfig.fontSrc.join(' ')}`);
     }
-    if (configuration.frameSrc) {
-      directives.push(`frame-src ${configuration.frameSrc.join(' ')}`);
+    if (effectiveConfig.frameSrc) {
+      directives.push(`frame-src ${effectiveConfig.frameSrc.join(' ')}`);
     }
-    if (configuration.objectSrc) {
-      directives.push(`object-src ${configuration.objectSrc.join(' ')}`);
+    if (effectiveConfig.objectSrc) {
+      directives.push(`object-src ${effectiveConfig.objectSrc.join(' ')}`);
     }
-    if (configuration.baseUri) {
-      directives.push(`base-uri ${configuration.baseUri.join(' ')}`);
+    if (effectiveConfig.baseUri) {
+      directives.push(`base-uri ${effectiveConfig.baseUri.join(' ')}`);
     }
-    if (configuration.formAction) {
-      directives.push(`form-action ${configuration.formAction.join(' ')}`);
+    if (effectiveConfig.formAction) {
+      directives.push(`form-action ${effectiveConfig.formAction.join(' ')}`);
     }
-    if (configuration.frameAncestors !== undefined) {
-      directives.push(`frame-ancestors ${configuration.frameAncestors.join(' ')}`);
+    if (effectiveConfig.frameAncestors !== undefined) {
+      directives.push(`frame-ancestors ${effectiveConfig.frameAncestors.join(' ')}`);
     }
   } else {
     // Default CSP

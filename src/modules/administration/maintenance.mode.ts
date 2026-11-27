@@ -159,8 +159,6 @@ export async function disableMaintenanceMode(
  * Get the current maintenance mode message and estimated return time.
  */
 export async function getMaintenanceInfo() {
-  const isEnabled = await isMaintenanceMode()
-
   const setting = await db
     .select({
       value: system_settings.value,
@@ -192,5 +190,5 @@ export async function canAccessAdmin(actor: { userId: string; isSuperAdmin: bool
   }
 
   // Non-super admins can only access if maintenance mode is not enabled
-  return !(await isMaintenanceMode()) || actor.isSuperAdmin
+  return !await isMaintenanceMode() || actor.isSuperAdmin
 }

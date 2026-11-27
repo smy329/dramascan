@@ -11,13 +11,11 @@
 
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
+import { sql, desc } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
 
 import { system_settings } from './schema';
-import { admin_audit_log } from './schema';
 
 /** System resource metric. */
 export type ResourceMetric = 'cpu' | 'memory' | 'disk' | 'swap';
@@ -64,7 +62,7 @@ export async function getSystemResourceUsage(): Promise<SystemResourceSummary> {
     .select()
     .from(system_settings)
     .where(sql`${system_settings.key}.like('resource_%')`)
-    .orderBy(system_settings.key.desc())
+    .orderBy(desc(system_settings.key))
     .limit(4);
 
   const resourceValues: Record<string, number> = {};
@@ -188,17 +186,19 @@ export async function getResourceMetricsHistory(
   const targetName = nameMap[metric];
 
   // Count total
-  const [{ count }] = await db
-    .select({ count: sql`count(*)` })
+  const countResult = await db
+    .select({ count: sql<number>`count(*)` })
     .from(system_settings)
     .where(sql`${system_settings.key}.like('resource_%') AND JSON_EXTRACT(${system_settings.value}, '$.name') = ${targetName}`);
+
+  const totalCount = Number(countResult[0]?.count || 0);
 
   // Get values for current page
   const allValues = await db
     .select()
     .from(system_settings)
     .where(sql`${system_settings.key}.like('resource_%')`)
-    .orderBy(system_settings.key.desc())
+    .orderBy(desc(system_settings.key))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
 
@@ -225,10 +225,10 @@ export async function getResourceMetricsHistory(
 
   return {
     values,
-    total: count || 0,
+    total: totalCount,
     page,
     pageSize,
-    totalPages: Math.ceil((count || 0) / pageSize),
+    totalPages: Math.ceil(totalCount / pageSize),
   };
 }
 

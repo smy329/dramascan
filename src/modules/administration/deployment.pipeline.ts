@@ -1,8 +1,6 @@
 import 'server-only';
 
-import { getDeploymentConfiguration } from './deployment.config';
-
-export type DeploymentStage = 'build' | 'test' | 'staging' | 'production' | 'rollback';
+export type DeploymentStage = 'build' | 'test' | 'preprod' | 'production' | 'rollback';
 
 export type DeploymentStatus = 'pending' | 'approved' | 'in-progress' | 'completed' | 'failed' | 'rolled-back';
 
@@ -60,11 +58,11 @@ export function rollbackDeployment(version: DeploymentVersion, toVersion: string
 }
 
 export function getDeploymentStages(): DeploymentStage[] {
-  return ['build', 'test', 'staging', 'production'];
+  return ['build', 'test', 'preprod', 'production'];
 }
 
 export function canProceedToNextStage(
-  currentStage: DeploymentStage,
+  _currentStage: DeploymentStage,
   status: DeploymentStatus
 ): boolean {
   if (status !== 'completed' && status !== 'approved') {

@@ -11,7 +11,7 @@
 
 import 'server-only';
 
-import { listBackupRecords, getBackupRecord, BackupRecord, BackupStatus } from './database.backup';
+import { listBackupRecords } from './database.backup';
 
 /** Retention policy. */
 export type RetentionPolicy = 'four-week' | 'eight-week' | 'custom';
@@ -72,25 +72,6 @@ export function getRetentionConfiguration(): RetentionConfiguration {
   return policies[policy] || getDefaultRetentionConfiguration();
 }
 
-/** Check if a backup should be retained based on policy. */
-function shouldRetainBackup(
-  backup: BackupRecord,
-  config: RetentionConfiguration
-): boolean {
-  // In a production environment, would check:
-  // 1. Backup status (only retain completed/verified backups)
-  // 2. Age of backup (within retention period)
-  // 3. Whether it's the newest valid backup (if protectNewestValid is true)
-  // 4. Current count of backups (if maxBackups is set)
-
-  // For now, retain all completed/verified backups within the retention period
-  const ageInDays = 0; // Would calculate from backup.startedAt
-  const withinRetention = ageInDays <= config.retentionDays;
-  const isValidStatus = backup.status === BackupStatus.completed || backup.status === BackupStatus.verified;
-
-  return withinRetention && isValidStatus;
-}
-
 /** Prune old backups based on retention policy. */
 export async function pruneOldBackups(
   config: RetentionConfiguration = getDefaultRetentionConfiguration()
@@ -105,7 +86,6 @@ export async function pruneOldBackups(
   const errors: string[] = [];
 
   let retained = 0;
-  let deleted = 0;
 
   // Sort backups by startedAt descending (newest first)
   const sortedBackups = backups.records.sort(
@@ -114,7 +94,7 @@ export async function pruneOldBackups(
 
   for (const backup of sortedBackups) {
     // Skip if this is the newest valid backup and protectNewestValid is true
-    if (config.protectNewestValid && retained === 0 && backup.status === BackupStatus.completed) {
+    if (config.protectNewestValid && retained === 0 && backup.status === 'completed') {
       retained++;
       continue;
     }
@@ -126,9 +106,8 @@ export async function pruneOldBackups(
         // In a production environment, would delete the physical backup file
         // For now, just record the deletion
         deletedIds.push(backup.id);
-        deleted++;
         if (config.logDeletions) {
-          // eslint-disable-next-line no-console
+
           console.log('Deleted backup: ' + backup.id + ' - ' + backup.filename);
         }
       } catch (err) {

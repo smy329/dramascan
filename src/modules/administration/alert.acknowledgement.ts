@@ -11,14 +11,14 @@
 
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
 
 import { system_settings } from './schema';
 import { admin_audit_log } from './schema';
-import { AlertSeverity, EscalationAction, getAlertConfiguration } from './alert.severity';
+import { AlertSeverity } from './alert.severity';
+import { EscalationAction, EscalationRecord, createEscalation } from './alert.escalation';
 
 /** Acknowledgement status. */
 export type AcknowledgementStatus = 'unacknowledged' | 'acknowledged' | 'resolved' | 'closed';
@@ -174,7 +174,7 @@ export async function isAcknowledgedBeyondDeadline(
 
   const acknowledgedAt = new Date(assignment.assignedAt).getTime();
   const now = new Date().getTime();
-  const beyondDeadline = (now - acknowledgedAt) > deadlineMs;
+  const beyondDeadline = now - acknowledgedAt > deadlineMs;
 
   return {
     beyondDeadline,
@@ -188,9 +188,6 @@ export async function escalateUnacknowledgedAlert(
   alertId: string,
   escalatedBy: string
 ): Promise<EscalationRecord> {
-  // Check if the alert has been acknowledged beyond the deadline
-  const configuration = await getAlertConfiguration();
-
   // Get the default deadline from configuration or use a sensible default
   const defaultDeadlineMs = 3600000; // 1 hour
 
@@ -207,12 +204,22 @@ export async function escalateUnacknowledgedAlert(
     });
   }
 
-  return { id: '', alertId, severity: 'high' as AlertSeverity, action: 'none' as EscalationAction, triggeredAt: new Date().toISOString(), triggeredBy: escalatedBy, reason: 'Alert within acknowledgement window', metadata: {} };
+  const acknowledgedAt = new Date().toISOString();
+  return {
+    id: '',
+    alertId,
+    severity: 'high' as AlertSeverity,
+    action: 'none' as EscalationAction,
+    triggeredAt: acknowledgedAt,
+    triggeredBy: escalatedBy,
+    reason: 'Alert within acknowledgement window',
+    metadata: {},
+  };
 }
 
 /** Get acknowledgement history for an alert. */
 export async function getAcknowledgementHistory(
-  alertId: string,
+  _alertId: string,
   page: number = 1,
   pageSize: number = 20
 ): Promise<{

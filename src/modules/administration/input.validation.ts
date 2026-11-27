@@ -12,13 +12,12 @@
 
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
-
-import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
-
-import { system_settings } from './schema';
-import { admin_audit_log } from './schema';
+/** Malicious file extensions (not allowed). */
+const MALICIOUS_EXTENSIONS = [
+  '.exe', '.bat', '.cmd', '.com', '.scr', '.pif',
+  '.sh', '.php', '.pl', '.py', '.rb',
+  '.app', '.dmg', '.deb', '.rpm',
+];
 
 /** Validation result. */
 export interface ValidationResult {
@@ -105,7 +104,7 @@ export function validateURL(
     if (options.disallowInternal && parsed.hostname.startsWith('localhost') || parsed.hostname.startsWith('127.')) {
       errors.push('Internal URLs are not allowed');
     }
-  } catch (e) {
+  } catch {
     errors.push('Invalid URL format');
     cleaned = undefined;
   }
@@ -129,7 +128,9 @@ export function validateFile(
     return { valid: false, errors: ['File is required'] };
   }
 
-  const fileName = String(value);
+  // Type guard for File-like objects
+  const fileLike = value as { size?: number; name?: string } | null;
+  const fileName = fileLike?.name ?? String(value);
   const fileExtension = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
 
   if (options.allowedExtensions && !options.allowedExtensions.includes(fileExtension)) {
@@ -140,7 +141,7 @@ export function validateFile(
     errors.push('Executable files are not allowed');
   }
 
-  if (options.maxSize && value.size > options.maxSize) {
+  if (options.maxSize && fileLike?.size !== undefined && fileLike.size > options.maxSize) {
     errors.push(`File size exceeds maximum of ${options.maxSize / (1024 * 1024)}MB`);
   }
 
@@ -152,7 +153,7 @@ export function validateFile(
 /** Sanitize HTML to prevent XSS. */
 export function sanitizeHTML(
   html: string,
-  options: {
+  _options: {
     allowedTags?: string[];
     allowedAttributes?: Record<string, string[]>;
     allowedIframeSrcs?: string[];

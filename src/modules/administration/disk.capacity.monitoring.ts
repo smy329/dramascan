@@ -11,8 +11,6 @@
 
 import 'server-only';
 
-import { getPostgreSQLSecurityConfig } from './postgres.security';
-
 /** Disk usage metric. */
 export interface DiskUsageMetric {
   /** Filesystem mount point */
@@ -98,7 +96,7 @@ export function getStorageSummary(): StorageSummary {
     logsSizeBytes: logsSize,
     totalDiskUsageBytes: totalDiskUsage,
     availableDiskSpaceBytes: totalAvailable,
-    usagePercentage: totalDiskUsage > 0 ? (totalDiskUsage / (totalDiskUsage + totalAvailable) * 100) : 0,
+    usagePercentage: totalDiskUsage > 0 ? totalDiskUsage / (totalDiskUsage + totalAvailable) * 100 : 0,
   };
 }
 
@@ -132,7 +130,7 @@ export function getCapacityRecommendations(): string[] {
   for (const metric of metrics) {
     if (metric.usagePercentage > 80) {
       recommendations.push(
-        'Consider expanding storage for ' + metric.mountPoint + 
+        'Consider expanding storage for ' + metric.mountPoint +
         ' (current usage: ' + metric.usagePercentage + '%)'
       );
     }

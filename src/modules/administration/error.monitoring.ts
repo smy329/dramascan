@@ -106,7 +106,7 @@ export async function captureError(
 
   // In a full implementation, this would insert into a database table
   // For now, we log to console (in production, would insert into error_logs table)
-  // eslint-disable-next-line no-console
+
   console.error('Error captured for monitoring:', errorRecord);
 
   return errorRecord;

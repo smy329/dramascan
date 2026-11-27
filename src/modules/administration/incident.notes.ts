@@ -12,14 +12,13 @@
 
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, desc } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
 
 import { system_settings } from './schema';
 import { admin_audit_log } from './schema';
-import { IncidentRecord, IncidentSeverity } from './incident.management';
+import { getIncident } from './incident.management';
 
 /** Note severity level (internal only). */
 export type NoteSeverity = 'info' | 'warning' | 'critical';
@@ -58,7 +57,7 @@ export async function createIncidentNote(
   }
 
   // Only allow critical notes for High/Critical incidents, or info/warning for any incident
-  const allowedSeverities = incident.severity === IncidentSeverity.Critical
+  const allowedSeverities = incident.severity === 'critical'
     ? ['info', 'warning', 'critical']
     : ['info', 'warning'];
 
@@ -106,6 +105,10 @@ export async function createIncidentNote(
       key: system_settings.key,
       value: system_settings.value,
     });
+
+  if (!row || !row.value) {
+    throw new Error('Failed to create incident note');
+  }
 
   const noteData = JSON.parse(row.value as string);
 
@@ -178,17 +181,19 @@ export async function getIncidentNotes(
   totalPages: number;
 }> {
   // Count total notes for this incident
-  const [{ count }] = await db
-    .select({ count: sql`count(*)` })
+  const countResult = await db
+    .select({ count: sql<number>`count(*)` })
     .from(system_settings)
     .where(sql`${system_settings.key}.like('incident_note_%') AND JSON_EXTRACT(${system_settings.value}, '$.incidentId') = ${incidentId}`);
+
+  const totalCount = Number(countResult[0]?.count || 0);
 
   // Get notes for current page
   const allNotes = await db
     .select()
     .from(system_settings)
     .where(sql`${system_settings.key}.like('incident_note_%')`)
-    .orderBy(system_settings.key.desc())
+    .orderBy(desc(system_settings.key))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
 
@@ -225,10 +230,10 @@ export async function getIncidentNotes(
 
   return {
     notes: pagedNotes,
-    total: count || 0,
+    total: totalCount,
     page,
     pageSize,
-    totalPages: Math.ceil((count || 0) / pageSize),
+    totalPages: Math.ceil(totalCount / pageSize),
   };
 }
 
@@ -246,7 +251,7 @@ export async function addInternalDiscussion(
   }
 
   // Only allow internal discussion for High/Critical incidents
-  if (incident.severity !== IncidentSeverity.Critical && incident.severity !== IncidentSeverity.High) {
+  if (incident.severity !== 'critical' && incident.severity !== 'high') {
     throw new Error('Internal discussion is only allowed for High/Critical incidents');
   }
 
@@ -263,7 +268,7 @@ export async function addInternalDiscussion(
 /** Get discussion notes for an incident (High/Critical only). */
 export async function getDiscussionNotes(
   incidentId: string,
-  authorizedBy: string
+  _authorizedBy: string
 ): Promise<IncidentNote[]> {
   const incident = await getIncident(incidentId);
 
@@ -272,12 +277,12 @@ export async function getDiscussionNotes(
   }
 
   // Only allow discussion notes for High/Critical incidents
-  if (incident.severity !== IncidentSeverity.Critical && incident.severity !== IncidentSeverity.High) {
+  if (incident.severity !== 'critical' && incident.severity !== 'high') {
     throw new Error('Discussion notes are only accessible for High/Critical incidents');
   }
 
   const allNotes = await getIncidentNotes(incidentId);
 
   // Filter to only critical-severity notes (internal discussion)
-  return allNotes.filter(note => note.severity === 'critical');
+  return allNotes.notes.filter(note => note.severity === 'critical');
 }

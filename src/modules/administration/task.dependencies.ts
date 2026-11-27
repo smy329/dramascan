@@ -12,13 +12,11 @@
 
 import 'server-only';
 
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
 
 import { system_settings } from './schema';
-import { admin_audit_log } from './schema';
 
 /** Dependency direction. */
 export type DependencyDirection = 'prerequisite' | 'dependent';
@@ -88,6 +86,10 @@ export async function createDependency(
       key: system_settings.key,
       value: system_settings.value,
     });
+
+  if (!row?.value) {
+    throw new Error('Failed to create dependency record');
+  }
 
   const dependencyData = JSON.parse(row.value as string);
 
@@ -192,18 +194,23 @@ export async function markDependencySatisfied(
   dependencyId: string,
   satisfiedBy: string
 ): Promise<void> {
+  const existing = await getDependency(dependencyId);
+  if (!existing) {
+    return;
+  }
+
   await db
     .update(system_settings)
     .set({
       value: JSON.stringify({
-        id: dependencyData?.id,
-        task_id: dependencyData?.task_id,
-        prerequisite_task_id: dependencyData?.prerequisite_task_id,
-        dependency_type: dependencyData?.dependency_type,
+        id: existing.id,
+        task_id: existing.task_id,
+        prerequisite_task_id: existing.prerequisite_task_id,
+        dependency_type: existing.dependency_type,
         status: 'satisfied',
-        created_at: dependencyData?.created_at,
+        created_at: existing.created_at,
         created_by: satisfiedBy,
-        notes: dependencyData?.notes,
+        notes: existing.notes,
       }),
       updated_at: new Date(),
     })
@@ -216,18 +223,23 @@ export async function markDependencyFailed(
   failedBy: string,
   errorMessage: string
 ): Promise<void> {
+  const existing = await getDependency(dependencyId);
+  if (!existing) {
+    return;
+  }
+
   await db
     .update(system_settings)
     .set({
       value: JSON.stringify({
-        id: dependencyData?.id,
-        task_id: dependencyData?.task_id,
-        prerequisite_task_id: dependencyData?.prerequisite_task_id,
-        dependency_type: dependencyData?.dependency_type,
+        id: existing.id,
+        task_id: existing.task_id,
+        prerequisite_task_id: existing.prerequisite_task_id,
+        dependency_type: existing.dependency_type,
         status: 'failed',
-        created_at: dependencyData?.created_at,
+        created_at: existing.created_at,
         created_by: failedBy,
-        notes: `${dependencyData?.notes}\n${new Date().toISOString()} - ${failedBy}: ${errorMessage}`,
+        notes: `${existing.notes ?? ''}\n${new Date().toISOString()} - ${failedBy}: ${errorMessage}`,
       }),
       updated_at: new Date(),
     })

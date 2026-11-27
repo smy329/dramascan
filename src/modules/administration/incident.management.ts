@@ -11,20 +11,19 @@
 
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, desc } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
 
 import { system_settings } from './schema';
 import { admin_audit_log } from './schema';
-import { AlertSeverity, IncidentStatus } from './alert.severity';
+import { AlertSeverity } from './alert.severity';
 
 /** Incident severity. */
 export type IncidentSeverity = AlertSeverity;
 
 /** Incident status. */
-export type IncidentStatusType = IncidentStatus;
+export type IncidentStatusType = 'open' | 'in-progress' | 'resolved' | 'closed' | 'failed' | 'recovered';
 
 /** Incident record. */
 export interface IncidentRecord {
@@ -124,6 +123,10 @@ export async function createIncident(
       value: system_settings.value,
     });
 
+  if (!row || !row.value) {
+    throw new Error('Failed to create incident');
+  }
+
   const incidentData = JSON.parse(row.value as string);
 
   return {
@@ -155,7 +158,7 @@ export async function updateIncidentStatus(
   success: boolean,
   errorMessage?: string | null,
   assignedTo?: string | null
-): Promise<IncidentRecord> {
+): Promise<IncidentRecord | null> {
   await db
     .update(system_settings)
     .set({
@@ -295,8 +298,8 @@ export async function assignIncident(
 export async function addCorrectiveAction(
   incidentId: string,
   correctiveAction: string,
-  performedBy: string
-): Promise<IncidentRecord> {
+  _performedBy: string
+): Promise<IncidentRecord | null> {
   await db
     .update(system_settings)
     .set({
@@ -327,7 +330,7 @@ export async function resolveIncident(
   incidentId: string,
   verifiedThroughHealthCheck: boolean,
   resolvedBy: string
-): Promise<IncidentRecord> {
+): Promise<IncidentRecord | null> {
   if (verifiedThroughHealthCheck) {
     // Auto-resolve when verified through health check
     await updateIncidentStatus(incidentId, 'resolved', true, null, resolvedBy);
@@ -368,7 +371,7 @@ export async function listIncidents(
     .select()
     .from(system_settings)
     .where(sql`${system_settings.key}.like('incident_%')`)
-    .orderBy(system_settings.key.desc());
+    .orderBy(desc(system_settings.key));
 
   const incidents: IncidentRecord[] = [];
   for (const row of allIncidents) {

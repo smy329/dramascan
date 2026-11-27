@@ -38,10 +38,10 @@ export interface PostgreSQLSecurityConfig {
   pgStatStatements: boolean;
   /** Conservative autovacuum settings */
   autovacuum: {
-    scaleFactor: number;
-    analyzeScaleFactor: number;
+    scaleFactor: number | string;
+    analyzeScaleFactor: number | string;
     vacuumCostLimit: number;
-    vacuumCostDelay: number;
+    vacuumCostDelay: number | string;
   };
   /** SSL encryption */
   sslEnabled: boolean;

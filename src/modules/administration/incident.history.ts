@@ -12,13 +12,11 @@
 
 import 'server-only';
 
-import { eq } from 'drizzle-orm';
+import { eq, sql, desc } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
 
 import { system_settings } from './schema';
-import { admin_audit_log } from './schema';
 
 /** Incident severity. */
 export type IncidentSeverity = 'critical' | 'high' | 'medium' | 'low';
@@ -128,6 +126,10 @@ export async function createIncident(
       value: system_settings.value,
     });
 
+  if (!row || !row.value) {
+    throw new Error('Failed to create incident');
+  }
+
   const incidentData = JSON.parse(row.value as string);
 
   return {
@@ -159,25 +161,28 @@ export async function updateIncidentStatus(
   errorMessage?: string | null,
   resolvedBy?: string | null
 ): Promise<void> {
+  // First, get the existing incident data
+  const existing = await getIncident(incidentId);
+
   await db
     .update(system_settings)
     .set({
       value: JSON.stringify({
         id: incidentId,
         status,
-        started_at: incidentData?.started_at,
+        started_at: existing?.started_at,
         completed_at: success ? new Date().toISOString() : null,
         duration_ms: success ? null : null, // Would calculate from start
         success,
         error_message: errorMessage,
-        retry_count: incidentData?.retry_count + (success ? 0 : 1) || 1,
-        notes: incidentData?.notes,
-        attachments: incidentData?.attachments,
-        metadata: incidentData?.metadata,
+        retry_count: (existing?.retry_count || 0) + (success ? 0 : 1),
+        notes: existing?.notes,
+        attachments: existing?.attachments,
+        metadata: existing?.metadata,
         resolved_at: success ? new Date().toISOString() : null,
         resolved_by: resolvedBy,
-        created_at: incidentData?.created_at,
-        created_by: incidentData?.created_by,
+        created_at: existing?.created_at,
+        created_by: existing?.created_by,
       }),
       updated_at: new Date(),
     })
@@ -190,27 +195,30 @@ export async function addIncidentNote(
   note: string,
   authoredBy: string
 ): Promise<void> {
+  // First, get the existing incident data
+  const existing = await getIncident(incidentId);
+
   await db
     .update(system_settings)
     .set({
       value: JSON.stringify({
         id: incidentId,
         status: 'in-progress' as IncidentStatus,
-        started_at: null, // Would preserve existing
-        completed_at: null, // Would preserve existing
-        duration_ms: null, // Would preserve existing
-        success: null, // Would preserve existing
-        error_message: null, // Would preserve existing
-        retry_count: null, // Would preserve existing
-        notes: incidentData?.notes
-          ? `${incidentData.notes}\n${new Date().toISOString()} - ${authoredBy}: ${note}`
+        started_at: existing?.started_at, // Would preserve existing
+        completed_at: existing?.completed_at, // Would preserve existing
+        duration_ms: existing?.duration_ms, // Would preserve existing
+        success: existing?.success, // Would preserve existing
+        error_message: existing?.error_message, // Would preserve existing
+        retry_count: existing?.retry_count, // Would preserve existing
+        notes: existing?.notes
+          ? `${existing.notes}\n${new Date().toISOString()} - ${authoredBy}: ${note}`
           : `${new Date().toISOString()} - ${authoredBy}: ${note}`,
-        attachments: incidentData?.attachments,
-        metadata: incidentData?.metadata,
-        resolved_at: incidentData?.resolved_at,
-        resolved_by: incidentData?.resolved_by,
-        created_at: incidentData?.created_at,
-        created_by: incidentData?.created_by,
+        attachments: existing?.attachments,
+        metadata: existing?.metadata,
+        resolved_at: existing?.resolved_at,
+        resolved_by: existing?.resolved_by,
+        created_at: existing?.created_at,
+        created_by: existing?.created_by,
       }),
       updated_at: new Date(),
     })
@@ -225,21 +233,24 @@ export async function addIncidentAttachment(
   mimeType: string,
   uploadedBy: string
 ): Promise<void> {
+  // First, get the existing incident data
+  const existing = await getIncident(incidentId);
+
   await db
     .update(system_settings)
     .set({
       value: JSON.stringify({
         id: incidentId,
         status: 'in-progress' as IncidentStatus,
-        started_at: null, // Would preserve existing
-        completed_at: null, // Would preserve existing
-        duration_ms: null, // Would preserve existing
-        success: null, // Would preserve existing
-        error_message: null, // Would preserve existing
-        retry_count: null, // Would preserve existing
-        notes: incidentData?.notes,
-        attachments: incidentData?.attachments
-          ? [...incidentData.attachments, {
+        started_at: existing?.started_at, // Would preserve existing
+        completed_at: existing?.completed_at, // Would preserve existing
+        duration_ms: existing?.duration_ms, // Would preserve existing
+        success: existing?.success, // Would preserve existing
+        error_message: existing?.error_message, // Would preserve existing
+        retry_count: existing?.retry_count, // Would preserve existing
+        notes: existing?.notes,
+        attachments: existing?.attachments
+          ? [...existing.attachments, {
               filename,
               size,
               mime_type: mimeType,
@@ -253,11 +264,11 @@ export async function addIncidentAttachment(
               uploaded_at: new Date().toISOString(),
               uploaded_by: uploadedBy,
             }],
-        metadata: incidentData?.metadata,
-        resolved_at: incidentData?.resolved_at,
-        resolved_by: incidentData?.resolved_by,
-        created_at: incidentData?.created_at,
-        created_by: incidentData?.created_by,
+        metadata: existing?.metadata,
+        resolved_at: existing?.resolved_at,
+        resolved_by: existing?.resolved_by,
+        created_at: existing?.created_at,
+        created_by: existing?.created_by,
       }),
       updated_at: new Date(),
     })
@@ -291,13 +302,13 @@ export async function getIncident(incidentId: string): Promise<MaintenanceIncide
     error_message: incidentData.error_message as string | null,
     retry_count: incidentData.retry_count as number,
     notes: incidentData.notes as string | null,
-    attachments: incidentData.attachments as Array<{
+    attachments: (incidentData.attachments as Array<{
       filename: string;
       size: number;
       mime_type: string;
       uploaded_at: string;
       uploaded_by: string;
-    }> | null,
+    }>) || undefined,
     metadata: incidentData.metadata as Record<string, unknown> | undefined,
     created_at: incidentData.created_at,
     created_by: incidentData.created_by,
@@ -332,17 +343,19 @@ export async function listIncidents(
     ? sql.join(whereConditions, sql` AND `)
     : undefined;
 
-  const [{ count }] = await db
-    .select({ count: sql`count(*)` })
+  const countResult = await db
+    .select({ count: sql<number>`count(*)` })
     .from(system_settings)
     .where(whereClause ? sql`${system_settings.key}.like('incident_%') AND ${whereClause}` : sql`${system_settings.key}.like('incident_%')`);
+
+  const totalCount = Number(countResult[0]?.count || 0);
 
   // Get incidents for the current page
   const allIncidents = await db
     .select()
     .from(system_settings)
     .where(sql`${system_settings.key}.like('incident_%')`)
-    .orderBy(system_settings.key.desc())
+    .orderBy(desc(system_settings.key))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
 
@@ -370,7 +383,7 @@ export async function listIncidents(
           mime_type: string;
           uploaded_at: string;
           uploaded_by: string;
-        }> | null,
+        }> || undefined,
         metadata: incidentData.metadata as Record<string, unknown> | undefined,
         created_at: incidentData.created_at,
         created_by: incidentData.created_by,
@@ -380,10 +393,10 @@ export async function listIncidents(
 
   return {
     incidents,
-    total: count || 0,
+    total: totalCount,
     page,
     pageSize,
-    totalPages: Math.ceil((count || 0) / pageSize),
+    totalPages: Math.ceil(totalCount / pageSize),
   };
 }
 
@@ -392,7 +405,7 @@ export async function resolveIncident(
   incidentId: string,
   performedBy: string,
   verifiedThroughHealthCheck: boolean
-): Promise<MaintenanceIncident> {
+): Promise<MaintenanceIncident | null> {
   if (verifiedThroughHealthCheck) {
     // Auto-resolve when verified through health check
     await updateIncidentStatus(incidentId, 'resolved', true, null, performedBy);
@@ -411,7 +424,7 @@ export async function failIncident(
   incidentId: string,
   performedBy: string,
   errorMessage: string
-): Promise<MaintenanceIncident> {
+): Promise<MaintenanceIncident | null> {
   await updateIncidentStatus(incidentId, 'failed', false, errorMessage, performedBy);
   return getIncident(incidentId);
 }

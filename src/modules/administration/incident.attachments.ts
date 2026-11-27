@@ -15,11 +15,9 @@ import 'server-only';
 import { eq, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
-
 import { system_settings } from './schema';
 import { admin_audit_log } from './schema';
-import { IncidentRecord, IncidentSeverity } from './incident.management';
+import { getIncident } from './incident.management';
 
 /** Allowed file extensions for incident attachments. */
 const ALLOWED_EXTENSIONS = [
@@ -147,6 +145,10 @@ export async function createIncidentAttachment(
       value: system_settings.value,
     });
 
+  if (!row || !row.value) {
+    throw new Error('Failed to create incident attachment');
+  }
+
   const attachmentData = JSON.parse(row.value as string);
 
   // Create audit log entry
@@ -212,7 +214,7 @@ export async function getIncidentAttachment(attachmentId: string): Promise<Incid
 /** Get attachments for an incident (High/Critical only). */
 export async function getIncidentAttachments(
   incidentId: string,
-  authorizedBy: string
+  _authorizedBy: string
 ): Promise<IncidentAttachment[]> {
   const incident = await getIncident(incidentId);
 
@@ -221,7 +223,7 @@ export async function getIncidentAttachments(
   }
 
   // Only allow attachments for High/Critical incidents
-  if (incident.severity !== IncidentSeverity.Critical && incident.severity !== IncidentSeverity.High) {
+  if (incident.severity !== 'critical' && incident.severity !== 'high') {
     throw new Error('Incident attachments are only accessible for High/Critical incidents');
   }
 

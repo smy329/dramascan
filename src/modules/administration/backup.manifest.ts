@@ -10,7 +10,7 @@
 
 import 'server-only';
 
-import { takeFullBackup, verifyBackup, getBackupRecord, listBackupRecords, BackupRecord, BackupStatus } from './database.backup';
+import { getBackupRecord, listBackupRecords, BackupRecord } from './database.backup';
 
 /** Integrity validation result. */
 export interface IntegrityValidationResult {
@@ -62,8 +62,8 @@ export function createManifestEntry(backup: BackupRecord): BackupManifestEntry {
     compressed: backup.compressed,
     checksum: checksum,
     integrityValid: backup.verified,
-    verifiedAt: backup.completedAt,
-    verifiedBy: performedBy,
+    verifiedAt: backup.completedAt ?? undefined,
+    verifiedBy: 'system',
   };
 }
 
@@ -91,20 +91,17 @@ export async function validateBackupIntegrity(
     };
   }
 
-  // Simulated integrity check
-  const checksumMatch = record.checksum?.startsWith('sha256:');
+  // Simulated integrity check (no checksum stored in BackupRecord currently)
   const sizeMatch = record.sizeBytes > 0;
-  const valid = checksumMatch && sizeMatch;
+  const valid = sizeMatch;
 
   return {
     valid,
-    checksumMatch,
+    checksumMatch: false, // Would compare actual checksum in production
     sizeMatch,
     details: valid
       ? ['Integrity check passed']
-      : checksumMatch
-        ? ['File size matches expected']
-        : ['Checksum mismatch'],
+      : ['File size mismatch'],
     validatedAt: new Date().toISOString(),
   };
 }
@@ -116,7 +113,7 @@ export function alertOnBackupValidationFailure(
 ): void {
   // In a production environment, would send notification to Super Admin
   // For now, we'll log the alert
-  // eslint-disable-next-line no-console
+
   console.warn('Backup validation failure alert: ' + backupId + ' - ' + error);
 }
 

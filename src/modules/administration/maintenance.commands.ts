@@ -38,7 +38,7 @@ export interface MaintenanceCommand {
   /** Command name/description. */
   name: string;
   /** Execute the command. */
-  execute: (options?: MaintenanceCommandOptions) => Promise<MaintenanceCommandResult>;
+  execute: (_options?: MaintenanceCommandOptions) => Promise<MaintenanceCommandResult>;
   /** Validate the command can run given current state. */
   canExecute: () => Promise<{ canRun: boolean; reason?: string }>;
 }
@@ -52,7 +52,7 @@ export async function executeMaintenanceCommand(
 
   try {
     // Log command start
-    // eslint-disable-next-line no-console
+
     console.log(`[maintenance-command] ${command.id}: ${command.name} started`);
 
     // Execute the command
@@ -61,14 +61,14 @@ export async function executeMaintenanceCommand(
     const durationMs = Date.now() - startTime;
 
     // Log command completion
-    // eslint-disable-next-line no-console
+
     console.log(
       `[maintenance-command] ${command.id}: ${command.name} completed ` +
         `in ${durationMs}ms, exitCode=${result.exitCode}, success=${result.success}`
     );
 
     // Log structured result
-    // eslint-disable-next-line no-console
+
     console.info(
       `[maintenance-command-result] ${JSON.stringify({
         success: result.success,
@@ -83,7 +83,7 @@ export async function executeMaintenanceCommand(
     const durationMs = Date.now() - startTime;
 
     // Log command failure
-    // eslint-disable-next-line no-console
+
     console.error(
       `[maintenance-command] ${command.name} failed ` +
         `in ${durationMs}ms: ${error instanceof Error ? error.message : String(error)}`
@@ -130,7 +130,7 @@ export const backupDatabaseCommand: MaintenanceCommand = {
     try {
       // In production: check database connectivity
       return { canRun: true };
-    } catch (error) {
+    } catch {
       return {
         canRun: false,
         reason: 'Database not accessible for backup',
@@ -171,7 +171,7 @@ export const restoreDatabaseCommand: MaintenanceCommand = {
     try {
       // In production: verify backup file exists
       return { canRun: true };
-    } catch (error) {
+    } catch {
       return {
         canRun: false,
         reason: 'No backup file available for restore',

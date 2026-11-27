@@ -161,7 +161,6 @@ export function getSafeServiceLimits(): ServiceLimits {
 /** Check if service restart is safe. */
 export function isServiceRestartSafe(currentRestarts: number, limits: ServiceLimits): boolean {
   // In a 3600 second (1 hour) window, check if we've exceeded max restarts
-  const hourWindow = 3600;
   const recentRestarts = currentRestarts; // Would be tracked in production
 
   return recentRestarts <= limits.maxRestartAttemptsPerHour;

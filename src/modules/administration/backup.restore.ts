@@ -11,7 +11,7 @@
 
 import 'server-only';
 
-import { takeFullBackup, verifyBackup, getBackupRecord, listBackupRecords, BackupRecord, BackupStatus } from './database.backup';
+import { getBackupRecord, listBackupRecords, verifyBackup, BackupRecord } from './database.backup';
 
 /** Backup download result. */
 export interface BackupDownloadResult {
@@ -32,7 +32,7 @@ export async function validateBackupForRestore(
     return { valid: false, record: null as any, message: 'Backup record not found' };
   }
 
-  if (record.status !== BackupStatus.completed) {
+  if (record.status !== 'completed') {
     return { valid: false, record, message: 'Backup is not in completed status' };
   }
 
@@ -69,7 +69,7 @@ export async function restoreDatabaseFromBackup(
   }
 
   // Create audit log entry
-  // eslint-disable-next-line no-console
+
   console.log('Database restored from backup: ' + backupId + ' by ' + performedBy);
 
   return {
@@ -84,7 +84,7 @@ export async function listBackupsForDownload(
   page: number = 1,
   pageSize: number = 20
 ): Promise<{
-  backups: Array<{ id: string; filename: string; sizeBytes: number; status: BackupStatus; verified: boolean }>;
+  backups: Array<{ id: string; filename: string; sizeBytes: number; status: string; verified: boolean }>;
   total: number;
   page: number;
   pageSize: number;

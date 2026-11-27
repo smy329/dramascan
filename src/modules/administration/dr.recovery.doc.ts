@@ -11,7 +11,7 @@
  */
 
 /** Disaster recovery sequence step. */
-export type RecoveryStep = 
+export type RecoveryStep =
   | 'postgresql_restore'
   | 'image_asset_restore'
   | 'application_deployment'

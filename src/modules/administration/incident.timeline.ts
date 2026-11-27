@@ -12,14 +12,12 @@
 
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
+import { sql, desc } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
 
 import { system_settings } from './schema';
-import { admin_audit_log } from './schema';
-import { IncidentRecord, IncidentSeverity, EscalationRecord, IncidentNote, IncidentAttachment } from './incident.management';
+import { IncidentSeverity } from './incident.management';
 
 /** Timeline event types. */
 export type TimelineEventType =
@@ -97,6 +95,10 @@ export async function createTimelineEvent(
       value: system_settings.value,
     });
 
+  if (!row || !row.value) {
+    throw new Error('Failed to create timeline event');
+  }
+
   const eventData = JSON.parse(row.value as string);
 
   return {
@@ -123,17 +125,19 @@ export async function getIncidentTimeline(
   totalPages: number;
 }> {
   // Count total events for this incident
-  const [{ count }] = await db
-    .select({ count: sql`count(*)` })
+  const countResult = await db
+    .select({ count: sql<number>`count(*)` })
     .from(system_settings)
     .where(sql`${system_settings.key}.like('timeline_event_%') AND JSON_EXTRACT(${system_settings.value}, '$.incidentId') = ${incidentId}`);
+
+  const totalCount = Number(countResult[0]?.count || 0);
 
   // Get events for current page
   const allEvents = await db
     .select()
     .from(system_settings)
     .where(sql`${system_settings.key}.like('timeline_event_%')`)
-    .orderBy(system_settings.key.desc())
+    .orderBy(desc(system_settings.key))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
 
@@ -169,10 +173,10 @@ export async function getIncidentTimeline(
 
   return {
     events: pagedEvents,
-    total: count || 0,
+    total: totalCount,
     page,
     pageSize,
-    totalPages: Math.ceil((count || 0) / pageSize),
+    totalPages: Math.ceil(totalCount / pageSize),
   };
 }
 
@@ -194,17 +198,19 @@ export async function getUnifiedTimeline(
     : sql`${system_settings.key}.like('timeline_event_%')`;
 
   // Count total events
-  const [{ count }] = await db
-    .select({ count: sql`count(*)` })
+  const countResult = await db
+    .select({ count: sql<number>`count(*)` })
     .from(system_settings)
     .where(whereCondition);
+
+  const totalCount = Number(countResult[0]?.count || 0);
 
   // Get events for current page
   const allEvents = await db
     .select()
     .from(system_settings)
     .where(whereCondition)
-    .orderBy(system_settings.key.desc())
+    .orderBy(desc(system_settings.key))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
 
@@ -238,9 +244,9 @@ export async function getUnifiedTimeline(
 
   return {
     events: pagedEvents,
-    total: count || 0,
+    total: totalCount,
     page,
     pageSize,
-    totalPages: Math.ceil((count || 0) / pageSize),
+    totalPages: Math.ceil(totalCount / pageSize),
   };
 }

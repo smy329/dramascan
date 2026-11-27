@@ -14,7 +14,6 @@ import {
   SYSTEM_SETTING_KEYS,
   type SettingContentRef,
   parseSettingContentRefs,
-  type SystemSettingKey,
   type SettingInput,
   SETTING_ACTIVATION,
 } from './settings.shared';
@@ -170,7 +169,7 @@ export async function updateSetting(
 
   if (requiresRestart) {
     // For restart-required settings, warn the administrator
-    // eslint-disable-next-line no-console
+
     console.warn(
       `Setting '${key}' requires application restart to take effect. ` +
         'Please restart the application after saving this setting.'
@@ -198,7 +197,7 @@ export async function updateSetting(
           : parsed.jsonValue !== null
           ? `json:${JSON.stringify(parsed.jsonValue)}`
           : null,
-        changed_by: actor.userId,
+        changed_by: actor.userId!,
         changed_at: new Date(),
         version_comment: 'Automated version capture on setting update',
       });
@@ -212,7 +211,7 @@ export async function updateSetting(
       boolean_value: parsed.booleanValue ?? null,
       string_value: parsed.stringValue ?? null,
       value: parsed.jsonValue ?? null,
-      updated_by: actor.userId,
+      updated_by: actor.userId!,
       updated_at: new Date(),
     })
     .onConflictDoUpdate({
@@ -222,7 +221,7 @@ export async function updateSetting(
         boolean_value: parsed.booleanValue ?? null,
         string_value: parsed.stringValue ?? null,
         value: parsed.jsonValue ?? null,
-        updated_by: actor.userId,
+        updated_by: actor.userId!,
         updated_at: new Date(),
       },
     })
@@ -362,4 +361,4 @@ export async function importConfiguration(
         : 'No new settings applied',
     errors,
   };
-}'' 
+}

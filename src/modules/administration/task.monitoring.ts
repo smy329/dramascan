@@ -12,13 +12,11 @@
 
 import 'server-only';
 
-import { eq } from 'drizzle-orm';
+import { eq, sql, desc } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
 
 import { system_settings } from './schema';
-import { admin_audit_log } from './schema';
 
 /** Task status. */
 export type MaintenanceTaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -90,6 +88,10 @@ export async function createTask(
       updatedAt: system_settings.updated_at,
     });
 
+  if (!row?.value) {
+    throw new Error('Failed to create maintenance task record');
+  }
+
   // Parse the task data from the stored value
   const taskData = JSON.parse(row.value as string);
 
@@ -112,8 +114,8 @@ export async function updateTaskStatus(
   taskId: string,
   status: MaintenanceTaskStatus,
   success: boolean | null,
-  errorMessage?: string | null,
-  performed_by: string
+  performed_by: string,
+  errorMessage?: string | null
 ): Promise<void> {
   await db
     .update(system_settings)
@@ -174,17 +176,19 @@ export async function listTasks(
   totalPages: number;
 }> {
   // Count total tasks
-  const [{ count }] = await db
-    .select({ count: sql`count(*)` })
+  const countResult = await db
+    .select({ count: sql<number>`count(*)` })
     .from(system_settings)
     .where(sql`${system_settings.key}.like('task_%')`);
+
+  const totalCount = Number(countResult[0]?.count || 0);
 
   // Get tasks for the current page (ordered by ID descending, newest first)
   const allTasks = await db
     .select()
     .from(system_settings)
     .where(sql`${system_settings.key}.like('task_%')`)
-    .orderBy(system_settings.key.desc())
+    .orderBy(desc(system_settings.key))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
 
@@ -209,10 +213,10 @@ export async function listTasks(
 
   return {
     tasks,
-    total: count || 0,
+    total: totalCount,
     page,
     pageSize,
-    totalPages: Math.ceil((count || 0) / pageSize),
+    totalPages: Math.ceil(totalCount / pageSize),
   };
 }
 
@@ -221,8 +225,12 @@ export async function completeTaskSuccess(
   taskId: string,
   performed_by: string
 ): Promise<MaintenanceTask> {
-  await updateTaskStatus(taskId, 'completed', true, null, performed_by);
-  return getTask(taskId);
+  await updateTaskStatus(taskId, 'completed', true, performed_by, null);
+  const task = await getTask(taskId);
+  if (!task) {
+    throw new Error(`Task ${taskId} not found after update`);
+  }
+  return task;
 }
 
 /** Complete a task with failure status. */
@@ -231,6 +239,10 @@ export async function completeTaskFailure(
   performed_by: string,
   errorMessage: string
 ): Promise<MaintenanceTask> {
-  await updateTaskStatus(taskId, 'failed', false, errorMessage, performed_by);
-  return getTask(taskId);
+  await updateTaskStatus(taskId, 'failed', false, performed_by, errorMessage);
+  const task = await getTask(taskId);
+  if (!task) {
+    throw new Error(`Task ${taskId} not found after update`);
+  }
+  return task;
 }

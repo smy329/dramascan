@@ -11,13 +11,11 @@
 
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
 
 import { system_settings } from './schema';
-import { admin_audit_log } from './schema';
 
 /** Rate limit status. */
 export type RateLimitStatus = 'ok' | 'rate-limited' | 'blocked';
@@ -83,35 +81,42 @@ export const DEFAULT_RATE_LIMIT_CONFIGS: Record<string, RateLimitConfig> = {
 
 /** Get rate limit configuration for an endpoint. */
 export function getRateLimitConfig(endpoint: string): RateLimitConfig {
-  return DEFAULT_RATE_LIMIT_CONFIGS[endpoint] || DEFAULT_RATE_LIMIT_CONFIGS.api;
+  return (
+    DEFAULT_RATE_LIMIT_CONFIGS[endpoint] ??
+    DEFAULT_RATE_LIMIT_CONFIGS.api ?? {
+      requests: 100,
+      windowMs: 10 * 60 * 1000,
+      authenticatedOnly: false,
+      identifier: 'ip',
+    }
+  );
 }
 
 /** Check rate limit for a request. */
 export async function checkRateLimit(
   endpoint: string,
   identifier: string,
-  performedBy: string
+  _performedBy: string
 ): Promise<RateLimitResult> {
   const config = getRateLimitConfig(endpoint);
   const now = new Date().getTime();
-  const windowStart = now - config.windowMs;
 
   // Query the database for requests within this window
-  const [row] = await db
-    .select({ count: sql`count(*)` })
-    .from(system_settings) // Using system_settings as temporary rate limit store
+  const result = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(system_settings)
     .where(
       sql`${system_settings.key}.like('rate_limit_%') AND JSON_EXTRACT(${system_settings.value}, '$.identifier') = ${identifier} AND JSON_EXTRACT(${system_settings.value}, '$.endpoint') = ${endpoint}`
     );
 
-  const requestCount = row ? row.count : 0;
+  const requestCount = Number(result[0]?.count || 0);
 
   const isRateLimited = requestCount >= config.requests;
 
   return {
     status: isRateLimited ? 'rate-limited' : 'ok',
     remaining: Math.max(0, config.requests - requestCount - 1),
-    resetTime: new Date(now - (now % config.windowMs) + config.windowMs).toISOString(),
+    resetTime: new Date(now - now % config.windowMs + config.windowMs).toISOString(),
     limit: config.requests,
   };
 }
@@ -122,7 +127,6 @@ export async function recordRateLimitHit(
   identifier: string,
   performedBy: string
 ): Promise<RateLimitResult> {
-  const config = getRateLimitConfig(endpoint);
   const now = new Date().getTime();
   const key = `rate_limit_${crypto.randomUUID()}`;
 

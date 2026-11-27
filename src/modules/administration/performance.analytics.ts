@@ -11,13 +11,11 @@
 
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
+import { sql, desc } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { requirePermission, type ActorContext } from '@/modules/authorization';
 
 import { system_settings } from './schema';
-import { admin_audit_log } from './schema';
 
 /** Performance metric entry. */
 export interface PerformanceMetric {
@@ -89,6 +87,10 @@ export async function recordMetric(
       value: system_settings.value,
     });
 
+  if (!row || !row.value) {
+    throw new Error('Failed to record metric');
+  }
+
   const metricData = JSON.parse(row.value as string);
 
   return {
@@ -116,17 +118,19 @@ export async function getMetricsByName(
   totalPages: number;
 }> {
   // Count total metrics with this name
-  const [{ count }] = await db
-    .select({ count: sql`count(*)` })
+  const countResult = await db
+    .select({ count: sql<number>`count(*)` })
     .from(system_settings)
     .where(sql`${system_settings.key}.like('metric_%') AND JSON_EXTRACT(${system_settings.value}, '$.name') = ${name}`);
+
+  const totalCount = Number(countResult[0]?.count || 0);
 
   // Get metrics for the current page
   const allMetrics = await db
     .select()
     .from(system_settings)
     .where(sql`${system_settings.key}.like('metric_%')`)
-    .orderBy(system_settings.key.desc())
+    .orderBy(desc(system_settings.key))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
 
@@ -151,10 +155,10 @@ export async function getMetricsByName(
 
   return {
     metrics,
-    total: count || 0,
+    total: totalCount,
     page,
     pageSize,
-    totalPages: Math.ceil((count || 0) / pageSize),
+    totalPages: Math.ceil(totalCount / pageSize),
   };
 }
 
@@ -166,7 +170,7 @@ export async function getRecentMetrics(
     .select()
     .from(system_settings)
     .where(sql`${system_settings.key}.like('metric_%')`)
-    .orderBy(system_settings.key.desc())
+    .orderBy(desc(system_settings.key))
     .limit(limit);
 
   const metrics: PerformanceMetric[] = [];

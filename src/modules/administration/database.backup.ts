@@ -12,8 +12,6 @@
 
 import 'server-only';
 
-import { getPostgreSQLSecurityConfig } from './postgres.security';
-
 /** Backup status. */
 export type BackupStatus = 'pending' | 'in-progress' | 'completed' | 'failed' | 'verified';
 
@@ -36,7 +34,7 @@ export interface BackupRecord {
 /** Take a full PostgreSQL backup. */
 export async function takeFullBackup(
   performedBy: string,
-  backupDir: string = '/var/backups/dramascan'
+  _backupDir: string = '/var/backups/dramascan'
 ): Promise<BackupRecord> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -76,7 +74,7 @@ export async function takeFullBackup(
   };
 
   // Create audit log entry
-  // eslint-disable-next-line no-console
+
   console.log('Backup ' + record.status + ': ' + record.filename + ' by ' + performedBy);
 
   return record;
@@ -87,7 +85,7 @@ export async function verifyBackup(backupId: string): Promise<{ success: boolean
   // In a production environment, would check the backup file integrity
   // For now, return simulated result
   const record: BackupRecord = {
-    id,
+    id: backupId,
     filename: 'dramascan_backup_dummy.sql.gz',
     sizeBytes: 1048576,
     compressed: true,
@@ -105,7 +103,7 @@ export async function verifyBackup(backupId: string): Promise<{ success: boolean
 }
 
 /** Get backup record by ID. */
-export async function getBackupRecord(backupId: string): Promise<BackupRecord | null> {
+export async function getBackupRecord(_backupId: string): Promise<BackupRecord | null> {
   // In a production environment, would query the backup metadata store
   // For now, return null
   return null;
@@ -134,7 +132,7 @@ export async function listBackupRecords(
 }
 
 /** Get backup status. */
-export function getBackupStatus(status: BackupStatus): BackupRecord[] {
+export function getBackupStatus(_status: BackupStatus): BackupRecord[] {
   // In a production environment, would query by status
   // For now, return empty array
   return [];

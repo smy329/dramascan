@@ -12,8 +12,6 @@
 
 import 'server-only';
 
-import { getAlertConfiguration } from './alert.severity';
-
 /** OpenAPI info object. */
 export interface OpenAPIInfo {
   title: string;
@@ -81,6 +79,9 @@ export interface OpenAPIParameter {
     type: string;
     format?: string;
     enum?: string[];
+    default?: unknown;
+    items?: { type: string; properties?: Record<string, { type: string; format?: string; enum?: string[] }> };
+    properties?: Record<string, { type: string; format?: string; enum?: string[] }>;
   };
 }
 
@@ -92,6 +93,8 @@ export interface OpenAPIResponse {
       schema: {
         type: string;
         example?: unknown;
+        items?: { type: string; properties?: Record<string, { type: string; format?: string; enum?: string[] }> };
+        properties?: Record<string, { type: string; format?: string; enum?: string[] }>;
       };
     };
   };
@@ -105,6 +108,8 @@ export interface OpenAPIRequestBody {
       schema: {
         type: string;
         example?: unknown;
+        items?: { type: string; properties?: Record<string, { type: string; format?: string; enum?: string[] }> };
+        properties?: Record<string, { type: string; format?: string; enum?: string[] }>;
       };
     };
   };
@@ -118,6 +123,8 @@ export interface OpenAPISecuritySchemeObject {
   in?: 'query' | 'header' | 'cookie';
   flow?: 'password' | 'implicit' | 'authorizationCode' | 'clientCredentials';
   scopes?: string[];
+  scheme?: string;
+  bearerFormat?: string;
 }
 
 /** OpenAPI document. */
@@ -323,8 +330,10 @@ export function getOpenAPIDocument(): OpenAPIDocument {
           type: 'apiKey',
           in: 'header',
           name: 'Authorization',
+          description: 'Bearer token for API authentication',
         },
       },
+      schemas: {},
     },
   };
 }
