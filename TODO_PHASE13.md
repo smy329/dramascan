@@ -11,26 +11,27 @@
 ## Prompt 176: Runtime-Safe Configuration Updates ✅ PARTIAL
 - [x] Setting activation classification (immediate/restart-required)
 - [x] Value validation via Zod before save
-- [ ] Warning display for restart-required settings (implemented via console.warn)
-- [ ] Prevent inconsistent state - settings are always saved, with warning
+- [x] Warning display for restart-required settings via console.warn
+- [ ] Prevent inconsistent state on restart-required settings
 
 ## Prompt 177: Configuration Version History ✅ SIMPLIFIED
 - [x] Created system_setting_versions table via migration 0031
 - [x] Version tracking added to updateSetting function
-- [ ] Super Admin restore functionality (simplified - stores version history)
-- [ ] Rollback creates new version rather than deleting history (implemented - each update creates new version entry)
+- [x] Each update creates new version entry (history preserved)
+- [ ] Super Admin restore from previous version (simplified implementation)
 
 ## Prompt 178: Configuration Change Confirmation
 - [ ] Show current/proposed values before save
-- [ ] Validate proposed value before saving (via Zod)
+- [ ] Validate proposed value before saving
 - [ ] Require explicit confirmation
 - [ ] Report success/failure accurately
+- [ ] Do not partially apply multi-setting changes
 
 ## Prompt 179: Configuration JSON Export/Import
-- [ ] Export Super Admin configuration as JSON (implemented - exportConfiguration)
-- [ ] Exclude secrets, OAuth credentials, session secrets (implemented)
+- [ ] Export Super Admin configuration as JSON
+- [ ] Exclude secrets, OAuth credentials, session secrets
 - [ ] Provide preview of proposed changes
-- [ ] Require confirmation before applying (implemented - importConfiguration requires confirmation)
+- [ ] Require confirmation before applying
 
 ## Prompt 180: Maintenance Mode
 - [ ] Super Admin control of maintenance mode
