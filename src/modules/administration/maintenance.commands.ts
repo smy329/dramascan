@@ -106,17 +106,13 @@ export const backupDatabaseCommand: MaintenanceCommand = {
   name: 'Backup PostgreSQL database',
 
   async execute(options?: MaintenanceCommandOptions): Promise<MaintenanceCommandResult> {
-    // Timeout and cwd are available via options but not used in this simulated command
-    const _timeout = options?.timeout;
-    const _cwd = options?.cwd;
-
     // In a production environment, would run: pg_dump
     // For now, simulate the command
     const start = Date.now();
 
     // Execute pg_dump via child_process in production
     // const { execSync } = require('child_process');
-    // const output = execSync(`pg_dump ${DATABASE_URL}`, { timeout: _timeout, cwd: _cwd });
+    // const output = execSync(`pg_dump ${DATABASE_URL}`, { timeout: options?.timeout, cwd: options?.cwd });
 
     const durationMs = Date.now() - start;
 
@@ -149,10 +145,6 @@ export const restoreDatabaseCommand: MaintenanceCommand = {
   name: 'Restore PostgreSQL database',
 
   async execute(options?: MaintenanceCommandOptions): Promise<MaintenanceCommandResult> {
-    // Timeout and cwd are available via options but not used in this simulated command
-    const _timeout = options?.timeout;
-    const _cwd = options?.cwd;
-
     // In production, would expect a backup file path option
     // const backupPath = options?.backupPath;
 
@@ -161,7 +153,7 @@ export const restoreDatabaseCommand: MaintenanceCommand = {
 
     // Execute pg_restore via child_process in production
     // const { execSync } = require('child_process');
-    // const output = execSync(`pg_restore --dbname=${DATABASE_URL} ${backupPath}`, { timeout: _timeout, cwd: _cwd });
+    // const output = execSync(`pg_restore --dbname=${DATABASE_URL} ${backupPath}`, { timeout: options?.timeout, cwd: options?.cwd });
 
     const durationMs = Date.now() - start;
 
@@ -194,19 +186,14 @@ export const retentionCleanupCommand: MaintenanceCommand = {
   name: 'Retention cleanup',
 
   async execute(options?: MaintenanceCommandOptions): Promise<MaintenanceCommandResult> {
-    // timeout is available via options but not used in this simulated command
-    const _timeout = options?.timeout;
-
-    const start = Date.now();
-
     // In production, would delete entries older than retention period
     // e.g., DELETE FROM system_setting_versions WHERE changed_at < now() - interval '30 days'
     // const { execSync } = require('child_process');
     // const output = execSync(`psql -c "DELETE FROM system_setting_versions WHERE changed_at < now() - interval '30 days'"`, {
-    //   timeout: _timeout,
+    //   timeout: options?.timeout,
     // });
 
-    const durationMs = Date.now() - start;
+    const start = Date.now();
 
     const deletedCount = Math.floor(Math.random() * 100); // Simulated
 
@@ -214,7 +201,7 @@ export const retentionCleanupCommand: MaintenanceCommand = {
       success: true,
       exitCode: 0,
       message: `Retention cleanup completed: ${deletedCount} entries deleted`,
-      durationMs,
+      durationMs: Date.now() - start,
       output: `Cleaned up ${deletedCount} expired entries`,
     };
   },
@@ -231,20 +218,13 @@ export const validateConfigurationCommand: MaintenanceCommand = {
   name: 'Validate configuration',
 
   async execute(options?: MaintenanceCommandOptions): Promise<MaintenanceCommandResult> {
-    // timeout is available via options but not used in this simulated command
-    const _timeout = options?.timeout;
+    // In production, would validate all system settings
+    // const settings = await getAllSettings();
 
     const start = Date.now();
 
-    // Validate system settings
-    const issues: string[] = [];
-
-    // Check if essential settings exist
-    // In production, would query the database
-    // const settings = await getAllSettings();
-
     // Simulated validation
-    issues.push('No issues found (simulated)');
+    const issues: string[] = ['No issues found (simulated)'];
 
     const durationMs = Date.now() - start;
 

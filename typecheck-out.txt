@@ -1,9 +1,7 @@
-src/modules/administration/maintenance.commands.ts(110,11): error TS6133: '_timeout' is declared but its value is never read.
-src/modules/administration/maintenance.commands.ts(111,11): error TS6133: '_cwd' is declared but its value is never read.
-src/modules/administration/maintenance.commands.ts(153,11): error TS6133: '_timeout' is declared but its value is never read.
-src/modules/administration/maintenance.commands.ts(154,11): error TS6133: '_cwd' is declared but its value is never read.
-src/modules/administration/maintenance.commands.ts(198,11): error TS6133: '_timeout' is declared but its value is never read.
-src/modules/administration/maintenance.commands.ts(235,11): error TS6133: '_timeout' is declared but its value is never read.
+src/modules/administration/maintenance.commands.ts(108,17): error TS6133: 'options' is declared but its value is never read.
+src/modules/administration/maintenance.commands.ts(147,17): error TS6133: 'options' is declared but its value is never read.
+src/modules/administration/maintenance.commands.ts(188,17): error TS6133: 'options' is declared but its value is never read.
+src/modules/administration/maintenance.commands.ts(220,17): error TS6133: 'options' is declared but its value is never read.
 src/modules/administration/maintenance.mode.ts(162,9): error TS6133: 'isEnabled' is declared but its value is never read.
 src/modules/administration/schema.ts(76,17): error TS2304: Cannot find name 'timestamp'.
 src/modules/administration/settings.ts(17,8): error TS6133: 'SystemSettingKey' is declared but its value is never read.
