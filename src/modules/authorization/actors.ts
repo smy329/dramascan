@@ -11,8 +11,8 @@
 import { eq } from 'drizzle-orm';
 import { headers } from 'next/headers';
 import { db } from '@/db/client';
-import { users } from '@/modules/auth/schema';
-import { permissions, roles, userRoles } from '@/modules/authorization/schema';
+import { users } from '@/db/schema';
+import { permissions, roles, userRoles } from '@/db/schema';
 import { auth } from '@/platform/auth/better-auth';
 import {
   isPermissionKey,

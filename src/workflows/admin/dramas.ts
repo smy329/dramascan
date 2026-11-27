@@ -381,7 +381,7 @@ export async function listDramas(
 
   // Build WHERE conditions: default is non-deleted; `trashed` selects the
   // soft-deleted view; draft/published/unpublished filter the publication state.
-  const whereConditions: any[] = [];
+  const whereConditions: import('drizzle-orm').SQL<unknown>[] = [];
 
   if (query.status === 'trashed') {
     whereConditions.push(isNotNull(dramas.deleted_at));

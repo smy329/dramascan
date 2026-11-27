@@ -128,6 +128,9 @@ export {
   ANALYTICS_RETENTION_BATCH_SIZE,
   ANALYTICS_RETENTION_MAX_BATCH_SIZE,
   GUEST_SESSION_RETENTION_DAYS,
+} from './retention-constants';
+
+export {
   purgeExpiredGuestData,
 } from './retention';
 

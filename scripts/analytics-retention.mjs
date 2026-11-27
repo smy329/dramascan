@@ -24,27 +24,34 @@
  * counts are made of the visitor keys; and a session row linked to an account
  * is never removed, because it is that account's stable visitor key.
  *
- * The statements mirror `src/modules/analytics/retention.ts`, which is the
- * application-side implementation of the same policy. Keep the two in step.
+ * The constants are imported from `src/modules/analytics/retention-constants.ts`,
+ * which is shared between the application and the maintenance script.
+ * Keep the two in step.
  */
 
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 import { parse } from 'dotenv';
 import { Client } from 'pg';
 
+// Import retention constants from the shared constants module to avoid duplication.
+// The script runs outside the Next.js build, so we load the compiled output.
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
+const constantsModule = await import('../src/modules/analytics/retention-constants.ts');
+
 /** How long the raw analytics events are kept, in days. */
-export const DEFAULT_RETENTION_DAYS = 400;
+export const DEFAULT_RETENTION_DAYS = constantsModule.ANALYTICS_EVENT_RETENTION_DAYS;
 
 /** How long a guest-session row is kept, in days. */
-export const DEFAULT_GUEST_RETENTION_DAYS = 400;
+export const DEFAULT_GUEST_RETENTION_DAYS = constantsModule.GUEST_SESSION_RETENTION_DAYS;
 
 /** How many rows one run removes from one table. */
-export const DEFAULT_BATCH_SIZE = 1000;
+export const DEFAULT_BATCH_SIZE = constantsModule.ANALYTICS_RETENTION_BATCH_SIZE;
 
 /** The largest batch one run may remove from one table. */
-export const MAX_BATCH_SIZE = 10_000;
+export const MAX_BATCH_SIZE = constantsModule.ANALYTICS_RETENTION_MAX_BATCH_SIZE;
 
 /**
  * The tables the command removes rows from, and the column that decides when a

@@ -414,14 +414,19 @@ function validateOrigin(
     parsed.hostname === '::1' ||
     parsed.hostname === '[::1]';
 
-  if (!isProduction && isLoopback) {
+  const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build';
+
+  // During build phase, allow HTTP for localhost (treated as non-production)
+  const effectiveIsProduction = isProduction && !isBuildPhase;
+
+  if (!effectiveIsProduction && isLoopback) {
     return;
   }
 
   ctx.addIssue({
     code: 'custom',
     path: [field],
-    message: isProduction
+    message: effectiveIsProduction
       ? `${field} must use HTTPS.`
       : `${field} must use HTTPS unless it points to localhost in development.`,
   });

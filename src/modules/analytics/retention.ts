@@ -15,6 +15,14 @@ import {
   search_events,
 } from './schema';
 
+import {
+  ANALYTICS_EVENT_RETENTION_DAYS,
+  ANALYTICS_RETENTION_BATCH_SIZE,
+  ANALYTICS_RETENTION_MAX_BATCH_SIZE,
+  DAY_IN_MILLISECONDS,
+  GUEST_SESSION_RETENTION_DAYS,
+} from './retention-constants';
+
 /**
  * The analytics retention policy (Prompt 139, requirements §10.1).
  *
@@ -41,21 +49,6 @@ import {
  * `batchSize` rows from one table, it never locks a whole table, and it exits.
  * It is not a worker and it does not schedule itself.
  */
-
-/** How long the raw analytics events are kept, in days. */
-export const ANALYTICS_EVENT_RETENTION_DAYS = 400;
-
-/** How long a guest-session row is kept, in days. */
-export const GUEST_SESSION_RETENTION_DAYS = 400;
-
-/** The default number of rows one run removes from one table. */
-export const ANALYTICS_RETENTION_BATCH_SIZE = 1000;
-
-/** The largest batch one run may remove from one table. */
-export const ANALYTICS_RETENTION_MAX_BATCH_SIZE = 10_000;
-
-/** One day in milliseconds. */
-const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000;
 
 /** What one retention run removed. */
 export type AnalyticsRetentionResult = {

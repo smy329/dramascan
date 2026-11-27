@@ -14,7 +14,7 @@ import 'server-only';
 
 import { db } from '@/db/client';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
-import { loginAttempts, users } from '@/modules/auth/schema';
+import { loginAttempts, users } from '@/db/schema';
 
 /** Maximum failed attempts before temporary lockout is triggered. */
 const DEFAULT_FAILURE_THRESHOLD = 5;

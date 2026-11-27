@@ -13,7 +13,7 @@
 import 'server-only';
 
 import { db } from '@/db/client';
-import { sessions, users } from '@/modules/auth/schema';
+import { sessions, users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { resolveActor } from '@/modules/authorization/actors';
