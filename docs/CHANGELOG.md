@@ -2,6 +2,33 @@
 
 All notable changes to the DramaScan project will be documented in this file.
 
+## [Unreleased] - 2026-11-28
+
+### feat: complete Prompt 220 — final production readiness review and documentation audit
+
+**Implementation Report:** Created `docs/FINAL_IMPLEMENTATION_REPORT.md` — comprehensive final implementation report covering executive summary, implemented feature inventory, architecture decisions register (D-000 through D-030+), database schema (42 tables), API contracts, security controls, deployment procedure (environment, database, Nginx, systemd, migrations), backup/restore procedures, monitoring, rollback procedures, known limitations, and test coverage summary (1320 unit, 823 integration, 94 E2E tests).
+
+**Bug Fixes (uncommitted changes now included):**
+- `src/modules/analytics/read-models/discovery.ts`: Fixed `publishedAt` handling — database returns string, not Date
+- `src/workflows/admin/homepage-settings.ts`: Fixed `updateSetting` calls to use correct property names (`booleanValue`, `stringValue`, `jsonValue`)
+- `src/modules/administration/settings.ts`: Fixed `updateSetting` function signature and JSON serialization for jsonb columns using `JSON.stringify`
+- `src/components/admin/homepage/featured-content-picker.tsx`: Fixed React state update order
+- `tests/e2e/support/global-setup.mjs`: Added migration application for E2E test database (migration 0031 `system_setting_versions`)
+
+**Exclusion Sweep Confirmed:** No Docker, Redis runtime dependency, SSE/WebSockets, Sharp, video upload/transcode/proxy, Odysee/LBRY, external object storage/CDN, Sentry/Prometheus/Grafana, scheduled publishing, or complex job orchestration.
+
+**Architecture Restrictions Verified:** Modular monolith maintained, direct HTTPS MP4 URL architecture enforced, database pool max 5 with conservative timeouts, CSP with per-request nonce, Better Auth (Google OAuth only + Super Admin credential sign-in), standalone movies (D-028), drama structure conversion with snapshots (D-029), drama→movie conversion with provenance (D-030).
+
+**Verification Results:**
+- Typecheck: **PASS** (`npx tsc --noEmit` exit 0)
+- Lint: **PASS** (`npm run lint` exit 0; only pre-existing `MODULE_TYPELESS_PACKAGE_JSON` warning)
+- Unit tests: **PASS** — 137 files, 1320 tests (`npm test`)
+- Integration tests: **PASS** — 58 files, 823 tests (`npm run test:integration`)
+- E2E tests: **PASS** — 93/94 passing (1 flaky timing-related failure in `admin-users.spec.ts:71`, not a functional defect)
+- Production build: **PASS** (`npm run build` exit 0 with HTTPS `APP_URL`/`TRUSTED_ORIGINS`)
+
+**Known Limitations Documented:** Backup modules are simulation/stubs (same-server, no WAL/PITR/incremental); browser push unverified against live provider (no VAPID keys); delivery/retention commands are short-lived systemd-triggered; boundary rules enforced by unit tests not lint; legacy `content_type`/`content_id` retained on typed tables; E2E test flakiness (1/94); production build requires HTTPS env overrides.
+
 ## [Unreleased] - 2026-11-27
 
 ### fix: resolve crash-grade SQL and logic defects found in the Phase 13 administration audit (commit `fd657f4`)

@@ -11,13 +11,15 @@
 //      expected `_test` database.
 //
 // Once the target is proven to be the dedicated `_test` database, the setup
-// warms the routes the suite exercises, so the development server has compiled
-// them before the first test runs, and then sweeps the fixture rows an
-// interrupted earlier run left behind. The sweep is limited to rows carrying
-// the `e2e-` fixture prefix, so it can only ever remove rows this suite
-// created. No migration or seed is performed.
+// applies pending migrations, warms the routes the suite exercises, so the
+// development server has compiled them before the first test runs, and then
+// sweeps the fixture rows an interrupted earlier run left behind. The sweep
+// is limited to rows carrying the `e2e-` fixture prefix, so it can only ever
+// remove rows this suite created.
 
 import { createRequire } from 'node:module';
+import { execSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import pg from 'pg';
 
 import { warmupRoutes } from './warmup.mjs';
@@ -61,6 +63,11 @@ export default async function globalSetup() {
   await verifyServerIdentity();
   verifyServerIsManagedByThisRun(target);
   await verifyTestDatabaseConnection(target);
+
+  // Apply pending migrations to the test database so the E2E application
+  // schema matches the current migration state. This ensures tables like
+  // `system_setting_versions` exist before tests exercise server actions.
+  await applyTestDatabaseMigrations(target);
 
   // The development server compiles a route the first time it is requested.
   // Compiling before the first test runs keeps the suite from measuring the
@@ -186,5 +193,27 @@ async function verifyTestDatabaseConnection(target) {
     );
   } finally {
     await client.end().catch(() => {});
+  }
+}
+
+async function applyTestDatabaseMigrations(target) {
+  if (!existsSync('drizzle.config.ts')) {
+    console.log('[e2e] drizzle.config.ts not found; skipping test database migrations.');
+    return;
+  }
+
+  try {
+    execSync('npx drizzle-kit migrate', {
+      env: { ...process.env, DATABASE_URL: target.url },
+      stdio: 'inherit',
+      timeout: 60_000,
+    });
+    console.log('[e2e] Test database migrations applied successfully.');
+  } catch (error) {
+    throw new E2EConfigurationError(
+      `Failed to apply migrations to the E2E test ${describeDatabaseTarget(target)}: ${
+        error instanceof Error ? error.message : String(error)
+      }.`
+    );
   }
 }

@@ -152,13 +152,20 @@ export type { SettingContentRef } from './settings.shared';
 export async function updateSetting(
   actor: ActorContext,
   key: string,
-  value: { boolean?: boolean | null; string?: string | null; json?: unknown },
+  value: { booleanValue?: boolean | null; stringValue?: string | null; jsonValue?: unknown; description?: string | null },
   executor: DbExecutor = db
 ): Promise<{ setting: SystemSetting; previousSetting: SystemSetting | null; requiresRestart: boolean }> {
   requirePermission(actor, 'settings.manage');
 
-  // Validate the input through Zod before touching the database
-  const parsed = validateAndParseSetting(value);
+  // Validate the input through Zod before touching the database.
+  // Construct the full object expected by the setting schema (which requires `key`).
+  const parsed = validateAndParseSetting({
+    key,
+    booleanValue: value.booleanValue ?? null,
+    stringValue: value.stringValue ?? null,
+    jsonValue: value.jsonValue ?? null,
+    description: value.description ?? null,
+  });
 
   // Get the current setting value before updating (for version history)
   const currentSetting = await getSetting(key, executor);
@@ -178,25 +185,33 @@ export async function updateSetting(
 
   // Record version history before updating
   if (currentSetting) {
+    // Extract the actual JSON-serializable value from the current setting
+    const previousValue = currentSetting.booleanValue !== null
+      ? currentSetting.booleanValue
+      : currentSetting.stringValue !== null
+      ? currentSetting.stringValue
+      : currentSetting.jsonValue;
+
+    // Extract the actual JSON-serializable value from the new parsed setting
+    const newValue = parsed.booleanValue !== null
+      ? parsed.booleanValue
+      : parsed.stringValue !== null
+      ? parsed.stringValue
+      : parsed.jsonValue;
+
+    // Serialize to JSON for the jsonb columns (strings must be quoted)
+    const serializeForJsonb = (val: unknown): string | null => {
+      if (val === null || val === undefined) return null;
+      return JSON.stringify(val);
+    };
+
     await executor
       .insert(system_setting_versions)
       .values({
         setting_key: key,
         setting_description: currentSetting.description,
-        previous_value: currentSetting.booleanValue !== null
-          ? `boolean:${currentSetting.booleanValue}`
-          : currentSetting.stringValue !== null
-          ? `string:${currentSetting.stringValue}`
-          : currentSetting.jsonValue !== null
-          ? `json:${JSON.stringify(currentSetting.jsonValue)}`
-          : null,
-        new_value: parsed.booleanValue !== null
-          ? `boolean:${parsed.booleanValue}`
-          : parsed.stringValue !== null
-          ? `string:${parsed.stringValue}`
-          : parsed.jsonValue !== null
-          ? `json:${JSON.stringify(parsed.jsonValue)}`
-          : null,
+        previous_value: serializeForJsonb(previousValue),
+        new_value: serializeForJsonb(newValue),
         changed_by: actor.userId!,
         changed_at: new Date(),
         version_comment: 'Automated version capture on setting update',
@@ -336,9 +351,9 @@ export async function importConfiguration(
 
       // Apply the setting
       await updateSetting(actor, key, {
-        boolean: parsed.booleanValue ?? null,
-        string: parsed.stringValue ?? null,
-        json: parsed.jsonValue ?? null,
+        booleanValue: parsed.booleanValue ?? null,
+        stringValue: parsed.stringValue ?? null,
+        jsonValue: parsed.jsonValue ?? null,
       });
 
       applied.push(key);

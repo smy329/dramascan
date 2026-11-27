@@ -72,8 +72,10 @@ export function FeaturedContentPicker({
       const result = await clearFeaturedContentAction();
 
       if (result.ok) {
-        setCurrent(null);
+        // Set message first, then current, to ensure message is rendered
+        // before current becomes null (React 18 transition batching edge case)
         setMessage('The featured item was cleared. The homepage uses its automatic fallback.');
+        setCurrent(null);
 
         return;
       }

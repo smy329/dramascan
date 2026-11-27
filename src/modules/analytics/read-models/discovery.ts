@@ -591,7 +591,7 @@ export async function listRankedContent(
     href: row.href,
     status: normalizeStatus(row.status),
     comingSoon: row.comingSoon === true,
-    publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
+    publishedAt: row.publishedAt ? new Date(row.publishedAt).toISOString() : null,
     ratingAverage:
       row.ratingAverage === null ? null : Number(Number(row.ratingAverage).toFixed(2)),
     ratingCount: Number(row.ratingCount ?? 0),

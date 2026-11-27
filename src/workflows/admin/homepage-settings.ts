@@ -121,8 +121,8 @@ export async function updateFeaturedContentAction(input: unknown): Promise<
     }
 
     await db.transaction(async tx => {
-      await updateSetting(actor, SYSTEM_SETTING_KEYS.featuredContentType, { string: type }, tx);
-      await updateSetting(actor, SYSTEM_SETTING_KEYS.featuredContent, { string: id }, tx);
+      await updateSetting(actor, SYSTEM_SETTING_KEYS.featuredContentType, { stringValue: type }, tx);
+      await updateSetting(actor, SYSTEM_SETTING_KEYS.featuredContent, { stringValue: id }, tx);
 
       await recordAdminAuditEvent(
         {
@@ -141,6 +141,7 @@ export async function updateFeaturedContentAction(input: unknown): Promise<
 
     return { ok: true, data: { type, id } };
   } catch (error) {
+    console.error('[updateFeaturedContentAction] Error:', error);
     return { ok: false, error: toActionError(error) };
   }
 }
@@ -153,8 +154,8 @@ export async function clearFeaturedContentAction(): Promise<
     const actor = await resolveActor();
 
     await db.transaction(async tx => {
-      await updateSetting(actor, SYSTEM_SETTING_KEYS.featuredContent, { string: null }, tx);
-      await updateSetting(actor, SYSTEM_SETTING_KEYS.featuredContentType, { string: null }, tx);
+      await updateSetting(actor, SYSTEM_SETTING_KEYS.featuredContent, { stringValue: null }, tx);
+      await updateSetting(actor, SYSTEM_SETTING_KEYS.featuredContentType, { stringValue: null }, tx);
 
       await recordAdminAuditEvent(
         {
@@ -173,6 +174,7 @@ export async function clearFeaturedContentAction(): Promise<
 
     return { ok: true, data: { cleared: true } };
   } catch (error) {
+    console.error('[clearFeaturedContentAction] Error:', error);
     return { ok: false, error: toActionError(error) };
   }
 }
@@ -202,8 +204,8 @@ export async function updateHeroRotationAction(input: unknown): Promise<
     }
 
     await db.transaction(async tx => {
-      await updateSetting(actor, SYSTEM_SETTING_KEYS.heroRotationEnabled, { boolean: enabled }, tx);
-      await updateSetting(actor, SYSTEM_SETTING_KEYS.heroRotationItems, { json: parsed.refs }, tx);
+      await updateSetting(actor, SYSTEM_SETTING_KEYS.heroRotationEnabled, { booleanValue: enabled }, tx);
+      await updateSetting(actor, SYSTEM_SETTING_KEYS.heroRotationItems, { jsonValue: parsed.refs }, tx);
 
       await recordAdminAuditEvent(
         {
@@ -247,7 +249,7 @@ export async function updateTrendingPinsAction(input: unknown): Promise<
       await updateSetting(
         actor,
         SYSTEM_SETTING_KEYS.trendingPinnedItems,
-        { json: parsed.refs },
+        { jsonValue: parsed.refs },
         tx
       );
 
