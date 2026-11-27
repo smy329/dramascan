@@ -13,3 +13,15 @@ src/modules/administration/incident.history.ts(126,5): error TS1128: Declaration
 src/modules/administration/incident.history.ts(152,1): error TS1128: Declaration or statement expected.
 src/modules/administration/incident.history.ts(323,51): error TS1109: Expression expected.
 src/modules/administration/incident.history.ts(327,51): error TS1109: Expression expected.
+src/modules/administration/task.dependencies.ts(69,24): error TS1005: ',' expected.
+src/modules/administration/task.dependencies.ts(70,30): error TS1005: ',' expected.
+src/modules/administration/task.dependencies.ts(72,20): error TS1005: ',' expected.
+src/modules/administration/task.dependencies.ts(72,30): error TS1005: ',' expected.
+src/modules/administration/task.dependencies.ts(82,20): error TS1005: ';' expected.
+src/modules/administration/task.dependencies.ts(83,19): error TS1005: ';' expected.
+src/modules/administration/task.dependencies.ts(84,19): error TS1005: ';' expected.
+src/modules/administration/task.dependencies.ts(85,7): error TS1109: Expression expected.
+src/modules/administration/task.dependencies.ts(85,8): error TS1128: Declaration or statement expected.
+src/modules/administration/task.dependencies.ts(86,5): error TS1128: Declaration or statement expected.
+src/modules/administration/task.dependencies.ts(87,5): error TS1128: Declaration or statement expected.
+src/modules/administration/task.dependencies.ts(104,1): error TS1128: Declaration or statement expected.

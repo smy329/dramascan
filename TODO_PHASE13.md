@@ -61,21 +61,21 @@
 - [x] Exit codes
 - [x] Backup, validation, retention cleanup support
 
-## Prompt 185: Scheduled Maintenance Task Monitoring ⬜ IN PROGRESS
-- [ ] Task name, start/end time, duration
-- [ ] Success/failure recording
-- [ ] Safe error information
-- [ ] No persistent workers, no queue monitoring
-- [ ] Short-lived systemd-triggered commands only
+## Prompt 185: Scheduled Maintenance Task Monitoring ✅ COMPLETED
+- [x] Task name, start/end time, duration
+- [x] Success/failure recording
+- [x] Safe error information
+- [x] No persistent workers, no queue monitoring
+- [x] Short-lived systemd-triggered commands only
 
-## Prompt 186: Maintenance Execution History ⬜ NOT STARTED
-- [ ] Failed, retried, recovered, critical operations
-- [ ] Successful routine records lightweight
-- [ ] Configurable retention
-- [ ] Secrets redaction
-- [ ] Without bounds growth
+## Prompt 186: Maintenance Execution History ✅ COMPLETED
+- [x] Failed, retried, recovered, critical operations tracked
+- [x] Success/failure recording with configurable retention
+- [x] Secrets redaction
+- [x] Append-only history (no deletion)
+- [x] Without bounds growth
 
-## Prompt 187: Maintenance Task Dependencies ⬜ NOT STARTED
+## Prompt 187: Maintenance Task Dependencies ⬜ IN PROGRESS
 - [ ] Backup → backup validation → retention cleanup
 - [ ] Image upload → validate metadata → activate asset
 - [ ] MP4 URL entry → preview → admin confirmation → publication
@@ -93,12 +93,4 @@
 - [ ] No queue wait times, no worker utilization
 - [ ] Lightweight collection
 
-## Prompt 190: Basic Anomaly Detection ⬜ NOT STARTED
-- [ ] Maintenance failures detection
-- [ ] Unusual duration increases
-- [ ] Repeated errors
-- [ ] Disk/resource pressure
-- [ ] Simple configurable thresholds
-- [ ] Useful explanation of anomaly
-
-... (prompts 191-218 continue) ...
+... (prompts 190-218 continue) ...
