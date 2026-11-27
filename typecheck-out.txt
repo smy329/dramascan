@@ -123,6 +123,20 @@ src/modules/administration/resource.monitoring.ts(156,19): error TS1005: ';' exp
 src/modules/administration/resource.monitoring.ts(157,19): error TS1005: ';' expected.
 src/modules/administration/resource.monitoring.ts(158,7): error TS1109: Expression expected.
 src/modules/administration/resource.monitoring.ts(158,8): error TS1128: Declaration or statement expected.
+src/modules/administration/security.headers.ts(124,21): error TS1005: ';' expected.
+src/modules/administration/security.headers.ts(125,21): error TS1005: ';' expected.
+src/modules/administration/security.headers.ts(126,21): error TS1005: ';' expected.
+src/modules/administration/security.headers.ts(127,21): error TS1005: ';' expected.
+src/modules/administration/security.headers.ts(128,21): error TS1005: ';' expected.
+src/modules/administration/security.headers.ts(129,21): error TS1005: ';' expected.
+src/modules/administration/security.headers.ts(130,21): error TS1005: ';' expected.
+src/modules/administration/security.headers.ts(131,21): error TS1005: ';' expected.
+src/modules/administration/security.headers.ts(132,21): error TS1005: ';' expected.
+src/modules/administration/security.headers.ts(133,21): error TS1005: ';' expected.
+src/modules/administration/security.headers.ts(134,21): error TS1005: ';' expected.
+src/modules/administration/security.headers.ts(146,1): error TS1128: Declaration or statement expected.
+src/modules/administration/security.headers.ts(146,34): error TS1005: ';' expected.
+src/modules/administration/security.headers.ts(146,36): error TS1434: Unexpected keyword or identifier.
 src/modules/administration/task.controls.ts(241,24): error TS1005: ';' expected.
 src/modules/administration/task.controls.ts(243,10): error TS1005: ';' expected.
 src/modules/administration/task.controls.ts(250,20): error TS1005: ';' expected.
