@@ -108,6 +108,49 @@ export const playback_analytics_events = pgTable(
   ]
 );
 
+// ----- playback_viewing_sessions -----
+// The server's own baseline of a viewing session. The browser reports the
+// cumulative watch time of the session; the server keeps the cumulative watch
+// time it has already accounted for, so a repeated claim is a delta of zero
+// and the first beacon of a session is measured against the moment the server
+// stamped (D-090).
+//
+// The table is a baseline, not a log: the bounded event rows stay in
+// `playback_analytics_events`.
+export const playback_viewing_sessions = pgTable(
+  'playback_viewing_sessions',
+  {
+    id: uuidPrimaryKey(),
+    /** The visitor the session belongs to. */
+    guest_session_id: uuid('guest_session_id').notNull(),
+    /** The title the session is about. */
+    content_id: uuid('content_id').notNull(),
+    content_type: text('content_type').notNull(), // drama | movie
+    drama_id: uuid('drama_id'),
+    movie_id: uuid('movie_id'),
+    /** The browser's key of the viewing session; two tabs get two keys. */
+    client_session_key: text('client_session_key').notNull(),
+    /** When the server created the session. */
+    started_at: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    /** When the server stored the last event of the session. */
+    last_event_at: timestamp('last_event_at', { withTimezone: true }),
+    /** The cumulative watch time the server has already accounted for. */
+    last_cumulative_watch_seconds: integer('last_cumulative_watch_seconds').notNull().default(0),
+    created_at: createdAt(),
+    updated_at: updatedAt(),
+    deleted_at: deletedAt(),
+  },
+  table => [
+    checkConstraint(
+      'playback_viewing_sessions',
+      'target',
+      sql`(${table.drama_id} is not null and ${table.movie_id} is null) or (${table.drama_id} is null and ${table.movie_id} is not null)`
+    ),
+    indexOn('playback_viewing_sessions', table.drama_id),
+    indexOn('playback_viewing_sessions', table.movie_id),
+  ]
+);
+
 // ----- analytics_daily_aggregates -----
 // A daily aggregate may be site-wide, so both typed targets may stay null. The
 // rule it must still obey is that a row cannot name a drama *and* a movie at
@@ -166,6 +209,7 @@ export type AnalyticsTables =
   | typeof guest_sessions
   | typeof content_view_events
   | typeof playback_analytics_events
+  | typeof playback_viewing_sessions
   | typeof analytics_daily_aggregates
   | typeof search_events;
 
@@ -173,6 +217,7 @@ export type AnalyticsSchema =
   | typeof guest_sessions
   | typeof content_view_events
   | typeof playback_analytics_events
+  | typeof playback_viewing_sessions
   | typeof analytics_daily_aggregates
   | typeof search_events;
 

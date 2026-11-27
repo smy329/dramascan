@@ -4,6 +4,112 @@ All notable changes to the DramaScan project will be documented in this file.
 
 ## [Unreleased] - 2026-11-24
 
+### fix: resolve the fifth Phase 11 review round (Prompts 139–154)
+
+A fifth fresh review of the whole Phase 11 branch found eleven findings. Each
+was checked against the code and the binding rules before any fix, and each fix
+was written test-first — the failing test was run and watched fail before the
+implementation changed.
+
+#### Analytics
+
+- **The watch time is a cumulative claim against a server baseline.** The
+  browser now reports the cumulative watch time of its viewing session and the
+  key of that session; the server keeps the cumulative watch time it has
+  already accounted for in a `playback_viewing_sessions` row. The first beacon
+  of a session is measured against the moment the server stamped, so it cannot
+  claim a watch time it did not earn; a repeated claim is a delta of zero, so
+  a lost acknowledgement cannot double-count a delta; two tabs are two
+  sessions, so one tab cannot reset the baseline of the other (T1, T2,
+  D-090).
+- **The six-hour view window is checked atomically.** The window check and the
+  insert run in one transaction, behind a transaction-scoped advisory lock
+  keyed by visitor and title, so two requests that arrive at the same time
+  queue instead of interleaving. The hourly unique index stays as the
+  database-level safety net (T3, D-089).
+- **Every read and dedup path uses the typed target.** The shared expressions
+  of `analytics/typed-targets.ts` are now used by the window check, the public
+  view count, the playback summary, the completion check and the
+  deduplication indexes, so a row whose typed and legacy targets disagree is
+  counted under the target it is filtered by (T4, D-082).
+- **An orphaned browser guest row is reconciled into the account's row.** The
+  view events, playback events, search events and viewing-session baselines of
+  the anonymous row move to the canonical row in one transaction, a colliding
+  row is soft-deleted in favour of the canonical one, and the anonymous row is
+  retired. A failure is logged as a warning and never breaks the beacon
+  (S1, D-094).
+- **The viewing sessions follow their title.** They move with a drama that
+  becomes a movie, they are removed with a title that is permanently deleted,
+  they are counted in the impact the Trash surface shows, and the retention
+  command removes the stale ones (D-090).
+
+#### Notifications
+
+- **A security notification follows the change the write reports.** Assigning a
+  role, revoking a role and changing an account status now return whether they
+  changed anything, and the notification follows that report instead of a
+  pre-read comparison (T5, D-091).
+- **A delivery candidate is claimed before it is sent.** The maintenance
+  command selects its candidates with `FOR UPDATE SKIP LOCKED` inside a short
+  transaction and writes a lease — an expiry and a token naming the owner. The
+  lease is released only by its owner, a crashed run loses nothing because the
+  lease expires, and the successful-delivery check and the attempt cap are
+  read again immediately before the push (T7, D-092).
+- **The preference form submits only the switches the viewer changed.** A
+  stale form on one device no longer carries the value another device has
+  already changed (S2, D-085).
+- **An expired announcement leaves the published list.** The expiry is
+  filtered in SQL with the database clock, before the list is limited, so an
+  expired announcement cannot push a visible one out of the list (S3).
+- **The browser-push switch describes an account-wide control.** The copy says
+  that the permission is requested per browser (S4).
+
+#### Schema
+
+- `drizzle/0025_phase11_review_round5.sql` (new): the effective-target
+  deduplication indexes, their lookup indexes, and the soft-delete of the
+  duplicate rows they would refuse (T4).
+- `drizzle/0026_phase11_review_round5_playback_sessions.sql` (new): the
+  `playback_viewing_sessions` table — the server's baseline of a viewing
+  session — with its unique index and its foreign key (T1, T2).
+- `drizzle/0027_phase11_review_round5_delivery_lease.sql` (new): the two
+  delivery-lease columns on `notifications` and their index (T7).
+- **The applied migrations are unchanged.** The `Reversibility:` lines that
+  round 4 added to the nineteen historical migrations are removed, so the
+  files and the statements that ran agree again. The rollback plan of every
+  historical migration now lives in `docs/development/DATABASE.md` §7.1, and a
+  unit test reads the journal to enforce the rule (M1, D-093).
+
+#### Testing
+
+- New unit coverage: the cumulative watch-time rule, the playback reporter's
+  cumulative protocol, the playback request contract, the preference form's
+  partial submit, the delivery lease, the maintenance script's claim, and the
+  migration-reversibility rule.
+- New integration coverage: the forged first beacon, the lost acknowledgement,
+  the two tabs of one viewer, the visitor reconciliation, the viewing-session
+  ownership and retention, and the delivery lease.
+- **The end-to-end start gate covers a cold compile.** Playwright's readiness
+  probe requests the base URL, so the run cannot start before a cold
+  development server has compiled `/`; the measured cold compile is ~250s and
+  one run was still compiling when the 300s budget expired. The budget is now
+  600s. Test infrastructure only: the home route's module graph is identical
+  before and after the round-5 changes.
+
+#### Verification
+
+- Typecheck: **PASS** (`npm run typecheck`)
+- Lint: **PASS** (`npm run lint`; only the pre-existing
+  `MODULE_TYPELESS_PACKAGE_JSON` warning)
+- Unit tests: **PASS** — 1320/1320, 137 files (`npm test`)
+- Integration tests: **PASS** — 823/823, 58 files (`npm run test:integration`)
+- Playwright E2E: **PASS** — 94/94 (`npx playwright test`), exit code 0; 91
+  routes warmed in 204s, run finished in 14.7 minutes
+- Production build: **PASS** (`npm run build` with HTTPS `APP_URL` and
+  `TRUSTED_ORIGINS`) — exit code 0
+
+---
+
 ### fix: resolve the fourth Phase 11 review round (Prompts 139–154)
 
 A fourth fresh review of the whole Phase 11 branch found ten findings to fix

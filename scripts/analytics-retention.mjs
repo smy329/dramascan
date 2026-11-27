@@ -56,6 +56,13 @@ export const EVENT_TABLES = Object.freeze([
   { key: 'contentViewEvents', table: 'content_view_events', column: 'viewed_at' },
   { key: 'playbackAnalyticsEvents', table: 'playback_analytics_events', column: 'event_at' },
   { key: 'searchEvents', table: 'search_events', column: 'searched_at' },
+  // A viewing session is the server's baseline of a viewing. It is stale when
+  // neither its start nor its last stored event is inside the window any more.
+  {
+    key: 'playbackViewingSessions',
+    table: 'playback_viewing_sessions',
+    column: 'coalesce(last_event_at, started_at)',
+  },
 ]);
 
 /**
@@ -226,6 +233,8 @@ export async function runAnalyticsRetention(options = {}) {
     // A guest-session row may only be removed once no event points at it: the
     // foreign keys use `ON DELETE SET NULL`, so removing the row first would
     // take the visitor key away from an event that is still inside its window.
+    // A viewing session points at the guest session as well, so the baseline
+    // has to be gone before the visitor key may go.
     await removeRows(client, report, log, {
       key: 'guestSessions',
       countSql: `select count(*)::int as total
@@ -234,7 +243,8 @@ export async function runAnalyticsRetention(options = {}) {
                     and session.user_id is null
                     and not exists (select 1 from content_view_events event where event.guest_session_id = session.id)
                     and not exists (select 1 from playback_analytics_events event where event.guest_session_id = session.id)
-                    and not exists (select 1 from search_events event where event.guest_session_id = session.id)`,
+                    and not exists (select 1 from search_events event where event.guest_session_id = session.id)
+                    and not exists (select 1 from playback_viewing_sessions viewing where viewing.guest_session_id = session.id)`,
       removeSql: `with expired as (
                     select session.id
                       from guest_sessions session
@@ -243,6 +253,7 @@ export async function runAnalyticsRetention(options = {}) {
                        and not exists (select 1 from content_view_events event where event.guest_session_id = session.id)
                        and not exists (select 1 from playback_analytics_events event where event.guest_session_id = session.id)
                        and not exists (select 1 from search_events event where event.guest_session_id = session.id)
+                       and not exists (select 1 from playback_viewing_sessions viewing where viewing.guest_session_id = session.id)
                      limit $2
                   )
                   delete from guest_sessions session

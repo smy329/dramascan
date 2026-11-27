@@ -9,6 +9,7 @@ import {
   analytics_daily_aggregates,
   content_view_events,
   playback_analytics_events,
+  playback_viewing_sessions,
 } from './schema';
 
 /**
@@ -24,6 +25,7 @@ type DbOrTx = Tx | typeof db;
 export type AnalyticsContentReferenceCounts = {
   contentViewEvents: number;
   playbackEvents: number;
+  viewingSessions: number;
   dailyAggregates: number;
 };
 
@@ -80,6 +82,10 @@ export async function countContentReferences(
     .select({ total: count() })
     .from(playback_analytics_events)
     .where(matchesTarget(playback_analytics_events, 'drama', dramaId));
+  const [viewingRow] = await tx
+    .select({ total: count() })
+    .from(playback_viewing_sessions)
+    .where(matchesTarget(playback_viewing_sessions, 'drama', dramaId));
   const [aggregateRow] = await tx
     .select({ total: count() })
     .from(analytics_daily_aggregates)
@@ -88,6 +94,7 @@ export async function countContentReferences(
   return {
     contentViewEvents: Number(viewRow?.total ?? 0),
     playbackEvents: Number(playbackRow?.total ?? 0),
+    viewingSessions: Number(viewingRow?.total ?? 0),
     dailyAggregates: Number(aggregateRow?.total ?? 0),
   };
 }
@@ -128,6 +135,14 @@ export async function moveContentReferences(
     .update(playback_analytics_events)
     .set(targetValues(movieId))
     .where(matchesTarget(playback_analytics_events, 'drama', dramaId));
+
+  // The viewing sessions follow the title: the baseline of a viewing is
+  // measured against the title it belongs to (D-090). The baseline itself is
+  // kept — it is the watch time the server already accounted for.
+  await tx
+    .update(playback_viewing_sessions)
+    .set(targetValues(movieId))
+    .where(matchesTarget(playback_viewing_sessions, 'drama', dramaId));
 
   await moveDailyAggregates(tx, dramaId, movieId);
 }
@@ -275,6 +290,11 @@ export async function purgeContentReferences(
     .where(matchesTarget(playback_analytics_events, type, id))
     .returning({ id: playback_analytics_events.id });
 
+  const viewingRows = await tx
+    .delete(playback_viewing_sessions)
+    .where(matchesTarget(playback_viewing_sessions, type, id))
+    .returning({ id: playback_viewing_sessions.id });
+
   const aggregateRows = await tx
     .delete(analytics_daily_aggregates)
     .where(matchesTarget(analytics_daily_aggregates, type, id))
@@ -283,6 +303,7 @@ export async function purgeContentReferences(
   return {
     contentViewEvents: viewRows.length,
     playbackEvents: playbackRows.length,
+    viewingSessions: viewingRows.length,
     dailyAggregates: aggregateRows.length,
   };
 }
@@ -309,6 +330,10 @@ export async function countPurgeImpact(
     .select({ total: count() })
     .from(playback_analytics_events)
     .where(matchesTarget(playback_analytics_events, type, id));
+  const [viewingRow] = await tx
+    .select({ total: count() })
+    .from(playback_viewing_sessions)
+    .where(matchesTarget(playback_viewing_sessions, type, id));
   const [aggregateRow] = await tx
     .select({ total: count() })
     .from(analytics_daily_aggregates)
@@ -317,6 +342,7 @@ export async function countPurgeImpact(
   return {
     contentViewEvents: Number(viewRow?.total ?? 0),
     playbackEvents: Number(playbackRow?.total ?? 0),
+    viewingSessions: Number(viewingRow?.total ?? 0),
     dailyAggregates: Number(aggregateRow?.total ?? 0),
   };
 }

@@ -35,6 +35,7 @@
  * application disagree about.
  */
 
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
@@ -46,6 +47,7 @@ import {
   isDeliveryAllowed,
 } from '../src/modules/notifications/delivery-rules.ts';
 import {
+  DELIVERY_LEASE_SECONDS,
   DELIVERY_RETENTION_DAYS,
   MAX_DELIVERY_ATTEMPTS,
   MAX_PUSH_RETRY_ATTEMPTS,
@@ -63,6 +65,7 @@ export const DEFAULT_LIMIT = 1000;
 export const MAX_LIMIT = 10_000;
 
 export {
+  DELIVERY_LEASE_SECONDS,
   DELIVERY_RETENTION_DAYS,
   MAX_DELIVERY_ATTEMPTS,
   MAX_PUSH_RETRY_ATTEMPTS,
@@ -280,9 +283,10 @@ export async function runNotificationMaintenance(options = {}) {
 /**
  * Retry the push delivery of the notifications that never reached a browser.
  *
- * The same three rules the application applies: only the last
+ * The same rules the application applies: only the last
  * `PUSH_RETRY_WINDOW_DAYS`, never a notification that already reached a
- * browser, and never more than `MAX_PUSH_RETRY_ATTEMPTS` recorded attempts.
+ * browser, never more than `MAX_PUSH_RETRY_ATTEMPTS` recorded attempts, and an
+ * exclusive lease that keeps overlapping runs from sending the same row.
  *
  * @param {any} client
  * @param {MaintenanceReport} report
@@ -292,40 +296,24 @@ export async function runNotificationMaintenance(options = {}) {
  */
 async function retryFailedPushes(client, report, log, config, limit) {
   const bounded = Math.min(limit, 200);
+  const leaseToken = randomUUID();
+  const candidates = await claimRetryCandidates(client, bounded, leaseToken);
 
-  const candidates = await client.query(
-    `select n.id, n.user_id, n.event_type, n.title, n.content, n.link
-       from notifications n
-      where n.deleted_at is null
-        and n.created_at >= now() - make_interval(days => $1)
-        and exists (
-          select 1
-            from push_subscriptions s
-           where s.user_id = n.user_id
-             and s.deleted_at is null
-        )
-        and not exists (
-          select 1
-            from notification_deliveries d
-           where d.notification_id = n.id
-             and d.channel = 'push'
-             and d.success = true
-        )
-        and (
-          select count(*)
-            from notification_deliveries d
-           where d.notification_id = n.id
-             and d.channel = 'push'
-        ) < $2
-      order by n.created_at desc
-      limit $3`,
-    [PUSH_RETRY_WINDOW_DAYS, MAX_PUSH_RETRY_ATTEMPTS, bounded]
-  );
+  report.considered = candidates.length;
 
-  report.considered = candidates.rows.length;
-
-  for (const candidate of candidates.rows) {
+  for (const candidate of candidates) {
     try {
+      // Repeat the delivery checks after the claim. Another path may have
+      // delivered the notification or consumed an attempt after the candidate
+      // query, and the lease does not replace either rule.
+      if (await hasSuccessfulPushDelivery(client, candidate.id)) {
+        continue;
+      }
+
+      if ((await countPushAttempts(client, candidate.id)) >= MAX_PUSH_RETRY_ATTEMPTS) {
+        continue;
+      }
+
       const preferences = await readPreferences(client, candidate.user_id);
 
       if (!isDeliveryAllowed(preferences, candidate.event_type, 'push')) {
@@ -386,8 +374,150 @@ async function retryFailedPushes(client, report, log, config, limit) {
       const message = error instanceof Error ? error.message : String(error);
       report.failures.push({ reason: 'retry', message });
       log('notification_maintenance.failed', { reason: 'retry', message });
+    } finally {
+      try {
+        await releaseRetryLease(client, candidate.id, leaseToken);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        report.failures.push({ reason: 'lease_release', message });
+        log('notification_maintenance.failed', { reason: 'lease_release', message });
+      }
     }
   }
+}
+
+/**
+ * Claim the retry candidates and write this run's lease.
+ *
+ * @param {any} client
+ * @param {number} bounded
+ * @param {string} leaseToken
+ */
+async function claimRetryCandidates(client, bounded, leaseToken) {
+  await client.query('begin');
+
+  try {
+    const candidates = await client.query(
+      `select n.id, n.user_id, n.event_type, n.title, n.content, n.link
+         from notifications n
+        where n.deleted_at is null
+          and n.created_at >= now() - make_interval(days => $1)
+          and (n.delivery_lease_until is null or n.delivery_lease_until <= now())
+          and exists (
+            select 1
+              from push_subscriptions s
+             where s.user_id = n.user_id
+               and s.deleted_at is null
+          )
+          and not exists (
+            select 1
+              from notification_deliveries d
+             where d.notification_id = n.id
+               and d.channel = 'push'
+               and d.success = true
+          )
+          and (
+            select count(*)
+              from notification_deliveries d
+             where d.notification_id = n.id
+               and d.channel = 'push'
+          ) < $2
+        order by n.created_at desc
+        limit $3
+        for update skip locked`,
+      [PUSH_RETRY_WINDOW_DAYS, MAX_PUSH_RETRY_ATTEMPTS, bounded]
+    );
+
+    if (candidates.rows.length > 0) {
+      await client.query(
+        `update notifications
+            set delivery_lease_until = now() + make_interval(secs => $1),
+                delivery_lease_token = $2,
+                updated_at = now()
+          where id = any($3::uuid[])`,
+        [
+          DELIVERY_LEASE_SECONDS,
+          leaseToken,
+          candidates.rows.map(candidate => candidate.id),
+        ]
+      );
+    }
+
+    await client.query('commit');
+
+    return candidates.rows;
+  } catch (error) {
+    try {
+      await client.query('rollback');
+    } catch {
+      // Preserve the original failure. The lease was not committed, so the
+      // rows remain available to the next run.
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * Release this run's lease on one candidate.
+ *
+ * @param {any} client
+ * @param {string} notificationId
+ * @param {string} leaseToken
+ */
+async function releaseRetryLease(client, notificationId, leaseToken) {
+  await client.query(
+    `update notifications
+        set delivery_lease_until = null,
+            delivery_lease_token = null,
+            updated_at = now()
+      where id = $1
+        and delivery_lease_token = $2`,
+    [notificationId, leaseToken]
+  );
+}
+
+/**
+ * Has this notification already reached a browser?
+ *
+ * @param {any} client
+ * @param {string} notificationId
+ * @returns {Promise<boolean>}
+ */
+async function hasSuccessfulPushDelivery(client, notificationId) {
+  const result = await client.query(
+    `select exists (
+        select 1
+          from notification_deliveries d
+         where d.notification_id = $1
+           and d.channel = 'push'
+           and d.success = true
+     ) as delivered`,
+    [notificationId]
+  );
+
+  return result.rows[0]?.delivered === true;
+}
+
+/**
+ * How many push attempts this notification has already received?
+ *
+ * @param {any} client
+ * @param {string} notificationId
+ * @returns {Promise<number>}
+ */
+async function countPushAttempts(client, notificationId) {
+  const result = await client.query(
+    `select count(*)::int as total
+       from notification_deliveries d
+      where d.notification_id = $1
+        and d.channel = 'push'`,
+    [notificationId]
+  );
+
+  const total = result.rows[0]?.total;
+
+  return typeof total === 'number' ? total : Number(total ?? 0);
 }
 
 /**

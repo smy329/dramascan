@@ -1,6 +1,8 @@
 import 'server-only';
 
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import type { DbExecutor } from '@/platform/db/executor';
@@ -10,6 +12,7 @@ import { getNotificationPreferences, isDeliveryAllowed } from './preferences';
 import { listDeliverableSubscriptions, retireExpiredSubscription } from './subscriptions';
 import { resolvePushProvider, type PushMessage } from './push-provider';
 import {
+  countPushAttempts,
   hasSuccessfulPushDelivery,
   recordDelivery,
   listDeliveries,
@@ -17,6 +20,7 @@ import {
 import type { NotificationEventType } from './notifications';
 import type { NotificationPreferenceSet } from './delivery-rules';
 import {
+  DELIVERY_LEASE_SECONDS,
   DELIVERY_RETENTION_DAYS,
   MAX_DELIVERY_ATTEMPTS,
   MAX_PUSH_RETRY_ATTEMPTS,
@@ -24,6 +28,7 @@ import {
 } from './delivery-limits';
 
 export {
+  DELIVERY_LEASE_SECONDS,
   DELIVERY_RETENTION_DAYS,
   MAX_DELIVERY_ATTEMPTS,
   MAX_PUSH_RETRY_ATTEMPTS,
@@ -387,6 +392,13 @@ export type NotificationRetryResult = Readonly<{
   delivered: number;
 }>;
 
+/** One notification claimed by a delivery-maintenance round. */
+type PushRetryCandidate = Readonly<{
+  id: string;
+  user_id: string;
+  event_type: string;
+}>;
+
 /**
  * Retry the push delivery of notifications that never reached a browser.
  *
@@ -394,11 +406,13 @@ export type NotificationRetryResult = Readonly<{
  * and delivering its push. It is not a worker and it does not run on its own:
  * a short-lived maintenance command calls it.
  *
- * Three rules keep it bounded and honest:
+ * Four rules keep it bounded and honest:
  *
  *   - It only considers notifications from the last `PUSH_RETRY_WINDOW_DAYS`.
  *   - It never touches a notification that already has a successful push.
  *   - It stops after `MAX_PUSH_RETRY_ATTEMPTS` recorded push attempts.
+ *   - It claims its candidates exclusively, so overlapping runs cannot send the
+ *     same notification twice.
  *
  * A notification whose recipient has switched push off is skipped without
  * writing an attempt: the viewer's choice is not a failure.
@@ -412,40 +426,62 @@ export async function retryFailedPushDeliveries(
   executor: DbExecutor = db
 ): Promise<NotificationRetryResult> {
   const bounded = Math.max(1, Math.min(limit, 200));
+  const leaseToken = randomUUID();
 
-  const result = await executor.execute(sql`
-    select n.id, n.user_id, n.event_type
-      from ${notifications} n
-     where n.deleted_at is null
-       and n.created_at >= now() - make_interval(days => ${PUSH_RETRY_WINDOW_DAYS})
-       and exists (
-         select 1
-           from ${push_subscriptions} s
-          where s.user_id = n.user_id
-            and s.deleted_at is null
-       )
-       and not exists (
-         select 1
-           from ${notification_deliveries} d
-          where d.notification_id = n.id
-            and d.channel = 'push'
-            and d.success = true
-       )
-       and (
-         select count(*)
-           from ${notification_deliveries} d
-          where d.notification_id = n.id
-            and d.channel = 'push'
-       ) < ${MAX_PUSH_RETRY_ATTEMPTS}
-     order by n.created_at desc
-     limit ${bounded}
-  `);
+  // The claim is one short transaction. The row locks are held while the
+  // selected rows receive this run's lease, and `skip locked` lets an
+  // overlapping run continue with the other candidates instead of waiting.
+  const candidates = await db.transaction(async tx => {
+    const result = await tx.execute(sql`
+      select n.id, n.user_id, n.event_type
+        from ${notifications} n
+       where n.deleted_at is null
+         and n.created_at >= now() - make_interval(days => ${PUSH_RETRY_WINDOW_DAYS})
+         and (n.delivery_lease_until is null or n.delivery_lease_until <= now())
+         and exists (
+           select 1
+             from ${push_subscriptions} s
+            where s.user_id = n.user_id
+              and s.deleted_at is null
+         )
+         and not exists (
+           select 1
+             from ${notification_deliveries} d
+            where d.notification_id = n.id
+              and d.channel = 'push'
+              and d.success = true
+         )
+         and (
+           select count(*)
+             from ${notification_deliveries} d
+            where d.notification_id = n.id
+              and d.channel = 'push'
+         ) < ${MAX_PUSH_RETRY_ATTEMPTS}
+       order by n.created_at desc
+       limit ${bounded}
+       for update skip locked
+    `);
 
-  const candidates = ((result as { rows?: unknown }).rows ?? []) as Array<{
-    id: string;
-    user_id: string;
-    event_type: string;
-  }>;
+    const selected = ((result as { rows?: unknown }).rows ?? []) as PushRetryCandidate[];
+
+    if (selected.length > 0) {
+      await tx
+        .update(notifications)
+        .set({
+          delivery_lease_until: sql`now() + make_interval(secs => ${DELIVERY_LEASE_SECONDS})`,
+          delivery_lease_token: leaseToken,
+          updated_at: sql`now()`,
+        })
+        .where(
+          inArray(
+            notifications.id,
+            selected.map(candidate => candidate.id)
+          )
+        );
+    }
+
+    return selected;
+  });
 
   const outcome: { considered: number; retried: number; delivered: number } = {
     considered: candidates.length,
@@ -454,27 +490,52 @@ export async function retryFailedPushDeliveries(
   };
 
   for (const candidate of candidates) {
-    if (await hasSuccessfulPushDelivery(candidate.id, executor)) {
-      continue;
+    try {
+      // The claim and the delivery are separate statements, so another path may
+      // have delivered the notification or consumed an attempt after the
+      // candidate query. Repeat both rules immediately before sending.
+      if (await hasSuccessfulPushDelivery(candidate.id, executor)) {
+        continue;
+      }
+
+      if (await countPushAttempts(candidate.id, executor) >= MAX_PUSH_RETRY_ATTEMPTS) {
+        continue;
+      }
+
+      const preferences = await getNotificationPreferences(candidate.user_id, executor);
+
+      if (
+        !isDeliveryAllowed(
+          preferences,
+          candidate.event_type as NotificationEventType,
+          'push'
+        )
+      ) {
+        continue;
+      }
+
+      outcome.retried += 1;
+
+      const delivery = await deliverPush(candidate.id, executor, preferences);
+
+      outcome.delivered += delivery.delivered;
+    } finally {
+      // Only the owner releases the claim. If this run's lease expired and
+      // another run took the row, the other token stays untouched.
+      await executor
+        .update(notifications)
+        .set({
+          delivery_lease_until: null,
+          delivery_lease_token: null,
+          updated_at: sql`now()`,
+        })
+        .where(
+          and(
+            eq(notifications.id, candidate.id),
+            eq(notifications.delivery_lease_token, leaseToken)
+          )
+        );
     }
-
-    const preferences = await getNotificationPreferences(candidate.user_id, executor);
-
-    if (
-      !isDeliveryAllowed(
-        preferences,
-        candidate.event_type as NotificationEventType,
-        'push'
-      )
-    ) {
-      continue;
-    }
-
-    outcome.retried += 1;
-
-    const delivery = await deliverPush(candidate.id, executor, preferences);
-
-    outcome.delivered += delivery.delivered;
   }
 
   return outcome;

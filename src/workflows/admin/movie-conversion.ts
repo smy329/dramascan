@@ -234,6 +234,7 @@ async function collectRelationshipCounts(
     analyticsEvents:
       analytics.contentViewEvents +
       analytics.playbackEvents +
+      analytics.viewingSessions +
       analytics.dailyAggregates,
   };
 }

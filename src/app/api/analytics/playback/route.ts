@@ -40,7 +40,16 @@ export async function POST(request: Request): Promise<Response> {
     );
 
     return jsonResponse(
-      { data: { recorded: result.recorded, duplicate: result.duplicate } },
+      {
+        data: {
+          recorded: result.recorded,
+          duplicate: result.duplicate,
+          // The cumulative watch time the server has accounted for. The
+          // browser uses it to know which part of its claim the server
+          // already counted (D-090).
+          accountedWatchSeconds: result.accountedWatchSeconds,
+        },
+      },
       200,
       requestId
     );

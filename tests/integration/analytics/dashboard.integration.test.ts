@@ -156,7 +156,9 @@ describe('analytics dashboard', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play',
-      watchDurationSeconds: 0,
+      // The claim is cumulative: the playback start repeats what the viewer
+      // has watched so far and adds nothing.
+      cumulativeWatchSeconds: 0,
       userId: null,
       sessionId: playbackSession,
       now,
@@ -164,7 +166,7 @@ describe('analytics dashboard', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'completion',
-      watchDurationSeconds: 300,
+      cumulativeWatchSeconds: 300,
       completionThresholdMet: true,
       userId: null,
       sessionId: playbackSession,
@@ -203,11 +205,13 @@ describe('analytics dashboard', () => {
       dramaId: seeded.dramaId,
     };
 
-    // One viewer starts, pauses, seeks, and finishes.
+    // One viewer starts, pauses, seeks, and finishes. Every event carries the
+    // cumulative watch time of the viewing session, so the claims are 0, 30,
+    // 40 and 300 seconds.
     await recordPlaybackEvent({
       target,
       eventType: 'play',
-      watchDurationSeconds: 0,
+      cumulativeWatchSeconds: 0,
       userId: null,
       sessionId: completingSession,
       now,
@@ -215,7 +219,7 @@ describe('analytics dashboard', () => {
     await recordPlaybackEvent({
       target,
       eventType: 'play_pause',
-      watchDurationSeconds: 30,
+      cumulativeWatchSeconds: 30,
       userId: null,
       sessionId: completingSession,
       now: new Date('2026-11-24T10:01:00.000Z'),
@@ -223,7 +227,7 @@ describe('analytics dashboard', () => {
     await recordPlaybackEvent({
       target,
       eventType: 'seek',
-      watchDurationSeconds: 10,
+      cumulativeWatchSeconds: 40,
       userId: null,
       sessionId: completingSession,
       now: new Date('2026-11-24T10:02:00.000Z'),
@@ -231,7 +235,7 @@ describe('analytics dashboard', () => {
     await recordPlaybackEvent({
       target,
       eventType: 'completion',
-      watchDurationSeconds: 260,
+      cumulativeWatchSeconds: 300,
       completionThresholdMet: true,
       userId: null,
       sessionId: completingSession,
@@ -241,7 +245,7 @@ describe('analytics dashboard', () => {
     await recordPlaybackEvent({
       target,
       eventType: 'play',
-      watchDurationSeconds: 0,
+      cumulativeWatchSeconds: 0,
       userId: null,
       sessionId: leavingSession,
       now,
@@ -279,12 +283,15 @@ describe('analytics dashboard', () => {
       dramaId: seeded.dramaId,
     };
 
-    // The same viewer plays on two days of the range.
+    // The same viewer plays on two days of the range. Each day is its own
+    // viewing session — the browser starts a new session key with every page
+    // load — so the two days are measured against two baselines (D-090).
     for (const day of ['2026-11-23', '2026-11-24']) {
       await recordPlaybackEvent({
         target,
         eventType: 'play',
-        watchDurationSeconds: 0,
+        cumulativeWatchSeconds: 0,
+        clientSessionKey: `day-${day}`,
         userId: null,
         sessionId,
         now: new Date(`${day}T10:00:00.000Z`),
@@ -292,7 +299,8 @@ describe('analytics dashboard', () => {
       await recordPlaybackEvent({
         target,
         eventType: 'play_pause',
-        watchDurationSeconds: 300,
+        cumulativeWatchSeconds: 300,
+        clientSessionKey: `day-${day}`,
         userId: null,
         sessionId,
         now: new Date(`${day}T10:05:00.000Z`),

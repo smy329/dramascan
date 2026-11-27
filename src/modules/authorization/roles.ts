@@ -66,6 +66,18 @@ export type UserRoleAssignment = {
   assignedAt: string;
 };
 
+/** The result of assigning a role, including whether the write changed state. */
+export type AssignUserRoleResult = {
+  assignments: UserRoleAssignment[];
+  changed: boolean;
+};
+
+/** The result of revoking a role, including whether the write changed state. */
+export type RevokeUserRoleResult = {
+  assignments: UserRoleAssignment[];
+  changed: boolean;
+};
+
 /** Role assignments for several users at once, keyed by user id. */
 export type UserRoleAssignmentMap = Record<string, UserRoleAssignment[]>;
 
@@ -431,7 +443,7 @@ export async function assignUserRole(
   actor: ActorContext,
   userId: string,
   roleId: string
-): Promise<UserRoleAssignment[]> {
+): Promise<AssignUserRoleResult> {
   requireSuperAdmin(actor);
 
   const parsed = parseOrThrow(assignUserRoleSchema, { roleId });
@@ -449,9 +461,15 @@ export async function assignUserRole(
     throw new NotFoundError('User account not found.');
   }
 
-  await db.insert(userRoles).values({ user_id: id, role_id: parsed.roleId }).onConflictDoNothing();
+  const inserted = await db
+    .insert(userRoles)
+    .values({ user_id: id, role_id: parsed.roleId })
+    .onConflictDoNothing()
+    .returning({ id: userRoles.user_id });
 
-  return readUserRoleAssignments(id);
+  const assignments = await readUserRoleAssignments(id);
+
+  return { assignments, changed: inserted.length > 0 };
 }
 
 /** Remove one role from a user. */
@@ -459,7 +477,7 @@ export async function revokeUserRole(
   actor: ActorContext,
   userId: string,
   roleId: string
-): Promise<UserRoleAssignment[]> {
+): Promise<RevokeUserRoleResult> {
   requireSuperAdmin(actor);
 
   const id = parseOrThrow(userIdSchema, userId);
@@ -474,5 +492,7 @@ export async function revokeUserRole(
     throw new NotFoundError('Role assignment not found.');
   }
 
-  return readUserRoleAssignments(id);
+  const assignments = await readUserRoleAssignments(id);
+
+  return { assignments, changed: deleted.length > 0 };
 }

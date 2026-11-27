@@ -122,6 +122,45 @@ const userReader: ActorContext = {
   permissions: ['user.read'],
 };
 
+type MockRoleAssignment = {
+  roleId: string;
+  roleName: string;
+  assignedAt: string;
+};
+
+type MockUserAccount = {
+  id: string;
+  name: string;
+  email: string;
+  isActive: boolean;
+  isSuperAdmin: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+};
+
+const targetAccount: MockUserAccount = {
+  id: 'user-1',
+  name: 'Target User',
+  email: 'target@example.com',
+  isActive: true,
+  isSuperAdmin: false,
+  createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  deletedAt: null,
+};
+
+function roleChangeResult(assignments: MockRoleAssignment[], changed: boolean) {
+  return { assignments, changed };
+}
+
+function accountChangeResult(isActive: boolean, changed: boolean) {
+  return {
+    account: { ...targetAccount, isActive },
+    changed,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 
@@ -129,16 +168,7 @@ beforeEach(() => {
   // change is what the account owner is told about.
   listUserRoleAssignmentsMock.mockResolvedValue([]);
 
-  getUserAccountMock.mockResolvedValue({
-    id: 'user-1',
-    name: 'Target User',
-    email: 'target@example.com',
-    isActive: true,
-    isSuperAdmin: false,
-    createdAt: new Date('2026-01-01T00:00:00.000Z'),
-    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-    deletedAt: null,
-  });
+  getUserAccountMock.mockResolvedValue(targetAccount);
 });
 
 describe('role workflows', () => {
@@ -241,7 +271,7 @@ describe('user role workflows', () => {
   });
 
   it('assigns a role for a Super Admin', async () => {
-    assignUserRoleMock.mockResolvedValue([]);
+    assignUserRoleMock.mockResolvedValue(roleChangeResult([], true));
 
     await assignUserRoleForAdmin(superAdmin, 'user-1', 'role-1');
 
@@ -249,7 +279,7 @@ describe('user role workflows', () => {
   });
 
   it('revokes a role for a Super Admin', async () => {
-    revokeUserRoleMock.mockResolvedValue([]);
+    revokeUserRoleMock.mockResolvedValue({ assignments: [], changed: true });
 
     await revokeUserRoleForAdmin(superAdmin, 'user-1', 'role-1');
 
@@ -257,16 +287,16 @@ describe('user role workflows', () => {
   });
 
   it('tells the account owner when a role is assigned', async () => {
-    assignUserRoleMock.mockResolvedValue([
-      {
-        roleId: 'role-1',
-        roleName: 'Content Manager',
-        assignedAt: '2026-01-01T00:00:00.000Z',
-      },
-    ]);
+    const assignment: MockRoleAssignment = {
+      roleId: 'role-1',
+      roleName: 'Content Manager',
+      assignedAt: '2026-01-01T00:00:00.000Z',
+    };
+    assignUserRoleMock.mockResolvedValue(roleChangeResult([assignment], true));
 
-    await assignUserRoleForAdmin(superAdmin, 'user-1', 'role-1');
+    const assignments = await assignUserRoleForAdmin(superAdmin, 'user-1', 'role-1');
 
+    expect(assignments).toEqual([assignment]);
     expect(notifyAccountSecurityMock).toHaveBeenCalledTimes(1);
     expect(notifyAccountSecurityMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -277,26 +307,18 @@ describe('user role workflows', () => {
     );
   });
 
-  it('does not tell the account owner when the role was already assigned', async () => {
-    listUserRoleAssignmentsMock.mockResolvedValue([
-      {
-        roleId: 'role-1',
-        roleName: 'Content Manager',
-        assignedAt: '2026-01-01T00:00:00.000Z',
-      },
-    ]);
-    assignUserRoleMock.mockResolvedValue([
-      {
-        roleId: 'role-1',
-        roleName: 'Content Manager',
-        assignedAt: '2026-01-01T00:00:00.000Z',
-      },
-    ]);
+  it('does not tell the account owner when the role assignment did not change', async () => {
+    const assignment: MockRoleAssignment = {
+      roleId: 'role-1',
+      roleName: 'Content Manager',
+      assignedAt: '2026-01-01T00:00:00.000Z',
+    };
+    assignUserRoleMock.mockResolvedValue(roleChangeResult([assignment], false));
 
-    await assignUserRoleForAdmin(superAdmin, 'user-1', 'role-1');
+    const assignments = await assignUserRoleForAdmin(superAdmin, 'user-1', 'role-1');
 
-    expect(assignUserRoleMock).toHaveBeenCalledWith(superAdmin, 'user-1', 'role-1');
     expect(notifyAccountSecurityMock).not.toHaveBeenCalled();
+    expect(assignments).toEqual([assignment]);
   });
 
   it('tells the account owner when a role is removed', async () => {
@@ -307,10 +329,11 @@ describe('user role workflows', () => {
         assignedAt: '2026-01-01T00:00:00.000Z',
       },
     ]);
-    revokeUserRoleMock.mockResolvedValue([]);
+    revokeUserRoleMock.mockResolvedValue({ assignments: [], changed: true });
 
-    await revokeUserRoleForAdmin(superAdmin, 'user-1', 'role-1');
+    const assignments = await revokeUserRoleForAdmin(superAdmin, 'user-1', 'role-1');
 
+    expect(assignments).toEqual([]);
     expect(notifyAccountSecurityMock).toHaveBeenCalledTimes(1);
     expect(notifyAccountSecurityMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -319,6 +342,21 @@ describe('user role workflows', () => {
         content: expect.stringContaining('Content Manager'),
       })
     );
+  });
+
+  it('does not tell the account owner when the role removal did not change anything', async () => {
+    listUserRoleAssignmentsMock.mockResolvedValue([
+      {
+        roleId: 'role-1',
+        roleName: 'Content Manager',
+        assignedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    revokeUserRoleMock.mockResolvedValue({ assignments: [], changed: false });
+
+    await revokeUserRoleForAdmin(superAdmin, 'user-1', 'role-1');
+
+    expect(notifyAccountSecurityMock).not.toHaveBeenCalled();
   });
 });
 
@@ -366,21 +404,16 @@ describe('account status workflow', () => {
   });
 
   it('deactivates an ordinary account for an admin.manage holder', async () => {
-    setUserAccountActiveMock.mockResolvedValue({
-      id: 'user-1',
-      isActive: false,
-    });
+    setUserAccountActiveMock.mockResolvedValue(accountChangeResult(false, true));
 
-    await setUserAccountActiveForAdmin(adminManager, 'user-1', false);
+    const account = await setUserAccountActiveForAdmin(adminManager, 'user-1', false);
 
     expect(setUserAccountActiveMock).toHaveBeenCalledWith('user-1', false);
+    expect(account.isActive).toBe(false);
   });
 
   it('tells the account owner when the account is deactivated', async () => {
-    setUserAccountActiveMock.mockResolvedValue({
-      id: 'user-1',
-      isActive: false,
-    });
+    setUserAccountActiveMock.mockResolvedValue(accountChangeResult(false, true));
 
     await setUserAccountActiveForAdmin(adminManager, 'user-1', false);
 
@@ -396,20 +429,8 @@ describe('account status workflow', () => {
   it('tells the account owner when the account is reactivated', async () => {
     // The account was deactivated: a reactivation is a change, and a change is
     // what the account owner is told about.
-    getUserAccountMock.mockResolvedValue({
-      id: 'user-1',
-      name: 'Target User',
-      email: 'target@example.com',
-      isActive: false,
-      isSuperAdmin: false,
-      createdAt: new Date('2026-01-01T00:00:00.000Z'),
-      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-      deletedAt: null,
-    });
-    setUserAccountActiveMock.mockResolvedValue({
-      id: 'user-1',
-      isActive: true,
-    });
+    getUserAccountMock.mockResolvedValue({ ...targetAccount, isActive: false });
+    setUserAccountActiveMock.mockResolvedValue(accountChangeResult(true, true));
 
     await setUserAccountActiveForAdmin(adminManager, 'user-1', true);
 
@@ -423,10 +444,7 @@ describe('account status workflow', () => {
   });
 
   it('does not tell the account owner when the account status did not change', async () => {
-    setUserAccountActiveMock.mockResolvedValue({
-      id: 'user-1',
-      isActive: true,
-    });
+    setUserAccountActiveMock.mockResolvedValue(accountChangeResult(true, false));
 
     await setUserAccountActiveForAdmin(adminManager, 'user-1', true);
 
@@ -434,10 +452,27 @@ describe('account status workflow', () => {
     expect(notifyAccountSecurityMock).not.toHaveBeenCalled();
   });
 
+  it('uses the write report instead of the pre-read comparison for the notification', async () => {
+    getUserAccountMock.mockResolvedValue({ ...targetAccount, isActive: false });
+    setUserAccountActiveMock.mockResolvedValue(accountChangeResult(true, false));
+
+    await setUserAccountActiveForAdmin(adminManager, 'user-1', true);
+
+    expect(notifyAccountSecurityMock).not.toHaveBeenCalled();
+  });
+
+  it('notifies when the write reports a status change even if the pre-read comparison did not', async () => {
+    setUserAccountActiveMock.mockResolvedValue(accountChangeResult(true, true));
+
+    await setUserAccountActiveForAdmin(adminManager, 'user-1', true);
+
+    expect(notifyAccountSecurityMock).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses to change a Super Admin account for a non-Super-Admin', async () => {
     getUserAccountMock.mockResolvedValue({
+      ...targetAccount,
       id: 'root-1',
-      isActive: true,
       isSuperAdmin: true,
     });
 
@@ -450,13 +485,13 @@ describe('account status workflow', () => {
 
   it('changes a Super Admin account for a Super Admin', async () => {
     getUserAccountMock.mockResolvedValue({
+      ...targetAccount,
       id: 'root-1',
-      isActive: true,
       isSuperAdmin: true,
     });
     setUserAccountActiveMock.mockResolvedValue({
-      id: 'root-1',
-      isActive: false,
+      account: { ...targetAccount, id: 'root-1', isActive: false, isSuperAdmin: true },
+      changed: true,
     });
 
     await setUserAccountActiveForAdmin(superAdmin, 'root-1', false);

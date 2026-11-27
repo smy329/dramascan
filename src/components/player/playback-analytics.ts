@@ -7,24 +7,27 @@ import {
 } from '@/modules/analytics/playback-events.shared';
 
 /**
- * The playback analytics reporter (Prompts 141, 142).
+ * The playback analytics reporter (Prompts 141, 142, D-090).
  *
  * The player reports four kinds of event — play/pause, seek, completion, and
  * exit — and the server turns them into bounded analytics rows.
  *
- * Two properties matter:
+ * Three properties matter:
  *
- *   - **The watch time is a delta.** Every event carries the seconds the
- *     viewer accumulated since the last event the server *stored*. The
- *     browser only clears its accumulator when the server confirms the row
- *     was written, so an event the bounded write dropped does not lose the
- *     watch time it carried: the next event carries it instead.
+ *   - **The watch time is a cumulative claim.** Every event carries the
+ *     seconds the viewer accumulated since the *start of the viewing session*,
+ *     not since the last event. The server keeps the cumulative watch time it
+ *     has already accounted for, so it can tell a repeated claim from a new
+ *     one. A delta protocol could not: the first beacon of a session had no
+ *     previous event to measure against, and an event whose acknowledgement
+ *     was lost was counted twice.
+ *   - **The viewing session has its own key.** Two tabs of the same viewer
+ *     are two viewing sessions, so their claims do not interfere.
  *   - **A report never interrupts playback.** The reporter is fire-and-forget:
  *     a failed request is ignored and the watch time stays pending.
  *
  * The reports are serialised. One report is in flight at a time, so the
- * confirmations arrive in the order the events were sent and the accumulator
- * is never cleared twice for the same watch time.
+ * confirmations arrive in the order the events were sent.
  *
  * The event catalogue and the target shape live in a shared file, so the
  * browser reports exactly the events the server accepts (D-085).
@@ -62,7 +65,7 @@ export type PlaybackAnalyticsReporter = {
     _eventType: PlaybackAnalyticsEventType,
     _detail?: { positionSeconds?: number; completionThresholdMet?: boolean }
   ) => void;
-  /** The watch seconds that are still waiting to be stored. */
+  /** The watch seconds the server has not confirmed yet. */
   pendingWatchSeconds: () => number;
 };
 
@@ -79,15 +82,23 @@ const MAX_WATCH_DELTA_SECONDS = 5;
  * Create the playback analytics reporter.
  *
  * @param target what is being played
+ * @param input.clientSessionKey the key of the viewing session; one is
+ *   generated when the caller provides none
  * @returns the reporter
  */
 export function createPlaybackAnalyticsReporter(input: {
   target: PlaybackAnalyticsTarget;
   fetchImpl?: typeof fetch;
+  clientSessionKey?: string;
 }): PlaybackAnalyticsReporter {
   const doFetch = input.fetchImpl ?? fetch;
+  const clientSessionKey = input.clientSessionKey ?? createClientSessionKey();
 
-  let pendingWatchSeconds = 0;
+  // The cumulative watch time of the viewing session, and the part of it the
+  // server has confirmed. The difference is the watch time that is still
+  // waiting to be stored.
+  let cumulativeWatchSeconds = 0;
+  let confirmedWatchSeconds = 0;
   let lastPositionSeconds: number | null = null;
   let chain: Promise<void> = Promise.resolve();
 
@@ -109,7 +120,7 @@ export function createPlaybackAnalyticsReporter(input: {
       return;
     }
 
-    pendingWatchSeconds += delta;
+    cumulativeWatchSeconds += delta;
   };
 
   const report = (
@@ -118,8 +129,6 @@ export function createPlaybackAnalyticsReporter(input: {
   ) => {
     chain = chain
       .then(async () => {
-        const watchDurationSeconds = Math.round(pendingWatchSeconds);
-
         const payload =
           input.target.type === 'drama'
             ? {
@@ -127,14 +136,16 @@ export function createPlaybackAnalyticsReporter(input: {
                 episodeId: input.target.episodeId,
                 dramaId: input.target.dramaId,
                 positionSeconds: detail?.positionSeconds ?? null,
-                watchDurationSeconds,
+                cumulativeWatchSeconds: Math.round(cumulativeWatchSeconds),
+                clientSessionKey,
                 completionThresholdMet: detail?.completionThresholdMet ?? false,
               }
             : {
                 eventType,
                 movieId: input.target.movieId,
                 positionSeconds: detail?.positionSeconds ?? null,
-                watchDurationSeconds,
+                cumulativeWatchSeconds: Math.round(cumulativeWatchSeconds),
+                clientSessionKey,
                 completionThresholdMet: detail?.completionThresholdMet ?? false,
               };
 
@@ -150,13 +161,16 @@ export function createPlaybackAnalyticsReporter(input: {
         }
 
         const body = (await response.json()) as {
-          data?: { recorded?: boolean; duplicate?: boolean };
+          data?: { recorded?: boolean; duplicate?: boolean; accountedWatchSeconds?: number };
         };
 
-        if (body.data?.recorded === true) {
-          // The server stored the row, so the watch time it carried is
-          // accounted for. Anything that arrived in the meantime stays.
-          pendingWatchSeconds = Math.max(0, pendingWatchSeconds - watchDurationSeconds);
+        // The server reports the cumulative watch time it has accounted for.
+        // A dropped event does not advance it, so the watch time stays pending
+        // and the next event carries it.
+        const accounted = body.data?.accountedWatchSeconds;
+
+        if (typeof accounted === 'number' && Number.isFinite(accounted)) {
+          confirmedWatchSeconds = Math.max(confirmedWatchSeconds, accounted);
         }
       })
       .catch(() => {
@@ -168,6 +182,30 @@ export function createPlaybackAnalyticsReporter(input: {
   return {
     observe,
     report,
-    pendingWatchSeconds: () => pendingWatchSeconds,
+    pendingWatchSeconds: () => Math.max(0, cumulativeWatchSeconds - confirmedWatchSeconds),
   };
+}
+
+/**
+ * The key of a viewing session.
+ *
+ * The key separates two tabs of the same viewer: their claims are counted
+ * against two baselines, so one tab cannot reset the baseline of the other.
+ *
+ * @returns the key
+ */
+function createClientSessionKey(): string {
+  const cryptoApi = globalThis.crypto;
+
+  if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
+  }
+
+  if (cryptoApi && typeof cryptoApi.getRandomValues === 'function') {
+    const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  return `session-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }

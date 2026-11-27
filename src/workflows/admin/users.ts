@@ -95,16 +95,12 @@ export async function assignUserRoleForAdmin(
   requireSuperAdmin(actor);
 
   // Assigning a role is idempotent: the assignment either exists or it does
-  // not. The notification follows the change, not the request, so a repeated
-  // request does not tell the account owner about a role it has held all along
-  // (D-064, D-080).
-  const before = await listUserRoleAssignments(actor, userId);
-  const alreadyAssigned = before.some(row => row.roleId === roleId);
-
-  const assignments = await assignUserRole(actor, userId, roleId);
+  // not. The write reports whether it inserted the assignment, and the
+  // notification follows that report rather than the request (D-064, D-080).
+  const { assignments, changed } = await assignUserRole(actor, userId, roleId);
   const roleName = assignments.find(row => row.roleId === roleId)?.roleName ?? null;
 
-  if (!alreadyAssigned) {
+  if (changed) {
     await notifySecurityEvent({
       userId,
       title: 'Your account role was added',
@@ -131,15 +127,17 @@ export async function revokeUserRoleForAdmin(
     (await listUserRoleAssignments(actor, userId)).find(row => row.roleId === roleId)
       ?.roleName ?? null;
 
-  const assignments = await revokeUserRole(actor, userId, roleId);
+  const { assignments, changed } = await revokeUserRole(actor, userId, roleId);
 
-  await notifySecurityEvent({
-    userId,
-    title: 'Your account role was removed',
-    content: roleName
-      ? `The role "${roleName}" was removed from your account.`
-      : 'A role was removed from your account.',
-  });
+  if (changed) {
+    await notifySecurityEvent({
+      userId,
+      title: 'Your account role was removed',
+      content: roleName
+        ? `The role "${roleName}" was removed from your account.`
+        : 'A role was removed from your account.',
+    });
+  }
 
   return assignments;
 }
@@ -190,13 +188,12 @@ export async function setUserAccountActiveForAdmin(
     requireSuperAdmin(actor);
   }
 
-  const updated = await setUserAccountActive(userId, isActive);
+  const { account: updated, changed } = await setUserAccountActive(userId, isActive);
 
-  // The status write is a no-op when the account already has the requested
-  // status. The notification follows the change, not the request, so a repeated
-  // request does not tell the account owner about a state it was already in
-  // (D-064, D-080).
-  if (account.isActive !== isActive) {
+  // The status write reports whether it changed the stored status. The
+  // notification follows that report, so a repeated request does not tell the
+  // account owner about a state it was already in (D-064, D-080).
+  if (changed) {
     await notifySecurityEvent({
       userId,
       title: isActive ? 'Your account was reactivated' : 'Your account was deactivated',

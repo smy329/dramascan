@@ -1,17 +1,25 @@
 /**
- * The playback plausibility rule (D-070).
+ * The playback plausibility rule (D-070, D-090).
  *
  * A playback beacon is public: anybody can post to the playback endpoint. The
  * server therefore decides what a beacon may claim, not the browser.
  *
+ * The browser reports the **cumulative** watch time of its viewing session,
+ * not the time since the last event. The server keeps the cumulative watch
+ * time it has already accounted for, and two things follow from that:
+ *
+ *   - **The first beacon of a session cannot forge a watch time.** The server
+ *     stamps the start of the session, and the first claim is measured against
+ *     that instant. Before the cumulative protocol, the first beacon had no
+ *     previous event to measure against and could claim a whole day.
+ *   - **A lost acknowledgement cannot double-count a delta.** A beacon that
+ *     repeats a cumulative claim is a delta of zero, because the server has
+ *     already accounted for that watch time.
+ *
  * Two claims are bounded here:
  *
- *   - **The watch time.** The player reports the seconds it accumulated since
- *     the last event the server stored. The watch time can never be larger
- *     than the wall-clock time between the two events, so a beacon that
- *     claims more than that is clamped. The clamp carries a small tolerance,
- *     because the browser starts counting a moment before the server stamps
- *     the previous event.
+ *   - **The watch time.** The delta since the accounted cumulative claim, plus
+ *     a small tolerance, and never more than the time that really passed.
  *   - **The position.** A position that no title can reach is dropped: it
  *     says nothing about the viewing and only pollutes the numbers.
  *
@@ -82,66 +90,77 @@ export function isCompletionSupported(input: CompletionSupport): boolean {
   return input.cumulativeWatchSeconds >= COMPLETION_MINIMUM_WATCH_SECONDS;
 }
 
-/** What a playback event claims. */
-export type PlaybackPlausibilityInput = Readonly<{
-  /** The watch seconds the beacon claims. */
-  watchDurationSeconds?: number | null | undefined;
-  /** The media position the beacon claims. */
-  positionSeconds?: number | null | undefined;
-  /** When the previous stored event of this visitor and content was recorded. */
-  previousEventAt?: Date | null | undefined;
+/** What the browser claims about the watch time of its viewing session. */
+export type PlaybackWatchClaim = Readonly<{
+  /** The cumulative watch seconds the browser claims for the session. */
+  cumulativeWatchSeconds?: number | null | undefined;
+  /** The cumulative watch seconds the server has already accounted for. */
+  accountedCumulativeSeconds?: number | null | undefined;
+  /** When the server stored the last event of the viewing session. */
+  lastEventAt?: Date | null | undefined;
+  /** When the server created the viewing session. */
+  startedAt?: Date | null | undefined;
   /** When this event is recorded. */
   now: Date;
 }>;
 
 /** What the server is willing to store. */
-export type PlaybackPlausibility = Readonly<{
-  /** The watch seconds, clamped to what the visitor could have watched. */
-  watchDurationSeconds: number | null;
-  /** The media position, or `null` when the claim is impossible. */
-  positionSeconds: number | null;
+export type PlaybackWatchResolution = Readonly<{
+  /** The watch seconds the server stores. */
+  watchDurationSeconds: number;
+  /** The cumulative watch seconds the server accounts for after the event. */
+  accountedCumulativeSeconds: number;
+  /** Whether the claim restarted the counter of the viewing session. */
+  restarted: boolean;
 }>;
 
 /**
- * Clamp what a playback beacon claims to what the visitor could have done.
+ * Resolve the watch time a beacon may claim.
  *
- * @param input the claims
- * @returns the values the server stores
+ * The claim is a cumulative total, so the watch time of the event is the part
+ * of it that the server has not accounted for yet. The delta is bounded by the
+ * time that really passed since the last stored event of the session, plus
+ * the tolerance, and by an absolute maximum.
+ *
+ * @param input the claim and the server's own baseline
+ * @returns the watch time the server stores and the new baseline
  */
-export function clampPlaybackEvent(input: PlaybackPlausibilityInput): PlaybackPlausibility {
+export function resolvePlaybackWatchSeconds(input: PlaybackWatchClaim): PlaybackWatchResolution {
+  const accounted = normalizeSeconds(input.accountedCumulativeSeconds) ?? 0;
+  const claimed = normalizeSeconds(input.cumulativeWatchSeconds);
+
+  // A claim that is not a number carries no watch time, and it must not
+  // disturb the baseline: a malformed beacon cannot restart the session.
+  if (claimed === null) {
+    return {
+      watchDurationSeconds: 0,
+      accountedCumulativeSeconds: accounted,
+      restarted: false,
+    };
+  }
+
+  // A claim below what the server accounted for means the browser restarted
+  // its counter: a new viewing inside the same session key. The elapsed time
+  // is measured from the restart, so the new viewing cannot claim the watch
+  // time of the old one.
+  const restarted = claimed < accounted;
+  const baseline = restarted ? 0 : accounted;
+  const anchor = restarted
+    ? input.now
+    : input.lastEventAt ?? input.startedAt ?? input.now;
+
+  const delta = Math.max(0, claimed - baseline);
+  const elapsedSeconds = Math.max(0, (input.now.getTime() - anchor.getTime()) / 1000);
+  const cap = Math.min(
+    MAX_PLAYBACK_WATCH_SECONDS,
+    Math.floor(elapsedSeconds + PLAYBACK_WATCH_DURATION_TOLERANCE_SECONDS)
+  );
+
   return {
-    watchDurationSeconds: clampWatchDuration(input),
-    positionSeconds: clampPosition(input.positionSeconds),
+    watchDurationSeconds: Math.min(delta, cap),
+    accountedCumulativeSeconds: Math.max(baseline, claimed),
+    restarted,
   };
-}
-
-/**
- * The watch time a beacon may claim.
- *
- * The claim is bounded by the time that passed since the previous stored
- * event of the same visitor and the same content, plus a tolerance, and by an
- * absolute maximum.
- */
-function clampWatchDuration(input: PlaybackPlausibilityInput): number | null {
-  const claimed = input.watchDurationSeconds;
-
-  if (typeof claimed !== 'number' || !Number.isFinite(claimed) || claimed < 0) {
-    return null;
-  }
-
-  let cap = MAX_PLAYBACK_WATCH_SECONDS;
-
-  if (input.previousEventAt instanceof Date) {
-    const elapsedSeconds = (input.now.getTime() - input.previousEventAt.getTime()) / 1000;
-
-    // A clock that moved backwards yields no elapsed time; the tolerance is
-    // the only allowance in that case.
-    const boundedElapsed = Number.isFinite(elapsedSeconds) ? Math.max(0, elapsedSeconds) : 0;
-
-    cap = Math.min(cap, boundedElapsed + PLAYBACK_WATCH_DURATION_TOLERANCE_SECONDS);
-  }
-
-  return Math.max(0, Math.min(Math.round(claimed), Math.floor(cap)));
 }
 
 /**
@@ -149,8 +168,11 @@ function clampWatchDuration(input: PlaybackPlausibilityInput): number | null {
  *
  * A position beyond the absolute maximum describes no real title, so it is
  * dropped rather than stored.
+ *
+ * @param positionSeconds the claimed position
+ * @returns the position the server stores, or `null` when it is impossible
  */
-function clampPosition(positionSeconds: number | null | undefined): number | null {
+export function clampPlaybackPosition(positionSeconds: number | null | undefined): number | null {
   if (typeof positionSeconds !== 'number' || !Number.isFinite(positionSeconds)) {
     return null;
   }
@@ -160,4 +182,18 @@ function clampPosition(positionSeconds: number | null | undefined): number | nul
   }
 
   return Math.round(positionSeconds);
+}
+
+/**
+ * A whole number of seconds, or `null` when the claim is not one.
+ *
+ * @param value the claimed seconds
+ * @returns the seconds, or `null`
+ */
+function normalizeSeconds(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return null;
+  }
+
+  return Math.floor(value);
 }

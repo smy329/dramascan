@@ -1,10 +1,3 @@
--- Migration 0002 — information page position and footer links
---
--- Reversible: the rollback deletes the information pages this migration
--- inserted, drops the two indexes, and drops the `position` column. The
--- inserted pages are placeholders, but an operator may have edited them since,
--- so the rollback loses those edits.
-
 ALTER TABLE "information_pages" ADD COLUMN "position" integer;--> statement-breakpoint
 CREATE UNIQUE INDEX "uq_information_pages_slug_active" ON "information_pages" USING btree ("slug") WHERE "information_pages"."deleted_at" is null;--> statement-breakpoint
 CREATE INDEX "idx_information_pages_footer" ON "information_pages" USING btree ("position") WHERE "information_pages"."deleted_at" is null and "information_pages"."publication_status" = 'published' and "information_pages"."footer_visible" = true;--> statement-breakpoint

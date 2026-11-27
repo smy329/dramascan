@@ -65,11 +65,15 @@ describe('EVENT_TABLES', () => {
       'content_view_events',
       'playback_analytics_events',
       'search_events',
+      'playback_viewing_sessions',
     ]);
     expect(EVENT_TABLES.map(entry => entry.column)).toEqual([
       'viewed_at',
       'event_at',
       'searched_at',
+      // A viewing session is stale when neither its start nor its last event
+      // is inside the window any more.
+      'coalesce(last_event_at, started_at)',
     ]);
   });
 });
@@ -92,6 +96,7 @@ describe('runAnalyticsRetention', () => {
       { match: 'delete from content_view_events', result: { rows: [], rowCount: 7 } },
       { match: 'delete from playback_analytics_events', result: { rows: [], rowCount: 3 } },
       { match: 'delete from search_events', result: { rows: [], rowCount: 1 } },
+      { match: 'delete from playback_viewing_sessions', result: { rows: [], rowCount: 4 } },
       { match: 'delete from analytics_daily_aggregates', result: { rows: [], rowCount: 2 } },
       { match: 'delete from guest_sessions', result: { rows: [], rowCount: 5 } },
     ]);
@@ -110,6 +115,7 @@ describe('runAnalyticsRetention', () => {
       contentViewEvents: 7,
       playbackAnalyticsEvents: 3,
       searchEvents: 1,
+      playbackViewingSessions: 4,
       analyticsDailyAggregates: 2,
       guestSessions: 5,
     });
@@ -117,7 +123,7 @@ describe('runAnalyticsRetention', () => {
 
     const deletes = calls.map(call => call.sql).filter(sql => sql.includes('delete from'));
 
-    expect(deletes).toHaveLength(5);
+    expect(deletes).toHaveLength(6);
 
     // Every delete is bounded by the batch size.
     for (const statement of deletes) {
@@ -169,6 +175,9 @@ describe('runAnalyticsRetention', () => {
     expect(sessionDelete).toContain('content_view_events');
     expect(sessionDelete).toContain('playback_analytics_events');
     expect(sessionDelete).toContain('search_events');
+    // A viewing session points at the guest session as well, so the guest
+    // session may not go while its baseline is still there.
+    expect(sessionDelete).toContain('playback_viewing_sessions');
   });
 
   it('counts the rows instead of removing them in the dry run', async () => {

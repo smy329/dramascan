@@ -54,6 +54,7 @@ import {
   getUnreadNotificationCount,
   listAnnouncements,
   listDeliveries,
+  listPublishedAnnouncements,
   listSubscriptions,
   markAllNotificationsRead,
   markNotificationRead,
@@ -632,6 +633,37 @@ describe('website announcements', () => {
     expect(
       await countEventNotifications(seeded.userId, 'website_announcement', announcement.id)
     ).toBe(1);
+  });
+
+  it('does not let an expired announcement take the place of a visible one', async () => {
+    // The expiry is a property of the row, so it is filtered before the list is
+    // limited: an expired announcement that is newer than a visible one must
+    // not push the visible one out of the list.
+    const now = new Date();
+
+    await db.insert(announcements).values([
+      {
+        title: 'Expired',
+        content: 'This announcement is no longer visible.',
+        author_id: seeded.userId,
+        publication_status: 'published',
+        expires_at: new Date(now.getTime() - 60_000),
+        created_at: new Date(now.getTime() + 1000),
+      },
+      {
+        title: 'Visible',
+        content: 'This announcement is still visible.',
+        author_id: seeded.userId,
+        publication_status: 'published',
+        expires_at: new Date(now.getTime() + 3_600_000),
+        created_at: now,
+      },
+    ]);
+
+    const visible = await listPublishedAnnouncements(1);
+
+    expect(visible).toHaveLength(1);
+    expect(visible[0]?.title).toBe('Visible');
   });
 
   it('respects the announcement preference', async () => {

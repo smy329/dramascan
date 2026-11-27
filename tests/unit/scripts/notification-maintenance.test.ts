@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_LIMIT,
+  DELIVERY_LEASE_SECONDS,
   DELIVERY_RETENTION_DAYS,
   MAX_LIMIT,
   MAX_PUSH_RETRY_ATTEMPTS,
@@ -191,6 +192,80 @@ describe('runNotificationMaintenance', () => {
 
     expect(candidateCall?.values?.[0]).toBe(PUSH_RETRY_WINDOW_DAYS);
     expect(candidateCall?.values?.[1]).toBe(MAX_PUSH_RETRY_ATTEMPTS);
+  });
+
+  it('claims candidates exclusively, releases the lease, and rechecks delivery before sending', async () => {
+    const calls: QueryCall[] = [];
+    const candidate = {
+      id: '0198f3a2-0000-7000-8000-000000000001',
+      user_id: '0198f3a2-0000-7000-8000-000000000002',
+      event_type: 'new_drama',
+      title: 'Lease candidate',
+      content: 'The command must claim this row.',
+      link: null,
+    };
+    const client = fakeClient(calls, [
+      {
+        match: 'from notifications n',
+        result: { rows: [candidate], rowCount: 1 },
+      },
+      {
+        match: 'select exists',
+        result: { rows: [{ delivered: false }], rowCount: 1 },
+      },
+    ]);
+
+    await runNotificationMaintenance({
+      client: client as never,
+      connectionString: 'postgresql://localhost:5432/dramascan_test',
+      config: PUSH_CONFIG,
+      log: () => {},
+    });
+
+    const candidateIndex = calls.findIndex(call => call.sql.includes('from notifications n'));
+    const candidateSql = calls[candidateIndex]?.sql ?? '';
+
+    expect(candidateSql).toContain('for update skip locked');
+    expect(candidateSql).toContain('n.delivery_lease_until is null');
+    expect(candidateSql).toContain('n.delivery_lease_until <= now()');
+
+    const beginIndex = calls.findIndex(call => call.sql.trim().toLowerCase() === 'begin');
+    const claimIndex = calls.findIndex(
+      call =>
+        call.sql.includes('set delivery_lease_until = now()') &&
+        call.sql.includes('delivery_lease_token =')
+    );
+    const commitIndex = calls.findIndex(call => call.sql.trim().toLowerCase() === 'commit');
+
+    expect(beginIndex).toBeGreaterThanOrEqual(0);
+    expect(beginIndex).toBeLessThan(candidateIndex);
+    expect(claimIndex).toBeGreaterThan(candidateIndex);
+    expect(commitIndex).toBeGreaterThan(claimIndex);
+
+    const repeatedCheckIndex = calls.findIndex(
+      call =>
+        call.sql.includes('select exists') &&
+        call.sql.includes("d.channel = 'push'") &&
+        call.sql.includes('d.success = true')
+    );
+    const subscriptionsIndex = calls.findIndex(call =>
+      call.sql.includes('select id, endpoint, p256dh, auth')
+    );
+
+    expect(repeatedCheckIndex).toBeGreaterThan(candidateIndex);
+    expect(repeatedCheckIndex).toBeLessThan(subscriptionsIndex);
+
+    const releaseIndex = calls.findIndex(
+      call =>
+        call.sql.includes('set delivery_lease_until = null') &&
+        call.sql.includes('delivery_lease_token = null')
+    );
+    const releaseSql = calls[releaseIndex]?.sql ?? '';
+
+    expect(releaseIndex).toBeGreaterThan(repeatedCheckIndex);
+    expect(releaseSql).toContain('delivery_lease_token = $2');
+
+    expect(DELIVERY_LEASE_SECONDS).toBe(300);
   });
 
   it('removes the delivery records the retention window no longer keeps', async () => {

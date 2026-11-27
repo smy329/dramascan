@@ -581,7 +581,9 @@ Domain errors extend a base class and add a stable code, for example `ContentNot
 
 - Drizzle Kit generates SQL migrations into `drizzle/`.
 - Migration files are numbered sequentially: `0001_create_auth_tables.sql`, `0002_create_content_tables.sql`.
-- Never edit an applied migration. Create a new migration.
+- Never edit an applied migration. Create a new migration. A migration that
+  has already run in any environment is immutable: changing its text makes
+  the file and the statement that ran disagree (D-015, D-093).
 - Migrations are reviewed like code and committed with the schema change.
 - `drizzle-kit push` is forbidden in production. Production uses versioned migrations only.
 
@@ -599,6 +601,10 @@ A single release must not both add and remove a column that the previous release
 ### 10.3 Safety rules
 
 - Every migration states whether it is reversible or forward-fix-only. Drizzle Kit does not generate down migrations by default; document the rollback plan in the PR.
+- The `Reversibility:` line belongs to the migration that introduces the
+  change. A migration that was already applied is not edited to carry one;
+  the rollback plan of the historical migrations lives in
+  `docs/development/DATABASE.md` (D-093).
 - Destructive changes (drop table/column, type narrowing, data deletion) require a backup and explicit confirmation before production execution.
 - Data migrations are separate from schema migrations and are idempotent.
 - Migrations run as a dedicated migration role with DDL rights; the application role has DML rights only.

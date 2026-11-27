@@ -189,11 +189,29 @@ view is counted once per visitor per content item in a rolling six-hour window
 `POST /api/analytics/playback` carries exactly one target — `episodeId`
 together with `dramaId`, or `movieId` — plus `eventType` (`play`,
 `play_pause`, `seek`, `completion`, or `exit`), `positionSeconds`,
-`watchDurationSeconds`, and `completionThresholdMet`. At most one event of each
-type is stored per visitor, per content item, per hour, so the table never
-becomes a per-second log (D-060). `play` is the playback start: the player
-reports it once per viewing session, and it is the denominator of the
-dashboard's completion rate (D-068).
+`cumulativeWatchSeconds`, `clientSessionKey`, and `completionThresholdMet`.
+At most one event of each type is stored per visitor, per content item, per
+hour, so the table never becomes a per-second log (D-060). `play` is the
+playback start: the player reports it once per viewing session, and it is the
+denominator of the dashboard's completion rate (D-068).
+
+`cumulativeWatchSeconds` is the **cumulative** watch time of the viewing
+session, not the time since the last event, and `clientSessionKey` names the
+viewing session. The server keeps the cumulative watch time it has already
+accounted for in a `playback_viewing_sessions` row, so it decides what a claim
+is worth (D-090):
+
+- The first beacon of a session is measured against the moment the server
+  stamped, so it cannot claim a watch time it did not earn.
+- A repeated claim is a delta of zero, so an event whose acknowledgement was
+  lost cannot count its watch time twice.
+- Two tabs of the same viewer are two sessions with two baselines, so one tab
+  cannot reset the baseline of the other.
+
+The response is `{ data: { recorded, duplicate, accountedWatchSeconds } }`.
+`accountedWatchSeconds` is the cumulative watch time the server has accounted
+for; the browser uses it to know which part of its claim the server already
+counted, so a dropped event does not lose its watch time.
 
 Both endpoints are **route handlers** rather than Server Actions for the same
 reason the playback progress endpoint is: the browser sends them with

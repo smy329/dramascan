@@ -80,6 +80,8 @@ export const notifications = pgTable('notifications', {
   read_at: timestamp('read_at', { withTimezone: true }),
   delivered: boolean('delivered').default(false),
   delivery_timestamp: timestamp('delivery_timestamp', { withTimezone: true }),
+  delivery_lease_until: timestamp('delivery_lease_until', { withTimezone: true }),
+  delivery_lease_token: text('delivery_lease_token'),
   priority: text('priority').default('normal'),
   created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -84,11 +84,16 @@ export default defineConfig({
     // explicitly opts in, so reuse is never silent. CI always starts its own.
     reuseExistingServer: !process.env.CI,
     // The readiness check requests the base URL, which compiles the home route
-    // on a cold development server. On a slow or networked filesystem that
-    // compile can take well over a minute, so the budget is generous: a
-    // timeout here would fail the run before any test executes, and it says
-    // nothing about the application.
-    timeout: 300_000,
+    // on a cold development server. A timeout here would fail the run before
+    // any test executes, and it says nothing about the application, so the
+    // budget has to cover the worst cold compile rather than the typical one.
+    //
+    // Measured on this project's development machine: a cold compile of `/`
+    // takes ~250s, a warm workspace serves it in ~2s, and a contended run was
+    // still compiling when the previous 300s gate expired. 600s keeps a
+    // measured margin; the warm-up in the global setup still pays this cost
+    // only once per run, and every later request is served from the build.
+    timeout: 600_000,
     stdout: 'pipe',
     stderr: 'pipe',
     env: {

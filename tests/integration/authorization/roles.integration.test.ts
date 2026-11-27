@@ -51,8 +51,8 @@ import {
   ValidationError,
 } from '@/platform/errors';
 
-const TEST_ROLE_PREFIX = 'it_role_';
-const TEST_USER_PREFIX = 'it-role-user-';
+const TEST_ROLE_PREFIX = 'r5t5_role_';
+const TEST_USER_PREFIX = 'r5t5-role-';
 
 const superAdmin: ActorContext = {
   userId: 'it-role-super-admin',
@@ -376,10 +376,11 @@ describe('user role assignments (real database)', () => {
     const created = await createRole(superAdmin, { name: uniqueName('assigned') });
     const userId = await insertTestUser('Assignee');
 
-    const assignments = await assignUserRole(superAdmin, userId, created.id);
+    const result = await assignUserRole(superAdmin, userId, created.id);
 
-    expect(assignments.map(item => item.roleId)).toContain(created.id);
-    expect(assignments[0]?.roleName).toBe(created.name);
+    expect(result.assignments.map(item => item.roleId)).toContain(created.id);
+    expect(result.assignments[0]?.roleName).toBe(created.name);
+    expect(result.changed).toBe(true);
   });
 
   it('is idempotent when the same role is assigned twice', async () => {
@@ -387,9 +388,21 @@ describe('user role assignments (real database)', () => {
     const userId = await insertTestUser('Twice User');
 
     await assignUserRole(superAdmin, userId, created.id);
-    const assignments = await assignUserRole(superAdmin, userId, created.id);
+    const result = await assignUserRole(superAdmin, userId, created.id);
 
-    expect(assignments).toHaveLength(1);
+    expect(result.assignments).toHaveLength(1);
+    expect(result.changed).toBe(false);
+  });
+
+  it('reports whether a role assignment changed', async () => {
+    const created = await createRole(superAdmin, { name: uniqueName('reported') });
+    const userId = await insertTestUser('Reported Assignment User');
+
+    const first = await assignUserRole(superAdmin, userId, created.id);
+    const repeated = await assignUserRole(superAdmin, userId, created.id);
+
+    expect(first.changed).toBe(true);
+    expect(repeated.changed).toBe(false);
   });
 
   it('reports an unknown role as not found', async () => {
@@ -413,9 +426,10 @@ describe('user role assignments (real database)', () => {
     const userId = await insertTestUser('Revoke User');
 
     await assignUserRole(superAdmin, userId, created.id);
-    const assignments = await revokeUserRole(superAdmin, userId, created.id);
+    const result = await revokeUserRole(superAdmin, userId, created.id);
 
-    expect(assignments).toHaveLength(0);
+    expect(result.assignments).toHaveLength(0);
+    expect(result.changed).toBe(true);
   });
 
   it('reports a missing assignment as not found', async () => {

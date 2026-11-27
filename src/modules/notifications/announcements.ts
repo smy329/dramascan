@@ -260,19 +260,19 @@ export async function listPublishedAnnouncements(
     .where(
       and(
         eq(announcements.publication_status, 'published'),
-        isNull(announcements.deleted_at)
+        isNull(announcements.deleted_at),
+        // The expiry is a property of the row, so it is filtered before the
+        // list is limited. Filtering afterwards would let an expired
+        // announcement that is newer than a visible one push the visible one
+        // out of the list. The database clock decides, so the list does not
+        // depend on the clock of the server that read it.
+        sql`(${announcements.expires_at} is null or ${announcements.expires_at} > now())`
       )
     )
     .orderBy(desc(announcements.created_at), desc(announcements.id))
     .limit(bounded);
 
-  const now = new Date();
-
-  return rows
-    .map(row => ({ ...row, status: row.status ?? 'draft' }))
-    .filter(
-      row => row.expiresAt === null || row.expiresAt === undefined || row.expiresAt > now
-    );
+  return rows.map(row => ({ ...row, status: row.status ?? 'draft' }));
 }
 
 /** The maximum number of announcements the administration list may return. */

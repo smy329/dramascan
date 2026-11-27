@@ -515,6 +515,141 @@ that was wrong:
   report a connection timeout when the server is busy compiling. The beacon is
   fire-and-forget, so neither reaches the viewer.
 
+#### Phase 11 review round 5 (2026-11-27)
+
+A fifth fresh reviewer reviewed the whole branch `9c421ed..260bace` and
+requested changes: eleven findings. Each finding was checked against the code
+and the binding rules before any fix, and each fix was written test-first — the
+failing test was run and watched fail before the implementation changed.
+
+- **The watch time was a delta, and a delta could be forged.** The browser
+  reported the seconds it watched since the last event, so the first beacon of
+  a viewing had no previous event to measure against and could claim a whole
+  day of watching; and a lost acknowledgement made the browser report the same
+  delta again, so the same watch time was counted twice. The browser now
+  reports the **cumulative** watch time of its viewing session and the key of
+  that session, and the server keeps the cumulative watch time it has already
+  accounted for in a `playback_viewing_sessions` row. The first beacon is
+  measured against the moment the server stamped, a repeated claim is a delta
+  of zero, and two tabs are two sessions with two baselines (D-090).
+- **The six-hour view window was checked outside the write.** The workflow
+  read the window, found nothing, and then inserted — two requests that
+  arrived at the same time both read an empty window. The check and the insert
+  now run in one transaction, behind a transaction-scoped advisory lock keyed
+  by visitor and title, and the hourly unique index stays as the safety net
+  (D-089).
+- **The typed target was not used by every read.** The window check, the
+  public view count, the playback summary, the completion check and the
+  deduplication indexes now share the expressions of
+  `analytics/typed-targets.ts`, and a forward migration recreates the two
+  deduplication indexes on the effective target (D-082).
+- **An orphaned browser guest row was left behind.** When the account already
+  had a canonical visitor row, the anonymous row the browser had used before
+  the sign-in was never merged, so the events recorded before the sign-in were
+  counted for nobody. The anonymous row is now reconciled into the canonical
+  row in one transaction, and the reconciliation is fire-and-forget: a failure
+  is logged as a warning and never breaks the beacon (D-094).
+- **A security notification followed a second source of truth.** The workflow
+  read the stored state before the write and compared it with the requested
+  state. The write now reports whether it changed anything, and the
+  notification follows that report (D-091).
+- **Two overlapping maintenance runs sent the same push message.** The
+  candidates are now claimed with `FOR UPDATE SKIP LOCKED` and a lease that
+  only its owner releases, and the successful-delivery check and the attempt
+  cap are read again immediately before the push (D-092).
+- **The preference form submitted every switch it showed.** A stale form on
+  one device could therefore carry the value another device had already
+  changed. The form now submits only the switches the viewer changed, and the
+  browser-push copy describes an account-wide control.
+- **An expired announcement could push a visible one out of the list.** The
+  expiry is now filtered in SQL with the database clock, before the list is
+  limited.
+- **A beacon could name a movie and an episode at the same time.** The
+  contract now rejects a payload that does not name exactly one target.
+- **The applied migrations had been edited.** Round 4 added a
+  `Reversibility:` line to the nineteen historical migrations, so the files no
+  longer matched the statements that ran. The lines are removed, the rollback
+  plan of every historical migration lives in `docs/development/DATABASE.md`
+  §7.1, and a unit test reads the journal to enforce the rule (D-093).
+- **The viewing sessions did not follow their title.** They now move with a
+  drama that becomes a movie, are removed with a title that is permanently
+  deleted, are counted in the impact the Trash surface shows, and are removed
+  by the retention command when they go stale.
+
+#### Changed files
+
+- `drizzle/0000…0018` (restored to their applied content),
+  `drizzle/0025_phase11_review_round5.sql` (new),
+  `drizzle/0026_phase11_review_round5_playback_sessions.sql` (new),
+  `drizzle/0027_phase11_review_round5_delivery_lease.sql` (new),
+  `drizzle/meta/_journal.json`
+- `src/modules/analytics/{playback-plausibility,playback-analytics-workflow,analytics-inputs,content-ownership,retention,schema,typed-targets,view-counting-workflow,view-counts,visitor,index}.ts`
+- `src/modules/auth/{repository,index}.ts`,
+  `src/modules/authorization/{roles,index}.ts`,
+  `src/modules/notifications/{announcements,delivery,delivery-limits,schema}.ts`
+- `src/components/player/playback-analytics.ts`,
+  `src/components/notifications/notification-preferences-form.tsx`
+- `src/app/api/analytics/playback/route.ts`,
+  `src/workflows/analytics/record-playback.ts`,
+  `src/workflows/admin/{users,movie-conversion,permanent-delete}.ts`
+- `scripts/{analytics-retention,notification-maintenance}.mjs`,
+  `src/lib/contracts/notification-preferences.ts`
+- `tests/unit/modules/analytics/{playback-plausibility,analytics-inputs}.test.ts`,
+  `tests/unit/components/player/playback-analytics.test.ts`,
+  `tests/unit/components/notification-preferences-form.test.tsx` (new),
+  `tests/unit/modules/notifications/delivery-limits.test.ts`,
+  `tests/unit/scripts/{analytics-retention,notification-maintenance}.test.ts`,
+  `tests/unit/workflows/admin/authorization.test.ts`,
+  `tests/unit/db/migration-reversibility.test.ts`
+- `tests/integration/analytics/{playback-analytics,view-counting,dashboard,retention}.integration.test.ts`,
+  `tests/integration/analytics/{content-ownership,visitor-reconciliation}.integration.test.ts` (new),
+  `tests/integration/notifications/{notifications,delivery-lease}.integration.test.ts`,
+  `tests/integration/auth/account-status.integration.test.ts`,
+  `tests/integration/authorization/roles.integration.test.ts`
+- `docs/decisions/DECISIONS.md` (D-089…D-094),
+  `docs/architecture/ARCHITECTURE.md`,
+  `docs/development/{API,CONVENTIONS,DATABASE}.md`
+- `playwright.config.ts` (test infrastructure: the readiness budget, below)
+
+#### Verification
+
+- Typecheck: **PASS** (`npm run typecheck`)
+- Lint: **PASS** (`npm run lint`; only the pre-existing
+  `MODULE_TYPELESS_PACKAGE_JSON` warning)
+- Unit tests: **PASS** — 1320/1320, 137 files (`npm test`)
+- Integration tests: **PASS** — 823/823, 58 files (`npm run test:integration`)
+- Playwright E2E: **PASS** — 94/94 (`npx playwright test`), exit code 0; the run
+  warmed 91 routes in 204s and finished in 14.7 minutes
+- Production build: **PASS** (`npm run build` with HTTPS `APP_URL` and
+  `TRUSTED_ORIGINS`; the local `.env.local` uses `http://localhost`, which the
+  production configuration rejects) — exit code 0
+
+#### Known limitations
+
+- **The boundary rules are still documentation, not lint rules.**
+  `eslint.config.js` has no `no-restricted-imports` configuration, so the
+  module boundary and the database-client rule are enforced by the unit-test
+  guards and by code review, not by ESLint (D-086).
+- **The browser suite's start gate has to cover a cold compile.** Playwright's
+  readiness probe requests the base URL, so the run cannot begin before a cold
+  development server has compiled `/`. Measured on this filesystem: ~250s cold,
+  ~2s warm, and one run was still compiling when the previous 300s budget
+  expired. The budget is now 600s. This is test infrastructure only; the home
+  route's module graph is identical before and after the round-5 changes (131
+  modules), and no product behaviour depends on the budget.
+- **The earlier infrastructure flakes remain latent.** A `networkidle` wait over
+  the 60-second navigation budget and a PostgreSQL `40P01` deadlock in the drama
+  fixture's cleanup were both observed before this round; neither reproduced in
+  the round-5 run and neither concerns the round-5 changes.
+- **A beacon that the browser aborts is logged as a server error.** The
+  development server logs `ECONNRESET` when the browser closes a page while a
+  `keepalive` view beacon is still on its way. The beacon is fire-and-forget, so
+  this never reaches the viewer.
+- **The development database is still at migration index 10.** It is not used
+  by the test suite and was not migrated in this round; migrations 0025–0027
+  were applied to `dramascan_test` only. The schema documented in
+  `docs/development/DATABASE.md` describes the migrated test database.
+
 ---
 
 ### Phase 9 — Ratings, Reviews, and Moderation (2026-11-24)

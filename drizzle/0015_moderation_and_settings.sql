@@ -1,11 +1,3 @@
--- Migration 0015 — moderation actions, system settings, review report state
---
--- Reversible: the rollback drops the two tables, their indexes, and the added
--- foreign keys, restores the `review_reports.review_id` foreign key and its
--- NOT NULL constraint, and drops the `review_id_snapshot` column. A report
--- whose review was removed cannot be restored to a NOT NULL `review_id`, so
--- the rollback must delete those reports first.
-
 CREATE TABLE "moderation_actions" (
 	"id" uuid PRIMARY KEY DEFAULT uuidv7() NOT NULL,
 	"action" text NOT NULL,

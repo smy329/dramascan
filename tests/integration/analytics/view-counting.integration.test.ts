@@ -27,12 +27,17 @@ vi.hoisted(() => {
 vi.mock('server-only', () => ({}));
 
 import { and, eq, isNull } from 'drizzle-orm';
+import { Client } from 'pg';
 
 import { db } from '@/db/client';
 import { users } from '@/modules/auth/schema';
 import { dramas, movies } from '@/modules/content/schema';
 import { content_view_events, guest_sessions } from '@/modules/analytics/schema';
-import { recordContentView } from '@/modules/analytics/view-counting-workflow';
+import {
+  recordContentView,
+  viewWindowLockKey,
+} from '@/modules/analytics/view-counting-workflow';
+import { getContentViewCount } from '@/modules/analytics/view-counts';
 import { resolveAnalyticsVisitor } from '@/modules/analytics/visitor';
 import { closePool } from '@/platform/db/pool';
 
@@ -110,6 +115,134 @@ describe('view counting', () => {
       .delete(guest_sessions)
       .where(eq(guest_sessions.session_id, `session-${seeded.userId}`));
     await cleanupAnalyticsFixtures(TEST_PREFIX);
+  });
+
+  it('counts a view whose typed target disagrees with its legacy pair under the typed target', async () => {
+    // The typed foreign key is the evidence: the row belongs to the drama it
+    // names, whatever its legacy pair says (D-032 §4, D-082).
+    const sessionId = `session-${seeded.userId}`;
+    const visitor = await resolveAnalyticsVisitor({ userId: null, sessionId });
+
+    await db.insert(content_view_events).values({
+      guest_session_id: visitor.guestSessionId,
+      viewer_type: 'guest',
+      content_id: seeded.movieId,
+      content_type: 'movie',
+      drama_id: seeded.dramaId,
+      movie_id: null,
+      viewed_at: new Date(),
+      viewed_hour_bucket: '2026-01-01T00',
+    });
+
+    expect(await getContentViewCount('drama', seeded.dramaId)).toBe(1);
+    expect(await getContentViewCount('movie', seeded.movieId)).toBe(0);
+  });
+
+  it('does not count a second view of the title a disagreeing row names', async () => {
+    const sessionId = `session-${seeded.userId}`;
+    const visitor = await resolveAnalyticsVisitor({ userId: null, sessionId });
+
+    await db.insert(content_view_events).values({
+      guest_session_id: visitor.guestSessionId,
+      viewer_type: 'guest',
+      content_id: seeded.movieId,
+      content_type: 'movie',
+      drama_id: seeded.dramaId,
+      movie_id: null,
+      viewed_at: new Date(),
+      viewed_hour_bucket: '2026-01-01T00',
+    });
+
+    const result = await recordContentView({
+      type: 'drama',
+      contentId: seeded.dramaId,
+      userId: null,
+      sessionId,
+    });
+
+    expect(result.counted).toBe(false);
+    expect(result.alreadyCounted).toBe(true);
+  });
+
+  it('waits for the view it is racing with instead of counting a second one', async () => {
+    // The window check and the insert are serialized per visitor and title, so
+    // two requests that arrive at the same time produce one row (D-058).
+    const sessionId = `session-${seeded.userId}`;
+    const visitor = await resolveAnalyticsVisitor({ userId: null, sessionId });
+    const client = new Client({ connectionString: process.env.DATABASE_URL });
+
+    await client.connect();
+
+    try {
+      await client.query('begin');
+      await client.query('select pg_advisory_xact_lock(hashtext($1))', [
+        viewWindowLockKey(visitor.guestSessionId, 'drama', seeded.dramaId),
+      ]);
+
+      let settled = false;
+      const pending = recordContentView({
+        type: 'drama',
+        contentId: seeded.dramaId,
+        userId: null,
+        sessionId,
+      }).then(result => {
+        settled = true;
+        return result;
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 250));
+
+      expect(settled).toBe(false);
+
+      await client.query('rollback');
+
+      const result = await pending;
+
+      expect(result.counted).toBe(true);
+    } finally {
+      await client.end();
+    }
+  });
+
+  it('counts one view when two requests arrive at the same time', async () => {
+    const sessionId = `session-${seeded.userId}`;
+
+    // The visitor row exists before the requests arrive: a request that has to
+    // create it waits for the row anyway, which would hide the race.
+    await resolveAnalyticsVisitor({ userId: null, sessionId });
+
+    const results = await Promise.all([
+      recordContentView({
+        type: 'drama',
+        contentId: seeded.dramaId,
+        userId: null,
+        sessionId,
+        now: new Date('2026-11-26T10:59:59.000Z'),
+      }),
+      recordContentView({
+        type: 'drama',
+        contentId: seeded.dramaId,
+        userId: null,
+        sessionId,
+        now: new Date('2026-11-26T11:00:01.000Z'),
+      }),
+      recordContentView({
+        type: 'drama',
+        contentId: seeded.dramaId,
+        userId: null,
+        sessionId,
+        now: new Date('2026-11-26T11:00:02.000Z'),
+      }),
+      recordContentView({
+        type: 'drama',
+        contentId: seeded.dramaId,
+        userId: null,
+        sessionId,
+        now: new Date('2026-11-26T11:00:03.000Z'),
+      }),
+    ]);
+
+    expect(results.filter(result => result.counted)).toHaveLength(1);
   });
 
   it('counts the first view of a drama', async () => {

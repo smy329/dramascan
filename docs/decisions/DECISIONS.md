@@ -3718,4 +3718,224 @@ An endpoint that nothing calls is a promise the platform does not keep.
 
 ---
 
+## D-089 — The six-hour view window is checked atomically
+
+**Date:** 2026-11-27
+**Status:** Approved by user (Phase 11 review round 5)
+**Extends:** D-058, D-070
+
+**Context:** A view is counted once per visitor, per title, per rolling
+six-hour window. The check and the insert were two separate statements: the
+application read the window, found nothing, and then inserted the row. Two
+requests that arrived at the same time both read an empty window and both
+inserted, so one view was counted twice.
+
+The hourly unique index caught the second insert and turned it into a
+duplicate, so the numbers were not wrong — but the *window* was not the
+authority. The index is an hourly bucket, while the rule is a rolling six
+hours: a view at 10:59 and one at 11:01 land in different hour buckets, so
+the index cannot enforce the rule the product states.
+
+**Decision:**
+
+1. **The window check and the insert run in one transaction.** A
+   transaction-scoped advisory lock, keyed by visitor and title, serialises
+   them. The second request waits for the first one to commit, then sees the
+   row the first one wrote and counts nothing.
+2. **The lock is scoped.** The key names the visitor and the title, so the
+   views of two different titles never wait for each other.
+3. **The hourly index stays as the safety net.** It is the database-level
+   guarantee; the lock is the rule.
+
+**Consequences:**
+
+- The six-hour window is the authority, and the index is the backstop.
+- A failed request releases its lock with the transaction, so no lock is left
+  behind.
+- The lock costs one indexed advisory-lock call per view, and no additional
+  table.
+
+---
+
+## D-090 — The browser reports cumulative watch time against a server baseline
+
+**Date:** 2026-11-27
+**Status:** Approved by user (Phase 11 review round 5)
+**Extends:** D-070, D-073
+
+**Context:** The playback beacon is public: anybody may post to the playback
+endpoint. The server therefore decides what a beacon may claim.
+
+The protocol was a *delta*: every event carried the seconds the viewer
+watched since the previous event. Two things could then go wrong:
+
+- **The first beacon of a viewing had no previous event to measure against.**
+  It claimed a watch time the server could not check at all, so a forged
+  beacon could report a whole day of watching.
+- **A lost acknowledgement was counted twice.** The browser could not know
+  that its event had been stored, so it reported the same delta again, and
+  the server counted the same watch time twice.
+
+**Decision:**
+
+1. **The browser reports the cumulative watch time of its viewing session**,
+   not the time since the last event. Every event of a session carries the
+   same growing total.
+2. **The server keeps the baseline.** A `playback_viewing_sessions` row
+   records the moment the server stamped, the moment it stored the last
+   event, and the cumulative watch time it has accounted for. The watch time
+   of an event is the part of the claim the server has not accounted for yet.
+3. **The first beacon is measured against the server's own stamp.** A session
+   that was just created cannot claim more than the tolerance, so a forged
+   first beacon counts almost nothing.
+4. **A repeated claim is a delta of zero.** The watch time was already
+   counted, so a lost acknowledgement cannot double-count it.
+5. **A viewing session has its own key.** The browser sends a
+   `clientSessionKey` with every beacon, so two tabs of the same viewer are
+   two sessions with two baselines, and neither resets the other.
+6. **The baseline is a baseline, not a log.** One row per visitor, title and
+   session key; the bounded event rows stay in `playback_analytics_events`.
+
+**Consequences:**
+
+- The watch time the server stores is bounded by the time that really passed.
+- A client that restarts its counter is recognised as a new viewing and
+  measured from the restart.
+- The protocol is a payload change: `watchDurationSeconds` becomes
+  `cumulativeWatchSeconds`, and `clientSessionKey` is required.
+
+---
+
+## D-091 — A security notification follows the change the write reports
+
+**Date:** 2026-11-27
+**Status:** Approved by user (Phase 11 review round 5)
+**Extends:** D-064, D-080
+
+**Context:** D-080 made the security notification follow a *transition*: a
+request that changed nothing must not tell the account owner that something
+happened. The transition was decided by a read of the stored state before the
+write, compared with the requested state.
+
+That comparison is a second source of truth. Between the read and the write,
+another administrator can make the same change, and the notification then
+describes a request rather than a change.
+
+**Decision:**
+
+1. **The write reports whether it changed anything.** Assigning a role,
+   revoking a role and changing an account status return the rows they wrote
+   together with a `changed` flag.
+2. **The notification follows that flag.** No pre-read comparison, no
+   notification for a request that changed nothing.
+
+**Consequences:**
+
+- The notification describes the stored state, not the request.
+- The module functions answer a second question — "did this change?" — which
+  every caller needs.
+
+---
+
+## D-092 — The maintenance command claims its candidates exclusively
+
+**Date:** 2026-11-27
+**Status:** Approved by user (Phase 11 review round 5)
+**Extends:** D-070, D-078
+
+**Context:** The notification maintenance may run twice at the same time: the
+systemd timer fires while an operator starts the command by hand. Both runs
+read the same candidate notifications, and both sent the same push message to
+the same browser.
+
+**Decision:**
+
+1. **A candidate is claimed before it is sent.** The candidates are selected
+   with `FOR UPDATE SKIP LOCKED` inside a short transaction, and the selected
+   rows carry a lease — an expiry and a token naming the owner.
+2. **The lease is released by its owner.** A run releases only the rows that
+   carry its own token, so a run whose lease expired cannot release the
+   claim of the run that took over.
+3. **A crashed run loses nothing.** The lease expires, and the notification
+   is handed back to the next run.
+4. **The delivery rules are repeated before the send.** The successful-delivery
+   check and the attempt cap are read again immediately before the push, so
+   the lease is an exclusive claim and not a substitute for the rules.
+
+**Consequences:**
+
+- Two overlapping runs send a notification once between them.
+- The two implementations — the module and the command — share the lease
+  duration and follow the same four rules.
+
+---
+
+## D-093 — An applied migration is never edited
+
+**Date:** 2026-11-27
+**Status:** Approved by user (Phase 11 review round 5)
+**Extends:** D-015, CONVENTIONS §10.1/§10.3
+
+**Context:** Round 4 added a `Reversibility:` line to every migration to
+satisfy CONVENTIONS §10.3, including the nineteen migrations that had
+already been applied. Editing an applied migration changes its content, so a
+database that applied it keeps a record that no longer matches the file, and
+the hash recorded by the migration tool no longer describes the statement
+that ran.
+
+**Decision:**
+
+1. **An applied migration is never edited.** A change to the schema or to a
+   migration is a new migration.
+2. **A new migration states its own rollback.** The `Reversibility:` line
+   belongs to the migration that introduces the change.
+3. **The rollback plan of the historical migrations lives in the
+   documentation.** `docs/development/DATABASE.md` names every historical
+   migration, what it does and how it is rolled back.
+
+**Consequences:**
+
+- The file and the applied statement always agree.
+- The rule is enforced by a unit test that reads the journal: a migration
+  from index 19 onwards carries a rollback statement, a historical one does
+  not, and every historical one is documented.
+
+---
+
+## D-094 — An orphaned browser guest row is reconciled into the account's row
+
+**Date:** 2026-11-27
+**Status:** Approved by user (Phase 11 review round 5)
+**Extends:** D-032, D-070
+
+**Context:** An account has one canonical visitor row. The browser that
+signed in may have recorded views under an anonymous row before the sign-in.
+When the account already had a canonical row, that anonymous row was left
+behind: its events stayed attached to a retired visitor, so they were counted
+for nobody.
+
+**Decision:**
+
+1. **The anonymous row is merged into the canonical row.** The view events,
+   the playback events, the search events and the viewing-session baselines
+   of the anonymous row are moved to the canonical row, in one transaction.
+2. **The canonical row wins a collision.** A row that would break a
+   deduplication index is soft-deleted before the remaining rows move; the
+   canonical row was stored first and stays the active row of its key.
+3. **The anonymous row is retired.** It is soft-deleted, so the identifier is
+   not reused and the history is not lost.
+4. **A failure does not break the request.** The reconciliation is
+   fire-and-forget: a failure is logged as a warning and the canonical
+   visitor is returned, so a beacon never fails because of a merge.
+
+**Consequences:**
+
+- The events recorded before the sign-in are counted for the account.
+- The reconciliation costs one transaction per signed-in request that still
+  has an anonymous row, and nothing at all once the row is retired.
+
+---
+
+---
+
 

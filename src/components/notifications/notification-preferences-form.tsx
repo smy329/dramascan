@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -70,8 +70,15 @@ const CHANNEL_SWITCHES: ReadonlyArray<{ key: SwitchKey; label: string; descripti
   {
     key: 'globalPush',
     label: 'Browser push',
-    description: 'Send notifications to this browser.',
+    description:
+      'Allow browser push notifications for your account. Every browser asks for its own permission.',
   },
+];
+
+/** Every switch the form can submit, in the order the form shows them. */
+const SWITCH_KEYS: readonly SwitchKey[] = [
+  ...EVENT_SWITCHES.map(switchRow => switchRow.key),
+  ...CHANNEL_SWITCHES.map(switchRow => switchRow.key),
 ];
 
 function Switch({
@@ -132,11 +139,17 @@ export function NotificationPreferencesForm({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The switches as they were last saved. The form compares the switches it
+  // holds with this baseline, so it submits the switches the viewer changed
+  // and leaves the others alone (D-085).
+  const savedPreferences = useRef<NotificationPreferenceSet>(initialPreferences);
+
   const {
     handleSubmit,
     setValue,
     watch,
     reset,
+    getValues,
     formState: { isSubmitting },
   } = useForm<NotificationPreferencesValues>({
     resolver: zodResolver(notificationPreferencesSchema),
@@ -157,14 +170,26 @@ export function NotificationPreferencesForm({
     setValue(key, checked, { shouldDirty: true });
   };
 
-  const save = handleSubmit(async values => {
-    const result = await saveNotificationPreferences(values);
+  const save = handleSubmit(async () => {
+    const current = getValues();
+    const patch: NotificationPreferencesValues = {};
+
+    for (const key of SWITCH_KEYS) {
+      const value = current[key];
+
+      if (typeof value === 'boolean' && value !== savedPreferences.current[key]) {
+        patch[key] = value;
+      }
+    }
+
+    const result = await saveNotificationPreferences(patch);
 
     if (!result.ok) {
       setError(result.error.message);
       return;
     }
 
+    savedPreferences.current = result.data;
     reset({
       newEpisode: result.data.newEpisode,
       newDrama: result.data.newDrama,

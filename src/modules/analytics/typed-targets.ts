@@ -62,3 +62,17 @@ export const playbackTargetIdExpression = sql`coalesce(
   ${playback_analytics_events.drama_id},
   ${playback_analytics_events.movie_id}
 )`;
+
+/**
+ * The content id of a playback row.
+ *
+ * A playback row is about one episode or one movie. The typed columns say
+ * which: the episode of a drama, the movie of a film. The legacy
+ * `content_id` carries the same value for every row the application writes,
+ * so it is only the fallback for a row that cannot be placed.
+ */
+export const playbackContentIdExpression = sql`coalesce(
+  ${playback_analytics_events.episode_id},
+  ${playback_analytics_events.movie_id},
+  ${playback_analytics_events.content_id}
+)`;

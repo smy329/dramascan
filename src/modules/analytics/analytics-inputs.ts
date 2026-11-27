@@ -41,13 +41,41 @@ export const analyticsPlaybackInputSchema = z
     dramaId: z.string().uuid().optional(),
     movieId: z.string().uuid().optional(),
     positionSeconds: z.number().finite().min(0).optional(),
-    watchDurationSeconds: z.number().finite().min(0).optional(),
+    /**
+     * The cumulative watch seconds of the viewing session.
+     *
+     * The browser reports a total, not a delta: the server keeps the total it
+     * has already accounted for, so a repeated claim is a delta of zero and a
+     * lost acknowledgement cannot double-count a delta (D-090).
+     */
+    cumulativeWatchSeconds: z.number().finite().min(0).optional(),
+    /**
+     * The key of the viewing session the browser reports for.
+     *
+     * Two tabs of the same viewer are two viewing sessions, so their claims
+     * are counted against two baselines.
+     */
+    clientSessionKey: z.string().min(1).max(128),
     completionThresholdMet: z.boolean().optional(),
   })
   .refine(
-    value =>
-      value.episodeId !== undefined && value.dramaId !== undefined ||
-      value.movieId !== undefined,
+    value => {
+      // "Exactly one target": an episode with its drama, or a movie. A payload
+      // that names both is ambiguous, and the server would have to guess which
+      // one it meant.
+      const namesEpisode = value.episodeId !== undefined && value.dramaId !== undefined;
+      const namesMovie = value.movieId !== undefined;
+
+      if (namesEpisode) {
+        return value.movieId === undefined;
+      }
+
+      if (namesMovie) {
+        return value.episodeId === undefined && value.dramaId === undefined;
+      }
+
+      return false;
+    },
     {
       message:
         'A playback event names either an episode with its drama, or a movie.',

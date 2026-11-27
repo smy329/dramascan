@@ -1,10 +1,3 @@
--- Migration 0014 — video source version and cross-module deletion behaviour
---
--- Reversible: the rollback drops the `episodes.video_source_version` column and
--- restores the previous deletion behaviour of the two playback foreign keys.
--- The rows themselves are unaffected, but the version of the source an episode
--- is played from is lost with the column.
-
 ALTER TABLE "episodes" ADD COLUMN "video_source_version" integer DEFAULT 1 NOT NULL;
 --> statement-breakpoint
 -- Cross-module foreign keys: the deletion behaviour changes.

@@ -1,11 +1,12 @@
 import 'server-only';
 
-import { and, count, eq, isNull } from 'drizzle-orm';
+import { and, count, isNull, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import type { DbExecutor } from '@/platform/db/executor';
 
 import { content_view_events } from './schema';
+import { viewTargetIdExpression, viewTargetTypeExpression } from './typed-targets';
 
 /**
  * The public view-count read model.
@@ -39,10 +40,11 @@ export async function getContentViewCount(
     .from(content_view_events)
     .where(
       and(
-        eq(content_view_events.content_type, type),
-        type === 'drama'
-          ? eq(content_view_events.drama_id, id)
-          : eq(content_view_events.movie_id, id),
+        // The typed target decides which title a row belongs to, so the count
+        // and the grouping of the dashboard cannot disagree about it
+        // (D-032 §4, D-082).
+        sql`${viewTargetTypeExpression} = ${type}`,
+        sql`${viewTargetIdExpression} = ${id}`,
         isNull(content_view_events.deleted_at)
       )
     );

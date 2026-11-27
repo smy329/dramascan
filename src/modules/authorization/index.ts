@@ -27,5 +27,12 @@ export {
   setRolePermissions,
   updateRole,
 } from './roles';
-export type { RolePermission, RoleSummary, UserRoleAssignment, UserRoleAssignmentMap } from './roles';
+export type {
+  AssignUserRoleResult,
+  RevokeUserRoleResult,
+  RolePermission,
+  RoleSummary,
+  UserRoleAssignment,
+  UserRoleAssignmentMap,
+} from './roles';
 export { parsePermissionKeysBody } from './validation';

@@ -11,6 +11,7 @@ import {
   content_view_events,
   guest_sessions,
   playback_analytics_events,
+  playback_viewing_sessions,
   search_events,
 } from './schema';
 
@@ -64,6 +65,8 @@ export type AnalyticsRetentionResult = {
   playbackAnalyticsEvents: number;
   /** The search events that were removed. */
   searchEvents: number;
+  /** The viewing sessions that were removed. */
+  playbackViewingSessions: number;
   /** The daily aggregates that were removed. */
   analyticsDailyAggregates: number;
   /** The guest-session rows that were removed. */
@@ -143,6 +146,14 @@ export async function purgeExpiredGuestData(
     executor
   );
 
+  // The viewing sessions go before the guest sessions: a baseline points at
+  // the visitor key, so the key may only go once its baselines are gone.
+  const playbackViewingSessions = await deleteExpiredViewingSessions(
+    eventCutoff,
+    batchSize,
+    executor
+  );
+
   const guestSessions = await deleteExpiredGuestSessions(
     sessionCutoff,
     batchSize,
@@ -153,6 +164,7 @@ export async function purgeExpiredGuestData(
     contentViewEvents,
     playbackAnalyticsEvents,
     searchEvents,
+    playbackViewingSessions,
     analyticsDailyAggregates,
     guestSessions,
   };
@@ -219,6 +231,37 @@ async function deleteBatchedAggregates(
 }
 
 /**
+ * Remove up to `limit` viewing sessions that are no longer needed.
+ *
+ * A viewing session is the server's baseline of a viewing (D-090). It is stale
+ * when neither its start nor its last stored event is inside the retention
+ * window any more: the watch time it guarded is already stored in the event
+ * rows, and a later beacon of that viewer simply starts a new session.
+ *
+ * @param cutoff the instant before which a session is expired
+ * @param limit the maximum number of rows to remove
+ * @param executor the database executor
+ * @returns how many rows were removed
+ */
+async function deleteExpiredViewingSessions(
+  cutoff: Date,
+  limit: number,
+  executor: DbExecutor
+): Promise<number> {
+  const result = await executor.execute(sql`
+    delete from ${playback_viewing_sessions}
+     where id in (
+       select id
+         from ${playback_viewing_sessions}
+        where coalesce(${playback_viewing_sessions.last_event_at}, ${playback_viewing_sessions.started_at}) < ${cutoff}
+        limit ${limit}
+     )
+  `);
+
+  return readAffectedRows(result);
+}
+
+/**
  * Remove up to `limit` guest-session rows that are no longer needed.
  *
  * A row is removed when it is old, when it is not linked to an account, and
@@ -254,6 +297,11 @@ async function deleteExpiredGuestSessions(
            select 1
              from ${search_events} event
             where event.guest_session_id = session.id
+         )
+         and not exists (
+           select 1
+             from ${playback_viewing_sessions} viewing
+            where viewing.guest_session_id = session.id
          )
        limit ${limit}
     )

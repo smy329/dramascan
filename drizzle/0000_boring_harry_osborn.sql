@@ -1,11 +1,3 @@
--- Migration 0000 — initial schema
---
--- Creates the first tables, foreign keys, and indexes of the platform.
---
--- Reversible: the rollback drops the tables this migration creates, in reverse
--- dependency order. The data in them is lost, so the rollback is only safe on
--- a database that holds no user data.
-
 CREATE TABLE "analytics_daily_aggregates" (
 	"id" uuid PRIMARY KEY DEFAULT uuidv7() NOT NULL,
 	"date" text NOT NULL,

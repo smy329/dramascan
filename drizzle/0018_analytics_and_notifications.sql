@@ -13,11 +13,6 @@
 --
 -- All indexes use a `deleted_at IS NULL` partial filter so soft-deleted rows
 -- do not affect deduplication or counts.
---
--- Reversible: the rollback drops the indexes, the foreign keys, and the added
--- columns (`deleted_at`, `episode_id`, `new_drama`). The event rows stay, but
--- their soft-delete state, their episode reference, and the new-drama switch
--- are lost with the columns.
 
 -- ----- Soft-delete columns -------------------------------------------------
 ALTER TABLE "content_view_events" ADD COLUMN IF NOT EXISTS "deleted_at" timestamp with time zone;

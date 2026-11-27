@@ -39,6 +39,7 @@ import {
   content_view_events,
   guest_sessions,
   playback_analytics_events,
+  playback_viewing_sessions,
   search_events,
 } from '@/modules/analytics/schema';
 import { purgeExpiredGuestData } from '@/modules/analytics/retention';
@@ -64,6 +65,8 @@ type Seed = {
   referencedSessionId: string;
   /** Recent: it is not expired at all. */
   recentSessionId: string;
+  /** Old, and only a stale viewing session points at it: it may go. */
+  viewingSessionId: string;
 };
 
 async function seed(): Promise<Seed> {
@@ -76,6 +79,7 @@ async function seed(): Promise<Seed> {
   const linkedSessionId = randomUUID();
   const referencedSessionId = randomUUID();
   const recentSessionId = randomUUID();
+  const viewingSessionId = randomUUID();
 
   await db.insert(users).values({
     id: userId,
@@ -146,7 +150,40 @@ async function seed(): Promise<Seed> {
       created_at: new Date(RECENT_INSTANT),
       updated_at: new Date(RECENT_INSTANT),
     },
+    {
+      id: viewingSessionId,
+      session_id: `session-${TEST_PREFIX}${randomUUID()}`,
+      created_at: new Date(OLD_INSTANT),
+      updated_at: new Date(OLD_INSTANT),
+    },
   ]);
+
+  // A stale viewing session: the server's baseline of a viewing that ended
+  // long ago. It is expired, so it may go.
+  await db.insert(playback_viewing_sessions).values({
+    guest_session_id: viewingSessionId,
+    content_id: dramaId,
+    content_type: 'drama',
+    drama_id: dramaId,
+    movie_id: null,
+    client_session_key: `key-${randomUUID()}`,
+    started_at: new Date(OLD_INSTANT),
+    last_event_at: new Date(OLD_INSTANT),
+    last_cumulative_watch_seconds: 120,
+  });
+
+  // A recent viewing session: it is not expired, so it stays.
+  await db.insert(playback_viewing_sessions).values({
+    guest_session_id: referencedSessionId,
+    content_id: dramaId,
+    content_type: 'drama',
+    drama_id: dramaId,
+    movie_id: null,
+    client_session_key: `key-${randomUUID()}`,
+    started_at: new Date(RECENT_INSTANT),
+    last_event_at: new Date(RECENT_INSTANT),
+    last_cumulative_watch_seconds: 30,
+  });
 
   // Two expired view events of the same visitor: the batch size has to be
   // observable, so there is more than one expired row.
@@ -229,10 +266,22 @@ async function seed(): Promise<Seed> {
     linkedSessionId,
     referencedSessionId,
     recentSessionId,
+    viewingSessionId,
   };
 }
 
 async function cleanup(seeded: Seed): Promise<void> {
+  await db
+    .delete(playback_viewing_sessions)
+    .where(
+      inArray(playback_viewing_sessions.guest_session_id, [
+        seeded.expiredSessionId,
+        seeded.linkedSessionId,
+        seeded.referencedSessionId,
+        seeded.recentSessionId,
+        seeded.viewingSessionId,
+      ])
+    );
   await db
     .delete(playback_analytics_events)
     .where(eq(playback_analytics_events.drama_id, seeded.dramaId));
@@ -249,6 +298,7 @@ async function cleanup(seeded: Seed): Promise<void> {
         seeded.linkedSessionId,
         seeded.referencedSessionId,
         seeded.recentSessionId,
+        seeded.viewingSessionId,
       ])
     );
   await db.delete(episodes).where(eq(episodes.drama_id, seeded.dramaId));
@@ -334,6 +384,40 @@ describe('analytics retention', () => {
     expect(remainingIds).toContain(seeded.recentSessionId);
     // The account's own visitor key is never removed.
     expect(remainingIds).toContain(seeded.linkedSessionId);
+  });
+
+  it('removes the expired viewing sessions and keeps the recent ones', async () => {
+    // The viewing session is the server's baseline of a viewing. Once it is
+    // stale it is of no use to any later beacon, and it may go (D-090).
+    const result = await purgeExpiredGuestData({ now: NOW, retentionDays: 400 });
+
+    expect(result.playbackViewingSessions).toBe(1);
+
+    const remaining = await db
+      .select({ guestSessionId: playback_viewing_sessions.guest_session_id })
+      .from(playback_viewing_sessions)
+      .where(
+        inArray(playback_viewing_sessions.guest_session_id, [
+          seeded.viewingSessionId,
+          seeded.referencedSessionId,
+        ])
+      );
+
+    // The stale baseline is gone, the recent one stays.
+    expect(remaining.map(row => row.guestSessionId)).toEqual([seeded.referencedSessionId]);
+  });
+
+  it('keeps a guest session while a viewing session still points at it', async () => {
+    // The baseline and the visitor key belong together: removing the visitor
+    // key would take the baseline of a live viewing with it.
+    await purgeExpiredGuestData({ now: NOW, retentionDays: 400 });
+
+    const remaining = await db
+      .select({ id: guest_sessions.id })
+      .from(guest_sessions)
+      .where(eq(guest_sessions.id, seeded.referencedSessionId));
+
+    expect(remaining).toHaveLength(1);
   });
 
   it('removes at most one batch of rows per table', async () => {

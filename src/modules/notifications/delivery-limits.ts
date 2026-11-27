@@ -19,6 +19,9 @@
 /** The maximum number of delivery attempts one call makes. */
 export const MAX_DELIVERY_ATTEMPTS = 10;
 
+/** How long one maintenance run owns a delivery candidate, in seconds. */
+export const DELIVERY_LEASE_SECONDS = 300;
+
 /** The maximum number of push attempts one notification ever receives. */
 export const MAX_PUSH_RETRY_ATTEMPTS = 3;
 

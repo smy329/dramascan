@@ -36,14 +36,15 @@ export async function recordPlaybackEventWorkflow(
     const movie = await getPublicMoviePlayback(values.movieId);
 
     if (!movie) {
-      return { recorded: false, duplicate: false, visitor: emptyVisitor() };
+      return { recorded: false, duplicate: false, visitor: emptyVisitor(), accountedWatchSeconds: 0 };
     }
 
     return recordPlaybackEvent({
       target: { type: 'movie', movieId: values.movieId },
       eventType: values.eventType,
       positionSeconds: values.positionSeconds ?? null,
-      watchDurationSeconds: values.watchDurationSeconds ?? null,
+      cumulativeWatchSeconds: values.cumulativeWatchSeconds ?? null,
+      clientSessionKey: values.clientSessionKey,
       completionThresholdMet: values.completionThresholdMet ?? false,
       userId: actor.userId,
       sessionId,
@@ -54,20 +55,21 @@ export async function recordPlaybackEventWorkflow(
   const dramaId = values.dramaId;
 
   if (episodeId === undefined || dramaId === undefined) {
-    return { recorded: false, duplicate: false, visitor: emptyVisitor() };
+    return { recorded: false, duplicate: false, visitor: emptyVisitor(), accountedWatchSeconds: 0 };
   }
 
   const episode = await getPublicEpisodeContentReference(episodeId);
 
   if (!episode || episode.dramaId !== dramaId) {
-    return { recorded: false, duplicate: false, visitor: emptyVisitor() };
+    return { recorded: false, duplicate: false, visitor: emptyVisitor(), accountedWatchSeconds: 0 };
   }
 
   return recordPlaybackEvent({
     target: { type: 'drama', episodeId, dramaId: episode.dramaId },
     eventType: values.eventType,
     positionSeconds: values.positionSeconds ?? null,
-    watchDurationSeconds: values.watchDurationSeconds ?? null,
+    cumulativeWatchSeconds: values.cumulativeWatchSeconds ?? null,
+    clientSessionKey: values.clientSessionKey,
     completionThresholdMet: values.completionThresholdMet ?? false,
     userId: actor.userId,
     sessionId,

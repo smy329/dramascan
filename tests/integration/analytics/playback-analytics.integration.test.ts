@@ -38,6 +38,7 @@ import {
   playback_analytics_events,
 } from '@/modules/analytics/schema';
 import { aggregateDailyAnalytics, aggregateDateRange } from '@/modules/analytics/aggregation-workflow';
+import { PLAYBACK_WATCH_DURATION_TOLERANCE_SECONDS } from '@/modules/analytics/playback-plausibility';
 import {
   getPlaybackAnalyticsSummary,
   recordPlaybackEvent,
@@ -147,7 +148,7 @@ describe('playback analytics', () => {
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play_pause',
       positionSeconds: 42,
-      watchDurationSeconds: 42,
+      cumulativeWatchSeconds: 42,
       userId: null,
       sessionId: `session-${TEST_PREFIX}${randomUUID()}`,
       now: new Date('2026-11-26T10:00:00.000Z'),
@@ -259,7 +260,7 @@ describe('playback analytics', () => {
     const result = await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play_pause',
-      watchDurationSeconds: 42,
+      cumulativeWatchSeconds: 42,
       userId: null,
       sessionId: `session-${TEST_PREFIX}${randomUUID()}`,
       now: new Date('2026-11-26T10:00:00.000Z'),
@@ -282,7 +283,7 @@ describe('playback analytics', () => {
     const first = await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play_pause',
-      watchDurationSeconds: 10,
+      cumulativeWatchSeconds: 10,
       userId: null,
       sessionId,
       now: new Date('2026-11-26T10:05:00.000Z'),
@@ -290,7 +291,7 @@ describe('playback analytics', () => {
     const second = await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play_pause',
-      watchDurationSeconds: 20,
+      cumulativeWatchSeconds: 20,
       userId: null,
       sessionId,
       now: new Date('2026-11-26T10:30:00.000Z'),
@@ -316,7 +317,7 @@ describe('playback analytics', () => {
       await recordPlaybackEvent({
         target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
         eventType,
-        watchDurationSeconds: 30,
+        cumulativeWatchSeconds: 30,
         completionThresholdMet: eventType === 'completion',
         userId: null,
         sessionId,
@@ -346,7 +347,7 @@ describe('playback analytics', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play_pause',
-      watchDurationSeconds: 30,
+      cumulativeWatchSeconds: 30,
       completionThresholdMet: true,
       userId: null,
       sessionId,
@@ -355,7 +356,9 @@ describe('playback analytics', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play',
-      watchDurationSeconds: 0,
+      // The claim is cumulative: the playback start repeats what the viewer
+      // has watched so far and adds nothing.
+      cumulativeWatchSeconds: 30,
       userId: null,
       sessionId,
       now,
@@ -363,7 +366,7 @@ describe('playback analytics', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'completion',
-      watchDurationSeconds: 120,
+      cumulativeWatchSeconds: 120,
       completionThresholdMet: true,
       userId: null,
       sessionId,
@@ -401,7 +404,7 @@ describe('playback analytics', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'completion',
-      watchDurationSeconds: 0,
+      cumulativeWatchSeconds: 0,
       completionThresholdMet: true,
       userId: null,
       sessionId,
@@ -430,7 +433,7 @@ describe('playback analytics', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play_pause',
-      watchDurationSeconds: 600,
+      cumulativeWatchSeconds: 600,
       userId: null,
       sessionId,
       now,
@@ -438,7 +441,7 @@ describe('playback analytics', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'completion',
-      watchDurationSeconds: 0,
+      cumulativeWatchSeconds: 600,
       completionThresholdMet: true,
       userId: null,
       sessionId,
@@ -465,7 +468,7 @@ describe('playback analytics', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play',
-      watchDurationSeconds: 0,
+      cumulativeWatchSeconds: 0,
       userId: null,
       sessionId,
       now,
@@ -473,7 +476,7 @@ describe('playback analytics', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'completion',
-      watchDurationSeconds: 600,
+      cumulativeWatchSeconds: 600,
       completionThresholdMet: true,
       userId: null,
       sessionId,
@@ -500,7 +503,7 @@ describe('playback analytics', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play',
-      watchDurationSeconds: 0,
+      cumulativeWatchSeconds: 0,
       userId: null,
       sessionId,
       now,
@@ -508,7 +511,7 @@ describe('playback analytics', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play_pause',
-      watchDurationSeconds: 120,
+      cumulativeWatchSeconds: 120,
       userId: null,
       sessionId,
       now: new Date('2026-11-26T10:02:00.000Z'),
@@ -516,7 +519,7 @@ describe('playback analytics', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'completion',
-      watchDurationSeconds: 180,
+      cumulativeWatchSeconds: 300,
       completionThresholdMet: true,
       userId: null,
       sessionId,
@@ -532,13 +535,169 @@ describe('playback analytics', () => {
     expect(summary.totalWatchDurationSeconds).toBe(300);
   });
 
+  it('summarises a playback row whose typed target disagrees with its legacy pair under the typed target', async () => {
+    // The typed foreign key is the evidence: the row belongs to the drama it
+    // names, whatever its legacy pair says (D-032 §4, D-082).
+    const [visitor] = await db
+      .insert(guest_sessions)
+      .values({ session_id: `session-${TEST_PREFIX}${randomUUID()}` })
+      .returning({ id: guest_sessions.id });
+
+    await db.insert(playback_analytics_events).values({
+      guest_session_id: visitor?.id ?? '',
+      viewer_type: 'guest',
+      content_id: seeded.movieId,
+      content_type: 'movie',
+      drama_id: seeded.dramaId,
+      movie_id: null,
+      episode_id: seeded.episodeId,
+      event_type: 'play',
+      watch_duration_seconds: 100,
+      event_at: new Date(),
+      event_hour_bucket: '2026-01-01T00',
+    });
+
+    const summary = await getPlaybackAnalyticsSummary('drama', seeded.dramaId);
+
+    expect(summary.totalPlaybackEvents).toBe(1);
+    expect(summary.totalWatchDurationSeconds).toBe(100);
+  });
+
+  it('does not let the first beacon of a session claim a watch time it did not earn', async () => {
+    // The server stamps the start of the viewing session, so the first beacon
+    // is measured against the moment the session began. Before the cumulative
+    // protocol, the first beacon had no previous event to measure against and
+    // could claim a whole day of watching (D-090).
+    const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
+    const now = new Date('2026-11-26T10:00:00.000Z');
+
+    const result = await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play',
+      cumulativeWatchSeconds: 86_400,
+      clientSessionKey: 'tab-forged',
+      userId: null,
+      sessionId,
+      now,
+    });
+
+    expect(result.recorded).toBe(true);
+
+    const [row] = await db
+      .select({ watchDurationSeconds: playback_analytics_events.watch_duration_seconds })
+      .from(playback_analytics_events)
+      .where(eq(playback_analytics_events.content_id, seeded.episodeId));
+
+    // No time passed since the session began, so only the tolerance is left.
+    expect(row?.watchDurationSeconds).toBe(PLAYBACK_WATCH_DURATION_TOLERANCE_SECONDS);
+  });
+
+  it('counts a repeated claim only once', async () => {
+    // The acknowledgement of the second event was lost, so the browser
+    // reported the same cumulative claim again. The watch time was already
+    // counted, so it must not be counted twice (D-090).
+    const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
+    const now = new Date('2026-11-26T10:00:00.000Z');
+
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play',
+      cumulativeWatchSeconds: 0,
+      clientSessionKey: 'tab-lost',
+      userId: null,
+      sessionId,
+      now,
+    });
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play_pause',
+      cumulativeWatchSeconds: 120,
+      clientSessionKey: 'tab-lost',
+      userId: null,
+      sessionId,
+      now: new Date(now.getTime() + 120_000),
+    });
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'seek',
+      cumulativeWatchSeconds: 120,
+      clientSessionKey: 'tab-lost',
+      userId: null,
+      sessionId,
+      now: new Date(now.getTime() + 130_000),
+    });
+
+    const rows = await db
+      .select({ watchDurationSeconds: playback_analytics_events.watch_duration_seconds })
+      .from(playback_analytics_events)
+      .where(eq(playback_analytics_events.content_id, seeded.episodeId))
+      .orderBy(playback_analytics_events.event_at);
+
+    expect(rows.map(row => row.watchDurationSeconds)).toEqual([0, 120, 0]);
+  });
+
+  it('keeps two tabs of the same viewer apart', async () => {
+    // Two tabs are two viewing sessions, so their claims are counted against
+    // two baselines and neither of them resets the other (D-090).
+    const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
+    const now = new Date('2026-11-26T10:00:00.000Z');
+
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play',
+      cumulativeWatchSeconds: 0,
+      clientSessionKey: 'tab-one',
+      userId: null,
+      sessionId,
+      now,
+    });
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'seek',
+      cumulativeWatchSeconds: 0,
+      clientSessionKey: 'tab-two',
+      userId: null,
+      sessionId,
+      now: new Date(now.getTime() + 1_000),
+    });
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'play_pause',
+      cumulativeWatchSeconds: 120,
+      clientSessionKey: 'tab-one',
+      userId: null,
+      sessionId,
+      now: new Date(now.getTime() + 120_000),
+    });
+    await recordPlaybackEvent({
+      target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
+      eventType: 'exit',
+      cumulativeWatchSeconds: 60,
+      clientSessionKey: 'tab-two',
+      userId: null,
+      sessionId,
+      now: new Date(now.getTime() + 60_000),
+    });
+
+    const rows = await db
+      .select({ watchDurationSeconds: playback_analytics_events.watch_duration_seconds })
+      .from(playback_analytics_events)
+      .where(eq(playback_analytics_events.content_id, seeded.episodeId));
+
+    // Each tab's watch time is counted once: 120 seconds in the first tab and
+    // 60 seconds in the second one.
+    const durations = rows.map(row => row.watchDurationSeconds ?? 0).sort((left, right) => left - right);
+
+    expect(durations).toEqual([0, 0, 60, 120]);
+  });
+
   it('clamps a watch duration that exceeds the time since the previous event', async () => {
     const sessionId = `session-${TEST_PREFIX}${randomUUID()}`;
 
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play',
-      watchDurationSeconds: 0,
+      cumulativeWatchSeconds: 0,
       userId: null,
       sessionId,
       now: new Date('2026-11-26T10:00:00.000Z'),
@@ -548,7 +707,7 @@ describe('playback analytics', () => {
       eventType: 'play_pause',
       // A beacon that claims a day of watching one minute after the first
       // event is a fabricated claim.
-      watchDurationSeconds: 86_400,
+      cumulativeWatchSeconds: 86_400,
       userId: null,
       sessionId,
       now: new Date('2026-11-26T10:01:00.000Z'),
@@ -575,7 +734,7 @@ describe('playback analytics', () => {
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play',
       positionSeconds: 999_999_999,
-      watchDurationSeconds: 10,
+      cumulativeWatchSeconds: 10,
       userId: null,
       sessionId,
       now: new Date('2026-11-26T10:00:00.000Z'),
@@ -624,7 +783,7 @@ describe('analytics aggregation', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'play',
-      watchDurationSeconds: 0,
+      cumulativeWatchSeconds: 0,
       userId: null,
       sessionId,
       now,
@@ -632,7 +791,7 @@ describe('analytics aggregation', () => {
     await recordPlaybackEvent({
       target: { type: 'drama', episodeId: seeded.episodeId, dramaId: seeded.dramaId },
       eventType: 'completion',
-      watchDurationSeconds: 90,
+      cumulativeWatchSeconds: 90,
       completionThresholdMet: true,
       userId: null,
       sessionId,

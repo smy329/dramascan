@@ -9,12 +9,14 @@ vi.mock('server-only', () => ({}));
 vi.mock('@/db/client', () => ({ db: {} }));
 
 import {
+  DELIVERY_LEASE_SECONDS,
   DELIVERY_RETENTION_DAYS,
   MAX_DELIVERY_ATTEMPTS,
   MAX_PUSH_RETRY_ATTEMPTS,
   PUSH_RETRY_WINDOW_DAYS,
 } from '@/modules/notifications/delivery';
 import {
+  DELIVERY_LEASE_SECONDS as COMMAND_DELIVERY_LEASE_SECONDS,
   DELIVERY_RETENTION_DAYS as COMMAND_DELIVERY_RETENTION_DAYS,
   MAX_DELIVERY_ATTEMPTS as COMMAND_MAX_DELIVERY_ATTEMPTS,
   MAX_PUSH_RETRY_ATTEMPTS as COMMAND_MAX_PUSH_RETRY_ATTEMPTS,
@@ -46,6 +48,7 @@ describe('the delivery limits', () => {
     expect(COMMAND_MAX_PUSH_RETRY_ATTEMPTS).toBe(MAX_PUSH_RETRY_ATTEMPTS);
     expect(COMMAND_PUSH_RETRY_WINDOW_DAYS).toBe(PUSH_RETRY_WINDOW_DAYS);
     expect(COMMAND_DELIVERY_RETENTION_DAYS).toBe(DELIVERY_RETENTION_DAYS);
+    expect(COMMAND_DELIVERY_LEASE_SECONDS).toBe(DELIVERY_LEASE_SECONDS);
   });
 
   it('live in one file that both sides import', () => {
@@ -67,5 +70,6 @@ describe('the delivery limits', () => {
     expect(MAX_PUSH_RETRY_ATTEMPTS).toBe(3);
     expect(PUSH_RETRY_WINDOW_DAYS).toBe(7);
     expect(DELIVERY_RETENTION_DAYS).toBe(30);
+    expect(DELIVERY_LEASE_SECONDS).toBe(300);
   });
 });

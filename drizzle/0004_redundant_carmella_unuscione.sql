@@ -1,10 +1,3 @@
--- Migration 0004 — structure type, movie video source, permission keys
---
--- Reversible: the rollback drops the `uq_movies_slug_active` index and the
--- `structure_type`/`video_source` columns, and restores the previous
--- permission-key constraint. The values written into the two columns are lost
--- with the columns.
-
 ALTER TABLE "permissions" DROP CONSTRAINT "ck_permissions_permission_key";--> statement-breakpoint
 ALTER TABLE "dramas" ADD COLUMN "structure_type" text DEFAULT 'season_based' NOT NULL;--> statement-breakpoint
 ALTER TABLE "movies" ADD COLUMN "video_source" text;--> statement-breakpoint

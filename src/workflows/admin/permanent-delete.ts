@@ -290,7 +290,7 @@ export async function previewPermanentDelete(
     const analyticsImpact =
       contentType === 'drama' || contentType === 'movie'
         ? await countAnalyticsImpact(tx, contentType, parsedId)
-        : { contentViewEvents: 0, playbackEvents: 0, dailyAggregates: 0 };
+        : { contentViewEvents: 0, playbackEvents: 0, viewingSessions: 0, dailyAggregates: 0 };
 
     const notificationImpact =
       contentType === 'drama' || contentType === 'movie'
@@ -314,6 +314,7 @@ export async function previewPermanentDelete(
       analyticsEvents:
         analyticsImpact.contentViewEvents +
         analyticsImpact.playbackEvents +
+        analyticsImpact.viewingSessions +
         analyticsImpact.dailyAggregates,
       notifications: notificationImpact.notifications + notificationImpact.adminNotifications,
       metadataRows,
@@ -492,7 +493,7 @@ async function collectImpact(
   const analyticsImpact =
     contentType === 'drama' || contentType === 'movie'
       ? await countAnalyticsImpact(tx, contentType, id)
-      : { contentViewEvents: 0, playbackEvents: 0, dailyAggregates: 0 };
+      : { contentViewEvents: 0, playbackEvents: 0, viewingSessions: 0, dailyAggregates: 0 };
 
   const notificationImpact =
     contentType === 'drama' || contentType === 'movie'
@@ -514,6 +515,7 @@ async function collectImpact(
     analyticsEvents:
       analyticsImpact.contentViewEvents +
       analyticsImpact.playbackEvents +
+      analyticsImpact.viewingSessions +
       analyticsImpact.dailyAggregates,
     notifications: notificationImpact.notifications + notificationImpact.adminNotifications,
     metadataRows: await countMetadataRows(tx, scope),

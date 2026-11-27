@@ -13,8 +13,4 @@
 -- The column stays a uuid: every event that *does* name an entity still names
 -- a real one, and `idx_admin_audit_log_entity_type_entity_id` keeps working.
 -- No data is rewritten; the column simply accepts a null.
---
--- Reversible: the rollback restores the NOT NULL constraint. It fails while an
--- audit row names no entity — the homepage-setting rows are exactly those
--- rows, so the rollback must delete them first.
 ALTER TABLE "admin_audit_log" ALTER COLUMN "entity_id" DROP NOT NULL;

@@ -110,14 +110,15 @@ export {
   MAX_PLAYBACK_POSITION_SECONDS,
   MAX_PLAYBACK_WATCH_SECONDS,
   PLAYBACK_WATCH_DURATION_TOLERANCE_SECONDS,
-  clampPlaybackEvent,
+  clampPlaybackPosition,
   isCompletionSupported,
+  resolvePlaybackWatchSeconds,
 } from './playback-plausibility';
 
 export type {
   CompletionSupport,
-  PlaybackPlausibility,
-  PlaybackPlausibilityInput,
+  PlaybackWatchClaim,
+  PlaybackWatchResolution,
 } from './playback-plausibility';
 
 export { aggregateDailyAnalytics, aggregateDateRange, aggregateToday } from './aggregation-workflow';

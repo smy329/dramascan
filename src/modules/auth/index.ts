@@ -26,6 +26,7 @@ export { getUserDisplayName, getUserDisplayNames } from './display-names';
 
 export type {
   ListUserAccountsQuery,
+  SetUserAccountActiveResult,
   UserAccountPage,
   UserAccountRecord,
   UserAccountRow,

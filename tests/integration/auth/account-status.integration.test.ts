@@ -32,7 +32,7 @@ import { users } from '@/modules/auth/schema';
 import { closePool } from '@/platform/db/pool';
 import { ConflictError, NotFoundError } from '@/platform/errors';
 
-const TEST_USER_PREFIX = 'it-status-';
+const TEST_USER_PREFIX = 'r5t5-account-';
 
 async function insertTestUser(options: {
   name: string;
@@ -109,10 +109,11 @@ describe('setUserAccountActive (real database)', () => {
   it('deactivates an account and preserves its other columns', async () => {
     const id = await insertTestUser({ name: 'Deactivated User' });
 
-    const updated = await setUserAccountActive(id, false);
+    const result = await setUserAccountActive(id, false);
 
-    expect(updated.isActive).toBe(false);
-    expect(updated.name).toBe('Deactivated User');
+    expect(result.account.isActive).toBe(false);
+    expect(result.account.name).toBe('Deactivated User');
+    expect(result.changed).toBe(true);
 
     const stored = await getUserAccount(id);
     expect(stored?.isActive).toBe(false);
@@ -122,9 +123,10 @@ describe('setUserAccountActive (real database)', () => {
   it('reactivates a deactivated account', async () => {
     const id = await insertTestUser({ name: 'Reactivated User', isActive: false });
 
-    const updated = await setUserAccountActive(id, true);
+    const result = await setUserAccountActive(id, true);
 
-    expect(updated.isActive).toBe(true);
+    expect(result.account.isActive).toBe(true);
+    expect(result.changed).toBe(true);
     expect((await getUserAccount(id))?.isActive).toBe(true);
   });
 
@@ -135,7 +137,20 @@ describe('setUserAccountActive (real database)', () => {
   it('accepts a status that is already set', async () => {
     const id = await insertTestUser({ name: 'Already Active User' });
 
-    await expect(setUserAccountActive(id, true)).resolves.toMatchObject({ isActive: true });
+    await expect(setUserAccountActive(id, true)).resolves.toMatchObject({
+      account: { isActive: true },
+      changed: false,
+    });
+  });
+
+  it('reports whether the account status changed', async () => {
+    const id = await insertTestUser({ name: 'Reported Status User' });
+
+    const unchanged = await setUserAccountActive(id, true);
+    const changed = await setUserAccountActive(id, false);
+
+    expect(unchanged.changed).toBe(false);
+    expect(changed.changed).toBe(true);
   });
 
   it('refuses to deactivate the last active Super Admin', async () => {
@@ -149,14 +164,20 @@ describe('setUserAccountActive (real database)', () => {
     const first = await insertTestUser({ name: 'First Super Admin', isSuperAdmin: true });
     const second = await insertTestUser({ name: 'Second Super Admin', isSuperAdmin: true });
 
-    await expect(setUserAccountActive(first, false)).resolves.toMatchObject({ isActive: false });
+    await expect(setUserAccountActive(first, false)).resolves.toMatchObject({
+      account: { isActive: false },
+      changed: true,
+    });
     expect((await getUserAccount(second))?.isActive).toBe(true);
   });
 
   it('deactivates an ordinary account even when it is the only active user', async () => {
     const id = await insertTestUser({ name: 'Ordinary User' });
 
-    await expect(setUserAccountActive(id, false)).resolves.toMatchObject({ isActive: false });
+    await expect(setUserAccountActive(id, false)).resolves.toMatchObject({
+      account: { isActive: false },
+      changed: true,
+    });
   });
 
   it('keeps one Super Admin active when two deactivations race', async () => {

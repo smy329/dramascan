@@ -18,7 +18,8 @@ import { z } from 'zod';
  * The switches a viewer may change.
  *
  * Every switch is optional, because the form sends only the switches the
- * viewer changed: two devices cannot silently reset each other.
+ * viewer changed: two devices cannot silently reset each other. A payload
+ * with no switch at all is a valid no-op — the viewer saved nothing.
  */
 export const notificationPreferencesSchema = z.strictObject({
   newEpisode: z.boolean().optional(),
@@ -31,19 +32,3 @@ export const notificationPreferencesSchema = z.strictObject({
 
 /** The values the notification preference form holds. */
 export type NotificationPreferencesValues = z.infer<typeof notificationPreferencesSchema>;
-
-/**
- * The switches the form submits.
- *
- * The form always submits the full set of switches it shows: a switch the
- * viewer left alone is submitted with the value it had, so the saved set is
- * the set the viewer saw.
- */
-export const NOTIFICATION_PREFERENCE_DEFAULTS: NotificationPreferencesValues = {
-  newEpisode: true,
-  newDrama: true,
-  newDramaSeason: true,
-  websiteAnnouncement: true,
-  globalInApp: true,
-  globalPush: true,
-};

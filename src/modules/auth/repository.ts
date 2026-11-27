@@ -161,6 +161,12 @@ export type UserAccountRecord = {
   deletedAt: Date | null;
 };
 
+/** The result of changing an account status, including whether state changed. */
+export type SetUserAccountActiveResult = {
+  account: UserAccountRecord;
+  changed: boolean;
+};
+
 const USER_ACCOUNT_COLUMNS = {
   id: users.id,
   name: users.name,
@@ -204,7 +210,7 @@ export async function getUserAccount(userId: string): Promise<UserAccountRecord 
 export async function setUserAccountActive(
   userId: string,
   isActive: boolean
-): Promise<UserAccountRecord> {
+): Promise<SetUserAccountActiveResult> {
   return db.transaction(async tx => {
     const lockedSuperAdmins = await tx
       .select({ id: users.id })
@@ -237,13 +243,18 @@ export async function setUserAccountActive(
       throw new ConflictError('The last active Super Admin cannot be deactivated.');
     }
 
-    if (target.isActive !== isActive) {
+    const changed = target.isActive !== isActive;
+
+    if (changed) {
       await tx
         .update(users)
         .set({ isActive, updatedAt: new Date() })
         .where(eq(users.id, userId));
     }
 
-    return { ...target, isActive };
+    return {
+      account: { ...target, isActive },
+      changed,
+    };
   });
 }

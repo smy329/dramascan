@@ -1,9 +1,3 @@
--- Migration 0001 — login attempts and session activity
---
--- Reversible: the rollback drops the two indexes, drops the
--- `sessions.last_activity_at` column, and drops the `login_attempts` table.
--- The failed-attempt history the table holds is lost with it.
-
 CREATE TABLE "login_attempts" (
 	"id" uuid PRIMARY KEY DEFAULT uuidv7() NOT NULL,
 	"user_id" uuid,
