@@ -66,7 +66,7 @@ export async function createDependency(
       updated_by: options.performed_by,
       updated_at: new Date(),
     })
-    .onConflictDoUpdate{
+    .onConflictDoUpdate({
       target: system_settings.key,
       set: {
         value: JSON.stringify({
@@ -83,7 +83,7 @@ export async function createDependency(
         updated_by: options.performed_by,
         updated_at: new Date(),
       },
-    }
+    })
     .returning({
       key: system_settings.key,
       value: system_settings.value,

@@ -106,5 +106,5 @@ export async function listBackupsForDownload(
     page,
     pageSize,
     totalPages: allRecords.totalPages,
-  });
+  };
 }

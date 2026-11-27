@@ -101,7 +101,7 @@ export async function createAnomaly(
       updated_by: options.performedBy,
       updated_at: new Date(),
     })
-    .onConflictDoUpdate{
+    .onConflictDoUpdate({
       target: system_settings.key,
       set: {
         value: JSON.stringify({
@@ -127,7 +127,7 @@ export async function createAnomaly(
         updated_by: options.performedBy,
         updated_at: new Date(),
       },
-    }
+    })
     .returning({
       key: system_settings.key,
       value: system_settings.value,
@@ -208,26 +208,26 @@ export async function listAnomalies(
   const whereConditions: any[] = [];
 
   if (type) {
-    whereConditions.push(eq(system_settings.value->>'type', type));
+    whereConditions.push(sql`${system_settings.value}->>'type' = ${type}`);
   }
 
   if (severity) {
-    whereConditions.push(eq(system_settings.value->>'severity', severity));
+    whereConditions.push(sql`${system_settings.value}->>'severity' = ${severity}`);
   }
 
   if (resolved !== null) {
-    whereConditions.push(eq(system_settings.value->>'resolved', resolved));
+    whereConditions.push(sql`${system_settings.value}->>'resolved' = ${resolved}`);
   }
 
   // Count total anomalies
-  const countCondition = whereConditions.length > 0
-    ? whereConditions.map(w => w.sql).join(' AND ')
+  const whereClause = whereConditions.length > 0
+    ? sql.join(whereConditions, sql` AND `)
     : undefined;
 
   const [{ count }] = await db
     .select({ count: sql`count(*)` })
     .from(system_settings)
-    .where(whereConditions.length > 0 ? sql`${whereCondition}.join(' AND ')` : undefined);
+    .where(whereClause ?? sql`1=1`);
 
   // Actually let me fix this - need to properly build the query
   // For now, get all anomalies and filter

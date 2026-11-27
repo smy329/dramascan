@@ -96,7 +96,7 @@ export async function createIncident(
       updated_by: options.performed_by,
       updated_at: new Date(),
     })
-    .onConflictDoUpdate{
+    .onConflictDoUpdate({
       target: system_settings.key,
       set: {
         value: JSON.stringify({
@@ -320,22 +320,22 @@ export async function listIncidents(
   const whereConditions: any[] = [];
 
   if (severity) {
-    whereConditions.push(eq(system_settings.value->>'severity', severity));
+    whereConditions.push(sql`${system_settings.value}->>'severity' = ${severity}`);
   }
 
   if (status) {
-    whereConditions.push(eq(system_settings.value->>'status', status));
+    whereConditions.push(sql`${system_settings.value}->>'status' = ${status}`);
   }
 
   // Count total incidents
-  const countCondition = whereConditions.length > 0
-    ? sql`${system_settings.key}.like('incident_%') AND ${whereConditions.map(w => w.sql).join(' AND ')}`
-    : sql`${system_settings.key}.like('incident_%')`;
+  const whereClause = whereConditions.length > 0
+    ? sql.join(whereConditions, sql` AND `)
+    : undefined;
 
   const [{ count }] = await db
     .select({ count: sql`count(*)` })
     .from(system_settings)
-    .where(whereConditions.length > 0 ? whereConditions.reduce((a, b) => sql`${a} AND ${b.sql}`) : undefined);
+    .where(whereClause ? sql`${system_settings.key}.like('incident_%') AND ${whereClause}` : sql`${system_settings.key}.like('incident_%')`);
 
   // Get incidents for the current page
   const allIncidents = await db

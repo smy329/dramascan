@@ -189,7 +189,7 @@ export function safeRender(value: unknown): string {
       .replace(/</g, '<')
       .replace(/>/g, '>')
       .replace(/"/g, '"')
-      .replace(/'/g, ''');
+      .replace(/'/g, "'");
   }
 
   return String(value);

@@ -104,7 +104,7 @@ export function getSecurityRecommendations(config: DeploymentConfiguration): str
   const recommendations: string[] = [];
 
   if (!config.enableHTTPS) {
-    recommendations.push('Enable HTTPS using Let''s Encrypt or provided SSL certificate');
+    recommendations.push("Enable HTTPS using Let's Encrypt or provided SSL certificate");
   }
 
   if (config.disableUnnecessaryServices) {

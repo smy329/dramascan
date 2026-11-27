@@ -238,7 +238,7 @@ export async function preventOverlap(
       updated_by: actor.userId,
       updated_at: new Date(),
     })
-    .onConflictDoUpdate{
+    .onConflictDoUpdate({
       target: system_settings.key,
       set: {
         value: JSON.stringify({
@@ -251,7 +251,7 @@ export async function preventOverlap(
         updated_by: actor.userId,
         updated_at: new Date(),
       },
-    };
+    });
 
   return { canExecute: true, message: 'Task can execute without conflicts' };
 }

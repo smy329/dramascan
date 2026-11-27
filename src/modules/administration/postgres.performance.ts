@@ -101,7 +101,7 @@ export interface TableGrowthMonitoring {
   /** Estimated time until storage alert in days */
   daysUntilAlert: number;
   /** Recommendation */
-  recommendation: 'monitor' | 'increase_storage' 'vacuum_analyze';
+  recommendation: 'monitor' | 'increase_storage' | 'vacuum_analyze';
 }
 
 /** Get table growth monitoring. */

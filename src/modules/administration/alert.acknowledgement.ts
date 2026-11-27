@@ -93,7 +93,7 @@ export async function assignAlert(
       updated_by: assignedBy,
       updated_at: new Date(),
     })
-    .onConflictDoUpdate{
+    .onConflictDoUpdate({
       target: system_settings.key,
       set: {
         value: JSON.stringify({
@@ -108,7 +108,7 @@ export async function assignAlert(
         updated_by: assignedBy,
         updated_at: new Date(),
       },
-    };
+    });
 
   // Create audit log entry
   await db

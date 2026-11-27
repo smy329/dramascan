@@ -176,44 +176,63 @@ export function getApiLocationBlock(): string {
 export function getNginxConfigContent(): string {
   const config = getDefaultNginxConfiguration();
 
-  return (
-    '# Generated Nginx Configuration\n\n' +
-    'user www-data;\n\n' +
-    'worker_processes auto;\n\n' +
-    'pid /run/nginx.pid;\n\n' +
-    'events {\n' +
-    '  worker_connections 768;\n' +
-    '  multi_accept on;\n' +
-    '}\n\n' +
-    'http {\n' +
-    '  ##\n' +
-    '  ## Basic Settings\n' +
-    '  ##\n\n' +
-    '  sendfile on;\n' +
-    '  tcp_nopush on;\n' +
-    '  tcp_nodelay on;\n' +
-    '  keepalive_timeout '" + String(config.keepaliveTimeout) + ';\n' +
-    '  types {\n' +
-    '    include /etc/nginx/mime.types;\n' +
-    '  }\n\n' +
-    '  gzip on;\n' +
-    '  gzip_disable "msie";\n' +
-    '  '" + config.gzipTypes.map(t => '  gzip_' + t.replace(/\//g, '_').replace(/\./g, '')).join('\n') + '\n\n' +
-    '  limit_req_zone $binary_remote_addr zone='" + config.rateLimitZone + '" rate='" + String(config.rateLimitRequestCount) + 'r/s;\n\n' +
-    '  server {\n' +
-    '    listen ' + String(config.listenPort) + ' ssl;\n' +
-    '    server_name ' + config.serverName.join(' ') + ';\n\n' +
-    '    ' + (config.sslEnabled ? 'ssl_certificate ' + config.sslCertPath + ';\n' : '') +
-    '    ' + (config.sslEnabled ? 'ssl_certificate_key ' + config.sslKeyPath + ';\n' : '') + '\n\n' +
-    '    ' + getNextJsLocationBlock() + '\n\n' +
-    '    ' + getStaticAssetsLocationBlock() + '\n\n' +
-    '    ' + getApiLocationBlock() + '\n\n' +
-    '    ##\n' +
-    '    ## Logging\n' +
-    '    ##\n\n' +
-    '    access_log /var/log/nginx/access.log;\n' +
-    '    error_log /var/log/nginx/error.log;\n\n' +
-    '  }\n' +
-    '}\n'
-  );
+  const gzipTypesLines = config.gzipTypes
+    .map(t => `  gzip_${t.replace(/\//g, '_').replace(/\./g, '')}`)
+    .join('\n');
+
+  return `# Generated Nginx Configuration
+
+user www-data;
+
+worker_processes auto;
+
+pid /run/nginx.pid;
+
+events {
+  worker_connections 768;
+  multi_accept on;
+}
+
+http {
+  ##
+  ## Basic Settings
+  ##
+
+  sendfile on;
+  tcp_nopush on;
+  tcp_nodelay on;
+  keepalive_timeout ${String(config.keepaliveTimeout)};
+  types {
+    include /etc/nginx/mime.types;
+  }
+
+  gzip on;
+  gzip_disable "msie";
+  ${gzipTypesLines}
+
+  limit_req_zone $binary_remote_addr zone=${config.rateLimitZone} rate=${String(config.rateLimitRequestCount)}r/s;
+
+  server {
+    listen ${String(config.listenPort)} ssl;
+    server_name ${config.serverName.join(' ')};
+
+    ${config.sslEnabled ? `ssl_certificate ${config.sslCertPath};` : ''}
+    ${config.sslEnabled ? `ssl_certificate_key ${config.sslKeyPath};` : ''}
+
+    ${getNextJsLocationBlock()}
+
+    ${getStaticAssetsLocationBlock()}
+
+    ${getApiLocationBlock()}
+
+    ##
+    ## Logging
+    ##
+
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
+
+  }
+}
+`;
 }

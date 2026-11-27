@@ -91,7 +91,7 @@ export async function createIncident(
       updated_by: options.performedBy,
       updated_at: new Date(),
     })
-    .onConflictDoUpdate{
+    .onConflictDoUpdate({
       target: system_settings.key,
       set: {
         value: JSON.stringify({
@@ -118,7 +118,7 @@ export async function createIncident(
         updated_by: options.performedBy,
         updated_at: new Date(),
       },
-    }
+    })
     .returning({
       key: system_settings.key,
       value: system_settings.value,
@@ -246,7 +246,7 @@ export async function assignIncident(
       updated_by: assignedBy,
       updated_at: new Date(),
     })
-    .onConflictDoUpdate{
+    .onConflictDoUpdate({
       target: system_settings.key,
       set: {
         value: JSON.stringify({
@@ -261,7 +261,7 @@ export async function assignIncident(
         updated_by: assignedBy,
         updated_at: new Date(),
       },
-    };
+    });
 
   // Create audit log entry
   await db
@@ -356,11 +356,11 @@ export async function listIncidents(
   const whereConditions: any[] = [];
 
   if (severity) {
-    whereConditions.push(eq(system_settings.value->>'severity', severity));
+    whereConditions.push(sql`${system_settings.value}->>'severity' = ${severity}`);
   }
 
   if (status) {
-    whereConditions.push(eq(system_settings.value->>'status', status));
+    whereConditions.push(sql`${system_settings.value}->>'status' = ${status}`);
   }
 
   // Get all incidents matching filters

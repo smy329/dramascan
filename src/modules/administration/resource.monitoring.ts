@@ -140,7 +140,7 @@ export async function recordResourceMetric(
       updated_by: recordedBy,
       updated_at: new Date(),
     })
-    .onConflictDoUpdate{
+    .onConflictDoUpdate({
       target: system_settings.key,
       set: {
         value: JSON.stringify({
@@ -156,7 +156,7 @@ export async function recordResourceMetric(
         updated_by: recordedBy,
         updated_at: new Date(),
       },
-    };
+    });
 
   return {
     name: nameMap[metric],

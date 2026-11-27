@@ -121,17 +121,17 @@ export function generateCSPHeader(configuration?: CSPConfiguration): string {
     }
   } else {
     // Default CSP
-    directives.push "default-src 'self'";
-    directives.push "script-src 'self' https://*.google.com https://*.vidstack.net";
-    directives.push "style-src 'self' 'unsafe-inline'";
-    directives.push "img-src 'self' data: https:";
-    directives.push "connect-src 'self' https://*.api.dramascan.local";
-    directives.push "font-src 'self'";
-    directives.push "frame-src 'none'";
-    directives.push "object-src 'none'";
-    directives.push "base-uri 'self'";
-    directives.push "form-action 'self'";
-    directives.push "frame-ancestors 'none'";
+    directives.push("default-src 'self'");
+    directives.push("script-src 'self' https://*.google.com https://*.vidstack.net");
+    directives.push("style-src 'self' 'unsafe-inline'");
+    directives.push("img-src 'self' data: https:");
+    directives.push("connect-src 'self' https://*.api.dramascan.local");
+    directives.push("font-src 'self'");
+    directives.push("frame-src 'none'");
+    directives.push("object-src 'none'");
+    directives.push("base-uri 'self'");
+    directives.push("form-action 'self'");
+    directives.push("frame-ancestors 'none'");
   }
 
   return `Content-Security-Policy-${directives.length > 0 ? '' : ''}${directives.join('; ')}`;
@@ -143,7 +143,7 @@ export function getFrameProtection(): string {
 }
 
 /** Content-Type protection (X-Content-Type-Options). */
-export getContentTypeProtection(): string {
+export function getContentTypeProtection(): string {
   return 'X-Content-Type-Options: nosniff';
 }
 
@@ -171,12 +171,12 @@ export function getAllSecurityHeaders(): Record<string, string> {
 /** Validate CSP is compatible with Vidstack. */
 export function isCSPCompatibleWithVidstack(cspConfiguration: CSPConfiguration): boolean {
   // Vidstack requires script sources to include its domain
-  const hasVidstackSource = configuration.scriptSrc.some(
+  const hasVidstackSource = cspConfiguration.scriptSrc.some(
     source => source.includes('vidstack') || source.includes('video.js')
   );
 
   // Vidstack requires img-src to allow image loading
-  const allowsImages = configuration.imgSrc.some(
+  const allowsImages = cspConfiguration.imgSrc.some(
     source => source === '*' || source.includes('https:') || source === 'data:'
   );
 

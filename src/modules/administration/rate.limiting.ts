@@ -141,7 +141,7 @@ export async function recordRateLimitHit(
       updated_by: performedBy,
       updated_at: new Date(),
     })
-    .onConflictDoUpdate{
+    .onConflictDoUpdate({
       target: system_settings.key,
       set: {
         value: JSON.stringify({
@@ -155,7 +155,7 @@ export async function recordRateLimitHit(
         updated_by: performedBy,
         updated_at: new Date(),
       },
-    };
+    });
 
   return checkRateLimit(endpoint, identifier, performedBy);
 }

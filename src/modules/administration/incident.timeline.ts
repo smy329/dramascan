@@ -75,7 +75,7 @@ export async function createTimelineEvent(
       updated_by: options.actor,
       updated_at: new Date(),
     })
-    .onConflictDoUpdate{
+    .onConflictDoUpdate({
       target: system_settings.key,
       set: {
         value: JSON.stringify({
@@ -91,7 +91,7 @@ export async function createTimelineEvent(
         updated_by: options.actor,
         updated_at: new Date(),
       },
-    }
+    })
     .returning({
       key: system_settings.key,
       value: system_settings.value,
