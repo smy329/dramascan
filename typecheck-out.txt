@@ -1,3 +1,10 @@
+src/modules/administration/alert.acknowledgement.ts(96,24): error TS1005: ';' expected.
+src/modules/administration/alert.acknowledgement.ts(98,10): error TS1005: ';' expected.
+src/modules/administration/alert.acknowledgement.ts(107,20): error TS1005: ';' expected.
+src/modules/administration/alert.acknowledgement.ts(108,19): error TS1005: ';' expected.
+src/modules/administration/alert.acknowledgement.ts(109,19): error TS1005: ';' expected.
+src/modules/administration/alert.acknowledgement.ts(110,7): error TS1109: Expression expected.
+src/modules/administration/alert.acknowledgement.ts(110,8): error TS1128: Declaration or statement expected.
 src/modules/administration/alert.escalation.ts(73,24): error TS1005: ',' expected.
 src/modules/administration/alert.escalation.ts(74,30): error TS1005: ',' expected.
 src/modules/administration/alert.escalation.ts(76,20): error TS1005: ',' expected.
