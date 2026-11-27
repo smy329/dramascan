@@ -100,7 +100,7 @@ export async function captureError(
     url: options.url,
     method: options.method,
     statusCode: options.statusCode,
-    redactedContext,
+    redactedContext: redactedContext as Record<string, unknown>,
     metadata: options.metadata,
   };
 

@@ -49,7 +49,6 @@ export async function executeMaintenanceCommand(
   options?: MaintenanceCommandOptions
 ): Promise<MaintenanceCommandResult> {
   const startTime = Date.now();
-  const commandId = crypto.randomUUID();
 
   try {
     // Log command start
@@ -71,7 +70,7 @@ export async function executeMaintenanceCommand(
     // Log structured result
     // eslint-disable-next-line no-console
     console.info(
-      `[maintenance-command-result] ${command.id}: ${JSON.stringify({
+      `[maintenance-command-result] ${JSON.stringify({
         success: result.success,
         exitCode: result.exitCode,
         message: result.message,
@@ -86,7 +85,7 @@ export async function executeMaintenanceCommand(
     // Log command failure
     // eslint-disable-next-line no-console
     console.error(
-      `[maintenance-command] ${command.id}: ${command.name} failed ` +
+      `[maintenance-command] ${command.name} failed ` +
         `in ${durationMs}ms: ${error instanceof Error ? error.message : String(error)}`
     );
 
@@ -107,8 +106,9 @@ export const backupDatabaseCommand: MaintenanceCommand = {
   name: 'Backup PostgreSQL database',
 
   async execute(options?: MaintenanceCommandOptions): Promise<MaintenanceCommandResult> {
-    const timeout = options?.timeout ?? 600000; // 10 minutes default
-    const cwd = options?.cwd ?? '/';
+    // Timeout and cwd are available via options but not used in this simulated command
+    const _timeout = options?.timeout;
+    const _cwd = options?.cwd;
 
     // In a production environment, would run: pg_dump
     // For now, simulate the command
@@ -116,7 +116,7 @@ export const backupDatabaseCommand: MaintenanceCommand = {
 
     // Execute pg_dump via child_process in production
     // const { execSync } = require('child_process');
-    // const output = execSync(`pg_dump ${DATABASE_URL}`, { timeout, cwd });
+    // const output = execSync(`pg_dump ${DATABASE_URL}`, { timeout: _timeout, cwd: _cwd });
 
     const durationMs = Date.now() - start;
 
@@ -149,8 +149,9 @@ export const restoreDatabaseCommand: MaintenanceCommand = {
   name: 'Restore PostgreSQL database',
 
   async execute(options?: MaintenanceCommandOptions): Promise<MaintenanceCommandResult> {
-    const timeout = options?.timeout ?? 600000; // 10 minutes default
-    const cwd = options?.cwd ?? '/';
+    // Timeout and cwd are available via options but not used in this simulated command
+    const _timeout = options?.timeout;
+    const _cwd = options?.cwd;
 
     // In production, would expect a backup file path option
     // const backupPath = options?.backupPath;
@@ -160,7 +161,7 @@ export const restoreDatabaseCommand: MaintenanceCommand = {
 
     // Execute pg_restore via child_process in production
     // const { execSync } = require('child_process');
-    // const output = execSync(`pg_restore --dbname=${DATABASE_URL} ${backupPath}`, { timeout, cwd });
+    // const output = execSync(`pg_restore --dbname=${DATABASE_URL} ${backupPath}`, { timeout: _timeout, cwd: _cwd });
 
     const durationMs = Date.now() - start;
 
@@ -193,8 +194,8 @@ export const retentionCleanupCommand: MaintenanceCommand = {
   name: 'Retention cleanup',
 
   async execute(options?: MaintenanceCommandOptions): Promise<MaintenanceCommandResult> {
-    const timeout = options?.timeout ?? 30000; // 30 seconds default
-    const table = options?.table ?? 'system_setting_versions';
+    // timeout is available via options but not used in this simulated command
+    const _timeout = options?.timeout;
 
     const start = Date.now();
 
@@ -202,8 +203,7 @@ export const retentionCleanupCommand: MaintenanceCommand = {
     // e.g., DELETE FROM system_setting_versions WHERE changed_at < now() - interval '30 days'
     // const { execSync } = require('child_process');
     // const output = execSync(`psql -c "DELETE FROM system_setting_versions WHERE changed_at < now() - interval '30 days'"`, {
-    //   timeout,
-    //   cwd,
+    //   timeout: _timeout,
     // });
 
     const durationMs = Date.now() - start;
@@ -215,7 +215,7 @@ export const retentionCleanupCommand: MaintenanceCommand = {
       exitCode: 0,
       message: `Retention cleanup completed: ${deletedCount} entries deleted`,
       durationMs,
-      output: `Cleaned up ${deletedCount} expired entries from ${table} table`,
+      output: `Cleaned up ${deletedCount} expired entries`,
     };
   },
 
@@ -231,7 +231,8 @@ export const validateConfigurationCommand: MaintenanceCommand = {
   name: 'Validate configuration',
 
   async execute(options?: MaintenanceCommandOptions): Promise<MaintenanceCommandResult> {
-    const timeout = options?.timeout ?? 30000; // 30 seconds default
+    // timeout is available via options but not used in this simulated command
+    const _timeout = options?.timeout;
 
     const start = Date.now();
 
