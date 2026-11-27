@@ -34,6 +34,234 @@ src/modules/administration/anomaly.detection.ts(215,51): error TS1109: Expressio
 src/modules/administration/anomaly.detection.ts(219,51): error TS1109: Expression expected.
 src/modules/administration/backup.restore.ts(109,4): error TS1005: ';' expected.
 src/modules/administration/deployment.config.ts(107,50): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(24,37): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(24,38): error TS1131: Property or signature expected.
+src/modules/administration/deployment.pipeline.ts(24,57): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(24,58): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(24,84): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(24,85): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(24,113): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(24,114): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(24,135): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(24,136): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(24,151): error TS1109: Expression expected.
+src/modules/administration/deployment.pipeline.ts(24,167): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(24,168): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(24,182): error TS1109: Expression expected.
+src/modules/administration/deployment.pipeline.ts(24,198): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(24,199): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(24,220): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(24,221): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(24,244): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(24,246): error TS1128: Declaration or statement expected.
+src/modules/administration/deployment.pipeline.ts(24,247): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(24,249): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,41): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,45): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(25,68): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,72): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(25,90): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,94): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(25,113): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,137): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,138): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(25,177): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,183): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(25,202): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,208): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(25,214): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,220): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(25,238): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,244): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(25,280): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,286): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(25,296): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,302): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(25,314): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,320): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,321): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(25,339): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,342): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(25,344): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(26,83): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(26,84): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(26,95): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(26,101): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(26,112): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(26,118): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(26,137): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(26,143): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(26,146): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(26,148): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(27,84): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(27,85): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(27,96): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(27,102): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(27,113): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(27,119): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(27,139): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(27,145): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(27,183): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(27,189): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(27,262): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(27,268): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(27,271): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(27,273): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(28,103): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(28,104): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(28,115): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(28,121): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(28,132): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(28,138): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(28,160): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(28,166): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(28,204): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(28,210): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(28,283): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(28,289): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(28,310): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(28,316): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(28,319): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(28,321): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(29,59): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(29,60): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(29,113): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(29,116): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(29,118): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,39): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,43): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(30,73): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,77): error TS1005: ',' expected.
+src/modules/administration/deployment.pipeline.ts(30,101): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,115): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,116): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(30,173): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,174): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(30,192): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,197): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,198): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(30,213): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,219): error TS1005: ';' expected.
+src/modules/administration/deployment.pipeline.ts(30,226): error TS1005: ';' expected.
+src/modules/administration/deployment.pipeline.ts(30,228): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,229): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,230): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.pipeline.ts(30,241): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,242): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,251): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,252): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,262): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,263): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,273): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,274): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,278): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,279): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,280): error TS1435: Unknown keyword or identifier. Did you mean 'module'?
+src/modules/administration/deployment.pipeline.ts(30,287): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,287): error TS1128: Declaration or statement expected.
+src/modules/administration/deployment.pipeline.ts(30,288): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,303): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,304): error TS1127: Invalid character.
+src/modules/administration/deployment.pipeline.ts(30,327): error TS1005: ';' expected.
+src/modules/administration/deployment.pipeline.ts(30,329): error TS1002: Unterminated string literal.
+src/modules/administration/deployment.rollback.ts(22,37): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(22,38): error TS1131: Property or signature expected.
+src/modules/administration/deployment.rollback.ts(22,57): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(22,58): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(22,74): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(22,75): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(22,116): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(22,117): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(22,130): error TS1109: Expression expected.
+src/modules/administration/deployment.rollback.ts(22,139): error TS1011: An element access expression should take an argument.
+src/modules/administration/deployment.rollback.ts(22,141): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(22,142): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(22,165): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(22,167): error TS1128: Declaration or statement expected.
+src/modules/administration/deployment.rollback.ts(22,168): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(22,170): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(23,75): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(24,66): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(24,67): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(24,117): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(24,118): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(24,168): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(24,171): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(24,173): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(25,70): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(25,71): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(25,121): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(25,122): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(25,177): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(25,180): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(25,182): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(26,41): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(26,43): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(27,69): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(27,70): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(27,117): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(27,118): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(27,179): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(27,182): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(27,184): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(28,36): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(28,37): error TS1131: Property or signature expected.
+src/modules/administration/deployment.rollback.ts(28,68): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(28,69): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(28,90): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(28,91): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(28,115): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(28,116): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(28,137): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(28,138): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(28,160): error TS1011: An element access expression should take an argument.
+src/modules/administration/deployment.rollback.ts(28,162): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(28,165): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(28,167): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,40): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,44): error TS1005: ',' expected.
+src/modules/administration/deployment.rollback.ts(29,72): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,76): error TS1005: ',' expected.
+src/modules/administration/deployment.rollback.ts(29,94): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,98): error TS1005: ',' expected.
+src/modules/administration/deployment.rollback.ts(29,119): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,123): error TS1005: ',' expected.
+src/modules/administration/deployment.rollback.ts(29,143): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,166): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,167): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(29,178): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,184): error TS1005: ',' expected.
+src/modules/administration/deployment.rollback.ts(29,192): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,198): error TS1005: ',' expected.
+src/modules/administration/deployment.rollback.ts(29,208): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,214): error TS1005: ',' expected.
+src/modules/administration/deployment.rollback.ts(29,227): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,233): error TS1005: ',' expected.
+src/modules/administration/deployment.rollback.ts(29,269): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,275): error TS1005: ',' expected.
+src/modules/administration/deployment.rollback.ts(29,285): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,291): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,294): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(29,296): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(30,154): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(31,46): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(31,50): error TS1005: ',' expected.
+src/modules/administration/deployment.rollback.ts(31,70): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(31,74): error TS1005: ',' expected.
+src/modules/administration/deployment.rollback.ts(31,95): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(31,142): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(32,38): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(32,42): error TS1005: ',' expected.
+src/modules/administration/deployment.rollback.ts(32,77): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(32,81): error TS1005: ',' expected.
+src/modules/administration/deployment.rollback.ts(32,114): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(32,186): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(32,187): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(32,217): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(32,218): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(32,248): error TS1127: Invalid character.
+src/modules/administration/deployment.rollback.ts(32,249): error TS1434: Unexpected keyword or identifier.
+src/modules/administration/deployment.rollback.ts(32,1217): error TS1005: '}' expected.
 src/modules/administration/incident.attachments.ts(125,24): error TS1005: ',' expected.
 src/modules/administration/incident.attachments.ts(126,30): error TS1005: ',' expected.
 src/modules/administration/incident.attachments.ts(128,20): error TS1005: ',' expected.
