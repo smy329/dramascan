@@ -30,8 +30,10 @@ import type { SeasonDto } from '@/lib/contracts/season-form';
 import {
   createEpisodeAction,
   deleteEpisodeAction,
+  publishEpisodeAction,
   renumberEpisodesAction,
   reorderEpisodesAction,
+  unpublishEpisodeAction,
   updateEpisodeAction,
 } from '@/workflows/admin/episode-actions';
 import { replaceEpisodeVideoSourceAction } from '@/workflows/admin/episode-actions';
@@ -307,6 +309,8 @@ export function EpisodeManager({
   }
 
   function renderActions(row: EpisodeDto, index: number): JSX.Element {
+    const isPublished = row.publicationStatus === 'published';
+
     return (
       <div className="flex flex-wrap justify-end gap-2">
         <Button
@@ -338,6 +342,31 @@ export function EpisodeManager({
         >
           {editingId === row.id ? 'Close' : 'Edit'}
         </Button>
+        {isPublished ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              await run(`unpublish:${row.id}`, () => unpublishEpisodeAction({ id: row.id }));
+            }}
+            disabled={pending !== null}
+          >
+            Unpublish
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            variant="default"
+            onClick={async () => {
+              await run(`publish:${row.id}`, () => publishEpisodeAction({ id: row.id }));
+            }}
+            disabled={pending !== null}
+          >
+            Publish
+          </Button>
+        )}
         <Button
           type="button"
           size="sm"

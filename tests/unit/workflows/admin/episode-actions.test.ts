@@ -7,6 +7,8 @@ const {
   deleteEpisodeMock,
   reorderEpisodesMock,
   renumberEpisodesMock,
+  replaceEpisodeVideoSourceMock,
+  updatePublicationMock,
 } = vi.hoisted(() => ({
   resolveActorMock: vi.fn(),
   createEpisodeMock: vi.fn(),
@@ -14,6 +16,8 @@ const {
   deleteEpisodeMock: vi.fn(),
   reorderEpisodesMock: vi.fn(),
   renumberEpisodesMock: vi.fn(),
+  replaceEpisodeVideoSourceMock: vi.fn(),
+  updatePublicationMock: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -31,13 +35,20 @@ vi.mock('@/workflows/admin/episodes', () => ({
   deleteEpisode: deleteEpisodeMock,
   reorderEpisodes: reorderEpisodesMock,
   renumberEpisodes: renumberEpisodesMock,
+  replaceEpisodeVideoSource: replaceEpisodeVideoSourceMock,
+}));
+
+vi.mock('@/workflows/admin/publication', () => ({
+  updatePublication: updatePublicationMock,
 }));
 
 import {
   createEpisodeAction,
   deleteEpisodeAction,
+  publishEpisodeAction,
   renumberEpisodesAction,
   reorderEpisodesAction,
+  unpublishEpisodeAction,
   updateEpisodeAction,
 } from '@/workflows/admin/episode-actions';
 
@@ -74,6 +85,8 @@ beforeEach(() => {
   deleteEpisodeMock.mockReset();
   reorderEpisodesMock.mockReset();
   renumberEpisodesMock.mockReset();
+  replaceEpisodeVideoSourceMock.mockReset();
+  updatePublicationMock.mockReset();
 });
 
 describe('createEpisodeAction', () => {
@@ -206,5 +219,117 @@ describe('renumberEpisodesAction', () => {
 
     expect(renumberEpisodesMock).toHaveBeenCalledWith(manager, DRAMA_ID);
     expect(result).toEqual({ ok: true, data: { episodesModified: 4 } });
+  });
+});
+
+describe('publishEpisodeAction', () => {
+  it('publishes an episode and returns updated status', async () => {
+    updatePublicationMock.mockResolvedValue({
+      ok: true,
+      results: [{
+        id: EPISODE_ID,
+        status: 'succeeded',
+        publicationStatus: 'published',
+        publiclyAvailable: true,
+      }],
+    });
+
+    const result = await publishEpisodeAction({ id: EPISODE_ID });
+
+    expect(updatePublicationMock).toHaveBeenCalledWith(manager, {
+      contentType: 'episode',
+      action: 'publish',
+      ids: [EPISODE_ID],
+    });
+    expect(result).toEqual({
+      ok: true,
+      data: { id: EPISODE_ID, publicationStatus: 'published', publiclyAvailable: true },
+    });
+  });
+
+  it('refuses an actor without episode.manage', async () => {
+    resolveActorMock.mockResolvedValue({ ...manager, permissions: [] });
+
+    const result = await publishEpisodeAction({ id: EPISODE_ID });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('forbidden');
+    }
+    expect(updatePublicationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns error when publication fails', async () => {
+    updatePublicationMock.mockResolvedValue({
+      ok: true,
+      results: [{
+        id: EPISODE_ID,
+        status: 'failed',
+        message: 'Episode has no video source.',
+      }],
+    });
+
+    const result = await publishEpisodeAction({ id: EPISODE_ID });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('Episode has no video source.');
+    }
+  });
+});
+
+describe('unpublishEpisodeAction', () => {
+  it('unpublishes an episode and returns updated status', async () => {
+    updatePublicationMock.mockResolvedValue({
+      ok: true,
+      results: [{
+        id: EPISODE_ID,
+        status: 'succeeded',
+        publicationStatus: 'unpublished',
+        publiclyAvailable: false,
+      }],
+    });
+
+    const result = await unpublishEpisodeAction({ id: EPISODE_ID });
+
+    expect(updatePublicationMock).toHaveBeenCalledWith(manager, {
+      contentType: 'episode',
+      action: 'unpublish',
+      ids: [EPISODE_ID],
+    });
+    expect(result).toEqual({
+      ok: true,
+      data: { id: EPISODE_ID, publicationStatus: 'unpublished', publiclyAvailable: false },
+    });
+  });
+
+  it('refuses an actor without episode.manage', async () => {
+    resolveActorMock.mockResolvedValue({ ...manager, permissions: [] });
+
+    const result = await unpublishEpisodeAction({ id: EPISODE_ID });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('forbidden');
+    }
+    expect(updatePublicationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns error when unpublication fails', async () => {
+    updatePublicationMock.mockResolvedValue({
+      ok: true,
+      results: [{
+        id: EPISODE_ID,
+        status: 'failed',
+        message: 'Episode is already unpublished.',
+      }],
+    });
+
+    const result = await unpublishEpisodeAction({ id: EPISODE_ID });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('Episode is already unpublished.');
+    }
   });
 });

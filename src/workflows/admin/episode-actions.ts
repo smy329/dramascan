@@ -14,6 +14,7 @@ import {
 } from '@/lib/contracts/episode-form';
 import { resolveActor, requirePermission } from '@/modules/authorization';
 import { parseOrThrow } from '@/modules/content/validation';
+import { z } from 'zod';
 
 import { toActionError } from '../action-errors';
 import {
@@ -24,6 +25,7 @@ import {
   replaceEpisodeVideoSource,
   updateEpisode,
 } from './episodes';
+import { updatePublication } from './publication';
 
 /**
  * Server Actions behind the episode management UI.
@@ -179,6 +181,79 @@ export async function renumberEpisodesAction(
     }
 
     return { ok: true, data: { episodesModified: result.episodesModified } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * Publish a single episode.
+ *
+ * Delegates to the shared publication workflow so eligibility rules
+ * (video source present, valid format, not trashed) are enforced consistently.
+ */
+export async function publishEpisodeAction(
+  input: unknown
+): Promise<Result<{ id: string; publicationStatus: string; publiclyAvailable: boolean }>> {
+  try {
+    const actor = await resolveActor();
+    requirePermission(actor, 'episode.manage');
+
+    const values = parseOrThrow(z.object({ id: z.uuid() }), input);
+
+    const result = await updatePublication(actor, {
+      contentType: 'episode',
+      action: 'publish',
+      ids: [values.id],
+    });
+
+    const item = result.results[0];
+    if (!item || item.status !== 'succeeded') {
+      return {
+        ok: false,
+        error: toActionError({
+          code: 'publication_failed',
+          message: item?.message ?? 'Publication failed',
+        } as ActionError),
+      };
+    }
+
+    return { ok: true, data: { id: item.id, publicationStatus: item.publicationStatus ?? 'published', publiclyAvailable: item.publiclyAvailable ?? false } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * Unpublish a single episode.
+ */
+export async function unpublishEpisodeAction(
+  input: unknown
+): Promise<Result<{ id: string; publicationStatus: string; publiclyAvailable: boolean }>> {
+  try {
+    const actor = await resolveActor();
+    requirePermission(actor, 'episode.manage');
+
+    const values = parseOrThrow(z.object({ id: z.uuid() }), input);
+
+    const result = await updatePublication(actor, {
+      contentType: 'episode',
+      action: 'unpublish',
+      ids: [values.id],
+    });
+
+    const item = result.results[0];
+    if (!item || item.status !== 'succeeded') {
+      return {
+        ok: false,
+        error: toActionError({
+          code: 'unpublication_failed',
+          message: item?.message ?? 'Unpublication failed',
+        } as ActionError),
+      };
+    }
+
+    return { ok: true, data: { id: item.id, publicationStatus: item.publicationStatus ?? 'unpublished', publiclyAvailable: item.publiclyAvailable ?? false } };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
   }
