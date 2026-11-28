@@ -3,6 +3,8 @@
 //
 // Usage: NODE_ENV=development node scripts/seed-demo.mjs
 
+import * as dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
 import pgClient from 'pg';
 import { randomUUID } from 'node:crypto';
 
@@ -154,10 +156,16 @@ async function seed() {
     // ===== PHASE 4: Seed Users =====
     console.log('Phase 3: Seeding users...');
     for (const user of catalogs.users) {
-      const userId = getStableUUID(`user-${user.email}`);
       const accountId = getStableUUID(`account-${user.email}-google`);
       
-      await client.query(`INSERT INTO users (id, name, email, email_verified, is_active, is_super_admin, role, created_at, updated_at, deleted_at) VALUES ('${userId}', ${quote(user.name)}, ${quote(user.email)}, true, ${user.isActive}, ${user.role === 'super_admin'}, ${quote(user.role)}, '${now}', '${now}', NULL) ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, is_active = EXCLUDED.is_active, is_super_admin = EXCLUDED.is_super_admin, role = EXCLUDED.role, updated_at = NOW(), deleted_at = NULL`);
+      // Upsert user and get the actual ID (in case user already exists with different ID)
+      const userResult = await client.query(
+        `INSERT INTO users (name, email, email_verified, is_active, is_super_admin, role, created_at, updated_at, deleted_at) 
+         VALUES (${quote(user.name)}, ${quote(user.email)}, true, ${user.isActive}, ${user.role === 'super_admin'}, ${quote(user.role)}, '${now}', '${now}', NULL) 
+         ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, is_active = EXCLUDED.is_active, is_super_admin = EXCLUDED.is_super_admin, role = EXCLUDED.role, updated_at = NOW(), deleted_at = NULL
+         RETURNING id`
+      );
+      const userId = userResult.rows[0].id;
       queryCount.value++;
 
       await client.query(`INSERT INTO user_roles (user_id, role_id, assigned_at) VALUES ('${userId}', '${roleIds[user.role]}', '${now}') ON CONFLICT DO NOTHING`);
